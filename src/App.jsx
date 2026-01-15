@@ -108,8 +108,8 @@ const globalStyles = `
 
 // --- Componentes UI ---
 
-const Card = ({ children, className = "", noPadding = false }) => (
-  <div className={`bg-white rounded-2xl shadow-sm border border-slate-100 hover:shadow-md transition-all duration-300 ${noPadding ? '' : 'p-6'} ${className}`}>
+const Card = ({ children, className = "", noPadding = false, ...props }) => (
+  <div className={`bg-white rounded-2xl shadow-sm border border-slate-100 hover:shadow-md transition-all duration-300 ${noPadding ? '' : 'p-6'} ${className}`} {...props}>
     {children}
   </div>
 );
@@ -291,12 +291,14 @@ const EntryModal = ({ isOpen, onClose, onSave, truck, allTrucks = [], editingEnt
     const newMileage = Number(formData.newMileage);
     const costPerLiter = liters > 0 ? totalCost / liters : 0;
     
-    const distanceTraveled = editingEntry 
-      ? (newMileage - (editingEntry.newMileage - editingEntry.distanceTraveled)) 
-      : (newMileage - activeTruck.currentMileage);
-
-    if (distanceTraveled < 0) {
-      alert("Erro: Nova quilometragem incompatível com o registro anterior.");
+    // --- Lógica Alterada ---
+    // Não calculamos 'distanceTraveled' para o registro atual (ele será 0).
+    // O cálculo do gap (diferença) será feito no handleSaveEntry e aplicado ao registro ANTERIOR.
+    // Apenas passamos os dados brutos.
+    
+    // Pequena validação básica (apenas se não estiver editando e for menor que o atual do caminhão)
+    if (!editingEntry && newMileage < activeTruck.currentMileage) {
+      alert("Erro: A nova quilometragem deve ser maior que a atual do caminhão.");
       return;
     }
 
@@ -308,7 +310,7 @@ const EntryModal = ({ isOpen, onClose, onSave, truck, allTrucks = [], editingEnt
       liters,
       costPerLiter,
       newMileage,
-      distanceTraveled,
+      distanceTraveled: 0, // Será calculado no backend (App.jsx)
     }, { receiptFile, odometerFile });
   };
 
@@ -462,26 +464,69 @@ export default function FleetManager() {
     setIsSavingEntry(true);
     
     try {
-      // 1. Salvar no Firebase (Banco de dados rápido)
       let entryId = d.id;
+      
+      // Encontra o registro anterior para calcular a diferença (GAP)
+      // O registro anterior é aquele cuja quilometragem é imediatamente inferior à atual (ou o mais recente por data)
+      const truckHistory = entries
+        .filter(e => e.truckId === d.truckId)
+        .sort((a,b) => new Date(b.date) - new Date(a.date) || b.newMileage - a.newMileage);
+
+      let previousEntry = null;
+
       if (d.id) {
-        await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'entries', d.id), d);
+        // Se estiver editando, o anterior é o próximo na lista após o atual
+        const currentIndex = truckHistory.findIndex(e => e.id === d.id);
+        if (currentIndex !== -1 && currentIndex < truckHistory.length - 1) {
+           previousEntry = truckHistory[currentIndex + 1];
+        }
+      } else {
+        // Se for novo, o anterior é o topo da lista (o mais recente até agora)
+        if (truckHistory.length > 0) {
+          previousEntry = truckHistory[0];
+        }
+      }
+
+      // Se existir registro anterior, calculamos a distância percorrida DELE até o ATUAL
+      // E salvamos essa distância NO REGISTRO ANTERIOR.
+      if (previousEntry) {
+         const dist = d.newMileage - previousEntry.newMileage;
+         
+         // Atualiza o registro anterior com a distância calculada
+         await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'entries', previousEntry.id), {
+             distanceTraveled: dist
+         });
+      }
+
+      // Salva o registro atual (sempre com distância 0 ou pendente, pois só saberemos no próximo)
+      const payloadToSave = { ...d, distanceTraveled: 0 };
+
+      // 1. Salvar no Firebase
+      if (d.id) {
+        await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'entries', d.id), payloadToSave);
       } else {
         const docRef = await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'entries'), {
-            ...d, 
+            ...payloadToSave, 
             hasReceipt: !!files.receiptFile, 
             hasOdometer: !!files.odometerFile
         });
         entryId = docRef.id;
-        // Atualiza km do caminhão
-        await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'trucks', d.truckId), { currentMileage: d.newMileage });
       }
 
-      // 2. Converter arquivos e enviar para Google Drive/Sheets
+      // 2. Atualizar Km do Caminhão (usando o maior valor encontrado para evitar regressão)
+      const truck = trucks.find(t => t.id === d.truckId);
+      if (truck) {
+          const maxMileage = Math.max(truck.currentMileage, d.newMileage);
+          await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'trucks', d.truckId), { 
+              currentMileage: maxMileage 
+          });
+      }
+
+      // 3. Converter arquivos e enviar para Google Drive/Sheets
       const receiptBase64 = files.receiptFile ? await fileToBase64(files.receiptFile) : null;
       const odometerBase64 = files.odometerFile ? await fileToBase64(files.odometerFile) : null;
 
-      if (!d.id) { // Só envia para a planilha se for novo (para não duplicar na planilha)
+      if (!d.id) { 
           sendToGoogleSheets({
               type: 'entry',
               id: entryId,
@@ -627,7 +672,7 @@ export default function FleetManager() {
     <div className="space-y-8 animate-in slide-in-from-right">
       <style>{globalStyles}</style>
       <div className="flex justify-between items-center"><div><h2 className="text-3xl font-bold">Caminhões</h2><p className="text-slate-500">Frota cadastrada no sistema.</p></div><Button onClick={()=>setIsTruckModalOpen(true)}><Plus size={20}/> Adicionar Novo</Button></div>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">{trucks.map(t => (<Card key={t.id} noPadding className="cursor-pointer" onClick={()=>{setSelectedTruck(t); setView('truck-detail');}}><div className="p-6"><div className="flex justify-between mb-4"><div className="bg-slate-100 border px-3 py-1 font-mono font-bold text-lg rounded shadow-sm">{t.plate}</div><Truck size={20} className="text-indigo-600"/></div><h3 className="font-bold mb-1">{t.model}</h3><p className="text-xs text-slate-400 mb-6 font-medium">{t.driver}</p><div className="grid grid-cols-2 gap-4 mb-6"><div className="bg-slate-50 p-2 rounded text-center"><p className="text-[10px] text-slate-400 font-bold uppercase">KM Atual</p><p className="text-sm font-bold">{t.currentMileage}</p></div><div className="bg-emerald-50 p-2 rounded text-center"><p className="text-[10px] text-emerald-600 font-bold uppercase">Meta</p><p className="text-sm font-bold">{t.expectedKml}</p></div></div><Button variant="secondary" className="w-full justify-between"><span>Mostrar histórico</span><ChevronLeft className="rotate-180" size={16}/></Button></div></Card>))}</div>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">{trucks.map(t => (<Card key={t.id} noPadding className="cursor-pointer" onClick={()=>{setSelectedTruck(t); setView('truck-detail');}}><div className="p-6"><div className="flex justify-between mb-4"><div className="bg-slate-100 border px-3 py-1 font-mono font-bold text-lg rounded shadow-sm">{t.plate}</div><Truck size={20} className="text-indigo-600"/></div><h3 className="font-bold mb-1">{t.model}</h3><p className="text-xs text-slate-400 mb-6 font-medium">{t.driver}</p><div className="grid grid-cols-2 gap-4 mb-6"><div className="bg-slate-50 p-2 rounded text-center"><p className="text-[10px] text-slate-400 font-bold uppercase">KM Atual</p><p className="text-sm font-bold">{t.currentMileage}</p></div><div className="bg-emerald-50 p-2 rounded text-center"><p className="text-[10px] text-emerald-600 font-bold uppercase">Meta</p><p className="text-sm font-bold">{t.expectedKml}</p></div></div><Button variant="secondary" className="w-full justify-between" onClick={(e) => { e.stopPropagation(); setSelectedTruck(t); setView('truck-detail'); }}><span>Mostrar histórico</span><ChevronLeft className="rotate-180" size={16}/></Button></div></Card>))}</div>
     </div>
   );
 
@@ -642,8 +687,16 @@ export default function FleetManager() {
         <td className="px-6 py-4 font-bold text-slate-800">R$ {e.totalCost.toFixed(2)}</td>
         <td className="px-6 py-4">{e.liters.toFixed(1)} L</td>
         <td className="px-6 py-4 text-slate-400">{e.newMileage} km</td>
-        <td className="px-6 py-4"><span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full text-[10px] font-bold">+{e.distanceTraveled} km</span></td>
-        <td className={`px-6 py-4 font-bold ${(e.distanceTraveled/e.liters) >= selectedTruck.expectedKml ? 'text-emerald-600' : 'text-rose-600'}`}>{(e.distanceTraveled / e.liters).toFixed(2)} Km/L</td>
+        <td className="px-6 py-4">
+          {e.distanceTraveled > 0 ? (
+            <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full text-[10px] font-bold">+{e.distanceTraveled} km</span>
+          ) : (
+            <span className="text-slate-400 text-[10px]">---</span>
+          )}
+        </td>
+        <td className={`px-6 py-4 font-bold ${(e.distanceTraveled/e.liters) >= selectedTruck.expectedKml ? 'text-emerald-600' : 'text-rose-600'}`}>
+          {e.distanceTraveled > 0 ? (e.distanceTraveled / e.liters).toFixed(2) + " Km/L" : "-"}
+        </td>
         <td className="px-6 py-4 flex justify-center gap-2"><button onClick={()=>{setEditingEntry(e); setIsEntryModalOpen(true);}} className="p-1.5 hover:bg-white rounded-lg shadow-sm border border-transparent hover:border-slate-200 transition-all text-amber-600" title="Editar"><Pencil size={14}/></button></td>
       </tr>))}</tbody></table></div></Card>
     </div>);
