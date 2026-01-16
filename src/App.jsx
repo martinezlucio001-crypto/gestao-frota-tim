@@ -189,6 +189,12 @@ const TruckModal = ({ isOpen, onClose, onSave, editingTruck = null }) => {
     model: '',
     capacity: '',
     expectedKml: '',
+    tankLevelGoal: '',
+    fuelAveragePrice: '',
+    fuelAveragePrice: '',
+    expectedIntervalKm: '',
+    pixKey: '',
+    vehicleType: '',
     driver: ''
   });
 
@@ -200,10 +206,15 @@ const TruckModal = ({ isOpen, onClose, onSave, editingTruck = null }) => {
           model: editingTruck.model || '',
           capacity: String(editingTruck.capacity || ''),
           expectedKml: String(editingTruck.expectedKml || ''),
+          tankLevelGoal: String(editingTruck.tankLevelGoal || ''),
+          fuelAveragePrice: String(editingTruck.fuelAveragePrice || ''),
+          expectedIntervalKm: String(editingTruck.expectedIntervalKm || ''),
+          pixKey: editingTruck.pixKey || '',
+          vehicleType: editingTruck.vehicleType || '',
           driver: editingTruck.driver || ''
         });
       } else {
-        setFormData({ plate: '', model: '', capacity: '', expectedKml: '', driver: '' });
+        setFormData({ plate: '', model: '', capacity: '', expectedKml: '', tankLevelGoal: '', fuelAveragePrice: '', expectedIntervalKm: '', pixKey: '', vehicleType: '', driver: '' });
       }
     }
   }, [isOpen, editingTruck]);
@@ -217,6 +228,9 @@ const TruckModal = ({ isOpen, onClose, onSave, editingTruck = null }) => {
       ...formData,
       capacity: Number(formData.capacity),
       expectedKml: Number(formData.expectedKml),
+      tankLevelGoal: Number(formData.tankLevelGoal),
+      fuelAveragePrice: Number(formData.fuelAveragePrice),
+      expectedIntervalKm: Number(formData.expectedIntervalKm),
       initialFuel: editingTruck ? (editingTruck.initialFuel || 0) : 0,
       initialMileage: editingTruck ? (editingTruck.initialMileage || 0) : 0,
       currentMileage: editingTruck ? editingTruck.currentMileage : 0,
@@ -238,13 +252,22 @@ const TruckModal = ({ isOpen, onClose, onSave, editingTruck = null }) => {
       <form onSubmit={handleSubmit} className="p-8 overflow-y-auto">
         <div className="grid grid-cols-2 gap-6">
           <Input label="Placa do Veículo" placeholder="ABC-1234" required value={formData.plate} onChange={e => setFormData({ ...formData, plate: e.target.value.toUpperCase() })} />
-          <Input label="Modelo / Marca" placeholder="Ex: Volvo FH" required value={formData.model} onChange={e => setFormData({ ...formData, model: e.target.value })} />
+          <Input label="Tipo de Veículo" placeholder="Ex: Utilitário" value={formData.vehicleType} onChange={e => setFormData({ ...formData, vehicleType: e.target.value })} />
         </div>
+        <Input label="Modelo / Marca" placeholder="Ex: Volvo FH" required value={formData.model} onChange={e => setFormData({ ...formData, model: e.target.value })} />
         <div className="grid grid-cols-2 gap-6">
           <Input label="Capacidade Tanque (L)" type="number" required value={formData.capacity} onChange={e => setFormData({ ...formData, capacity: e.target.value })} />
           <Input label="Eficiência Prevista Km/L" type="number" step="0.1" required value={formData.expectedKml} onChange={e => setFormData({ ...formData, expectedKml: e.target.value })} />
         </div>
-        <Input label="Motorista Responsável" placeholder="Nome Completo" required value={formData.driver} onChange={e => setFormData({ ...formData, driver: e.target.value })} />
+        <div className="grid grid-cols-2 gap-6">
+          <Input label="Meta Nível Tanque (L)" type="number" placeholder="Ex: 500" value={formData.tankLevelGoal} onChange={e => setFormData({ ...formData, tankLevelGoal: e.target.value })} />
+          <Input label="Preço Médio Combustível (R$)" type="number" step="0.01" placeholder="Ex: 5.89" value={formData.fuelAveragePrice} onChange={e => setFormData({ ...formData, fuelAveragePrice: e.target.value })} />
+        </div>
+        <Input label="Km Esperado (Intervalo)" type="number" placeholder="Ex: 500" value={formData.expectedIntervalKm} onChange={e => setFormData({ ...formData, expectedIntervalKm: e.target.value })} />
+        <div className="grid grid-cols-2 gap-6">
+          <Input label="Motorista Responsável" placeholder="Nome Completo" required value={formData.driver} onChange={e => setFormData({ ...formData, driver: e.target.value })} />
+          <Input label="Chave Pix" placeholder="CPF/Email/Celular" value={formData.pixKey} onChange={e => setFormData({ ...formData, pixKey: e.target.value })} />
+        </div>
         <div className="flex gap-4 mt-8 pt-4 border-t border-slate-100">
           <Button type="button" variant="ghost" onClick={onClose} className="flex-1">Cancelar</Button>
           <Button type="submit" className="flex-1" variant={editingTruck ? "primary" : "primary"}>{editingTruck ? 'Salvar Alterações' : 'Confirmar Cadastro'}</Button>
@@ -258,6 +281,7 @@ const EntryModal = ({ isOpen, onClose, onSave, truck, allTrucks = [], editingEnt
   const [localTruckId, setLocalTruckId] = useState('');
   const [formData, setFormData] = useState({
     date: new Date().toISOString().split('T')[0],
+    time: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
     totalCost: '',
     liters: '',
     newMileage: '',
@@ -291,6 +315,7 @@ const EntryModal = ({ isOpen, onClose, onSave, truck, allTrucks = [], editingEnt
       if (editingEntry) {
         setFormData({
           date: editingEntry.date,
+          time: editingEntry.time || '',
           totalCost: editingEntry.totalCost,
           liters: editingEntry.liters,
           newMileage: editingEntry.newMileage,
@@ -300,6 +325,7 @@ const EntryModal = ({ isOpen, onClose, onSave, truck, allTrucks = [], editingEnt
       } else {
         setFormData({
           date: new Date().toISOString().split('T')[0],
+          time: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
           totalCost: '',
           liters: '',
           newMileage: '',
@@ -336,6 +362,7 @@ const EntryModal = ({ isOpen, onClose, onSave, truck, allTrucks = [], editingEnt
       ...(editingEntry ? { id: editingEntry.id } : {}),
       truckId: activeTruck.id,
       date: formData.date,
+      time: formData.time,
       totalCost,
       liters,
       costPerLiter,
@@ -357,7 +384,7 @@ const EntryModal = ({ isOpen, onClose, onSave, truck, allTrucks = [], editingEnt
           <h2 className="text-2xl font-bold text-slate-800">{editingEntry ? 'Editar Registro' : 'Registrar Abastecimento'}</h2>
           <div className="flex items-center gap-2 mt-1 text-slate-500 text-sm">
             {activeTruck ? (
-              <><span className="font-semibold px-2 py-0.5 bg-white border border-slate-200 rounded text-slate-700">{activeTruck.plate}</span><span>{activeTruck.model}</span></>
+              <><span className="font-semibold px-2 py-0.5 bg-white border border-slate-200 rounded text-slate-700">{activeTruck.plate}</span>{activeTruck.vehicleType && <span className="font-semibold px-2 py-0.5 bg-slate-100 border border-slate-200 rounded text-slate-600 text-xs">{activeTruck.vehicleType}</span>}<span>{activeTruck.model}</span></>
             ) : (<span>Selecione um veículo abaixo</span>)}
           </div>
         </div>
@@ -379,7 +406,10 @@ const EntryModal = ({ isOpen, onClose, onSave, truck, allTrucks = [], editingEnt
           </div>
         )}
         <fieldset disabled={!activeTruck || isSaving} className={(!activeTruck || isSaving) ? 'opacity-50 grayscale' : ''}>
-          <Input label="Data do Abastecimento" type="date" required value={formData.date} onChange={e => setFormData({ ...formData, date: e.target.value })} />
+          <div className="grid grid-cols-2 gap-6">
+            <Input label="Data do Abastecimento" type="date" required value={formData.date} onChange={e => setFormData({ ...formData, date: e.target.value })} />
+            <Input label="Horário" type="time" required value={formData.time} onChange={e => setFormData({ ...formData, time: e.target.value })} />
+          </div>
           <div className="grid grid-cols-2 gap-6">
             <Input label="Valor Total (R$)" type="number" step="0.01" required placeholder="0,00" value={formData.totalCost} onChange={e => setFormData({ ...formData, totalCost: e.target.value })} />
             <Input label="Litros Abastecidos" type="number" step="0.1" required placeholder="0 L" value={formData.liters} onChange={e => setFormData({ ...formData, liters: e.target.value })} />
@@ -666,6 +696,7 @@ export default function FleetManager() {
           id: entryId,
           truckId: d.truckId,
           date: d.date,
+          time: d.time,
           totalCost: d.totalCost,
           liters: d.liters,
           newMileage: d.newMileage,
@@ -812,9 +843,9 @@ export default function FleetManager() {
   // --- Stats & UI ---
 
   const globalStats = useMemo(() => {
-    const cost = entries.reduce((a, c) => a + c.totalCost, 0);
-    const lit = entries.reduce((a, c) => a + c.liters, 0);
-    const dist = entries.reduce((a, c) => a + c.distanceTraveled, 0);
+    const cost = entries.reduce((a, c) => a + Number(c.totalCost || 0), 0);
+    const lit = entries.reduce((a, c) => a + Number(c.liters || 0), 0);
+    const dist = entries.reduce((a, c) => a + Number(c.distanceTraveled || 0), 0);
     return {
       cost: cost.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }),
       liters: lit.toFixed(1) + " L",
@@ -830,13 +861,156 @@ export default function FleetManager() {
     return p.map(item => ({ label: item.l, value: item.li > 0 ? item.d / item.li : 0 }));
   }, [entries]);
 
-  const renderDashboard = () => (
-    <div className="space-y-8 animate-in fade-in">
-      <style>{globalStyles}</style>
-      <div className="flex justify-between items-center"><h1 className="text-3xl font-bold">Painel de Controle</h1><div className="flex gap-3"><Button variant="success" onClick={() => { setEditingEntry(null); setIsEntryModalOpen(true); }}><Fuel size={18} /> Novo Registro</Button><Button onClick={() => { setEditingTruck(null); setIsTruckModalOpen(true); }}><Plus size={18} /> Novo Veículo</Button></div></div>
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6"><StatCard title="Total Gasto" value={globalStats.cost} icon={DollarSign} color="green" /><StatCard title="Combustível" value={globalStats.liters} icon={Droplet} color="indigo" /><StatCard title="Eficiência Média" value={globalStats.eff} icon={TrendingUp} color="amber" /><StatCard title="Frota" value={globalStats.count} icon={Truck} color="blue" /></div>
-    </div>
-  );
+  const renderDashboard = () => {
+    return (
+      <div className="space-y-8 animate-in fade-in">
+        <div className="flex justify-between items-center mb-6">
+          <h1 className="text-3xl font-bold text-slate-900">Painel Geral da Frota</h1>
+          <div className="flex gap-4">
+            <Button variant="success" onClick={() => { setEditingEntry(null); setIsEntryModalOpen(true); }}><Plus size={20} /> Novo Abastecimento</Button>
+            <Button variant="primary" onClick={() => { setEditingTruck(null); setIsTruckModalOpen(true); }}><Truck size={20} /> Novo Veículo</Button>
+          </div>
+        </div>
+
+        <div className="grid gap-6">
+          {trucks.map(truck => {
+            // Cálculos individuais reutilizados da lógica de detalhe
+            const truckEntries = entries
+              .filter(e => e.truckId === truck.id)
+              .sort((a, b) => new Date(b.date) - new Date(a.date) || b.newMileage - a.newMileage);
+
+            let suggestionDisplay = null;
+            let costDisplay = null;
+            let lastDateDisplay = "Sem registros";
+
+            if (truckEntries.length > 0) {
+              const lastEntry = truckEntries[0];
+              lastDateDisplay = new Date(lastEntry.date).toLocaleDateString('pt-BR');
+
+              // Recalcula lógica de tanque novo para o último registro (simplificado aqui para o card)
+              // Idealmente isso estaria numa função helper compartilhada, mas vamos recalcular localmente
+              // Precisamos saber o tanque APÓS o abastecimento.
+              // O 'calculatedNewTank' real depende de todo histórico, mas para o ULTIMO, podemos estimar:
+              // Se usarmos a lógica simples: InitialFuel + Liters (se fosse o primeiro).
+              // Mas como não temos o histórico calculado aqui facilmente sem percorrer tudo, 
+              // vamos confiar que se o usuário acessou o detalhe, os dados estão ok? Não.
+              // Vamos fazer um cálculo rápido do ultimo estado se possível.
+
+              // Simplificação Robusta: Vamos pegar apenas a estimativa baseada na KM atual vs prevista.
+              // Mas o cálculo da sugestão depende de 'lastNewTank'.
+              // Vamos assumir que o 'calculatedHistory' no renderTruckDetail é a fonte da verdade.
+              // Para o dashboard, vamos recalcular RAPIDAMENTE o 'lastNewTank' apenas para este caminhão?
+              // Sim, é rápido.
+
+              let currentTank = truck.initialFuel || 0;
+              let previousMile = truck.initialMileage || 0;
+              let calculatedLastNewTank = 0;
+
+              // Recriando histórico cronológico para chegar ao valor atual
+              const chronologicalEntries = [...truckEntries].reverse(); // Oldest first
+
+              chronologicalEntries.forEach(entry => {
+                const dist = entry.newMileage - previousMile;
+                const consumed = dist / (truck.expectedKml || 1);
+                const remaining = Math.max(0, currentTank - consumed);
+                const newTank = Math.min(truck.capacity || 0, remaining + entry.liters);
+
+                currentTank = newTank;
+                previousMile = entry.newMileage;
+                calculatedLastNewTank = newTank;
+              });
+
+              if (truck.expectedIntervalKm && truck.tankLevelGoal) {
+                const estimatedConsumption = truck.expectedIntervalKm / (truck.expectedKml || 1);
+                const estimatedRemaining = Math.max(0, calculatedLastNewTank - estimatedConsumption);
+                const suggestion = Math.max(0, truck.tankLevelGoal - estimatedRemaining);
+
+                suggestionDisplay = `${suggestion.toFixed(1)} L`;
+
+                if (truck.fuelAveragePrice) {
+                  const cost = suggestion * truck.fuelAveragePrice;
+                  costDisplay = cost.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+                }
+              }
+            }
+
+            return (
+              <Card key={truck.id} className="p-6 transition-all hover:shadow-md border-l-4 border-l-indigo-500">
+                <div className="grid md:grid-cols-4 gap-6 items-center">
+
+                  {/* Identificação */}
+                  <div className="md:col-span-1">
+                    <div className="flex items-center gap-3 mb-2">
+                      <div className="p-2 bg-indigo-50 text-indigo-700 rounded-lg"><Truck size={24} /></div>
+                      <div>
+                        <h3 className="text-xl font-black text-slate-800 flex items-center gap-2">
+                          {truck.plate}
+                          {truck.vehicleType && <span className="text-xs font-normal bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full">{truck.vehicleType}</span>}
+                        </h3>
+                        <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">{truck.model}</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Planejamento */}
+                  <div className="md:col-span-1 border-l border-slate-100 pl-0 md:pl-6">
+                    <p className="text-[10px] font-bold text-slate-400 uppercase mb-2">Planejamento</p>
+                    <div className="space-y-1">
+                      <div className="flex justify-between items-center bg-indigo-50/50 p-1.5 rounded-lg">
+                        <span className="text-xs font-semibold text-indigo-700">Sugestão</span>
+                        <span className="font-bold text-indigo-900">{suggestionDisplay || '-'}</span>
+                      </div>
+                      <div className="flex justify-between items-center bg-blue-50/50 p-1.5 rounded-lg">
+                        <span className="text-xs font-semibold text-blue-700">Custo Est.</span>
+                        <span className="font-bold text-blue-900">{costDisplay || '-'}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Motorista & Pix */}
+                  <div className="md:col-span-1 border-l border-slate-100 pl-0 md:pl-6">
+                    <p className="text-[10px] font-bold text-slate-400 uppercase mb-2">Motorista Responsável</p>
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="font-bold text-slate-700">{truck.driver}</span>
+                    </div>
+                    {truck.pixKey ? (
+                      <div className="flex items-center gap-1.5 text-xs text-slate-500 bg-slate-50 p-1.5 rounded border border-slate-100 w-fit">
+                        <img src="https://upload.wikimedia.org/wikipedia/commons/a/a2/Logo%E2%80%94pix_powered_by_Banco_Central_%28Brazil%2C_2020%29.svg" className="h-3 opacity-70" alt="Pix" />
+                        <span className="font-mono select-all">{truck.pixKey}</span>
+                      </div>
+                    ) : (
+                      <span className="text-[10px] text-slate-400 italic">Pix não cadastrado</span>
+                    )}
+                  </div>
+
+                  {/* Status / Data */}
+                  <div className="md:col-span-1 border-l border-slate-100 pl-0 md:pl-6 flex flex-col justify-center items-end text-right">
+                    <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Último Abastecimento</p>
+                    <p className="text-lg font-bold text-slate-700">{lastDateDisplay}</p>
+                    <div className="mt-2">
+                      {/* Espaço reservado para status futuro se necessário */}
+                      <button onClick={() => { setSelectedTruck(truck); setView('truck-detail'); }} className="text-xs font-bold text-indigo-600 flex items-center gap-1 hover:underline">
+                        Ver Detalhes <ChevronRight size={14} />
+                      </button>
+                    </div>
+                  </div>
+
+                </div>
+              </Card>
+            );
+          })}
+
+          {trucks.length === 0 && (
+            <div className="text-center py-20 bg-white rounded-3xl border border-dashed border-slate-200">
+              <Truck className="mx-auto text-slate-200 mb-4" size={64} />
+              <h3 className="text-xl font-bold text-slate-400">Nenhum veículo cadastrado</h3>
+              <p className="text-slate-400 text-sm mt-2">Cadastre seu primeiro caminhão para começar.</p>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
 
   const renderTrucksList = () => (
     <div className="space-y-8 animate-in slide-in-from-right">
@@ -844,7 +1018,7 @@ export default function FleetManager() {
       <div className="flex justify-between items-center"><div><h2 className="text-3xl font-bold">Caminhões</h2><p className="text-slate-500">Frota cadastrada no sistema.</p></div><Button onClick={() => { setEditingTruck(null); setIsTruckModalOpen(true); }}><Plus size={20} /> Adicionar Novo</Button></div>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">{trucks.map(t => (<Card key={t.id} noPadding className="cursor-pointer" onClick={() => { setSelectedTruck(t); setView('truck-detail'); }}><div className="p-6">
         <div className="flex justify-between mb-4">
-          <div className="bg-slate-100 border px-3 py-1 font-mono font-bold text-lg rounded shadow-sm">{t.plate}</div>
+          <div className="bg-slate-100 border px-3 py-1 font-mono font-bold text-lg rounded shadow-sm flex items-center gap-2">{t.plate} {t.vehicleType && <span className="text-xs font-sans font-normal text-slate-500 bg-white border px-1.5 py-0.5 rounded">{t.vehicleType}</span>}</div>
           <div className="flex gap-2">
             <button onClick={(e) => { e.stopPropagation(); setEditingTruck(t); setIsTruckModalOpen(true); }} className="p-1.5 hover:bg-white rounded-lg shadow-sm border border-transparent hover:border-slate-200 transition-all text-amber-600" title="Editar"><Pencil size={18} /></button>
             <button onClick={(e) => { e.stopPropagation(); handleDeleteTruck(t.id, t.plate); }} className="p-1.5 hover:bg-white rounded-lg shadow-sm border border-transparent hover:border-slate-200 transition-all text-rose-600" title="Excluir"><Trash2 size={18} /></button>
@@ -861,32 +1035,53 @@ export default function FleetManager() {
       .sort((a, b) => new Date(a.date) - new Date(b.date) || a.newMileage - b.newMileage);
 
     // Calcular histórico de tanque
-    let currentTank = selectedTruck.initialFuel || 0;
-
-    // Precisamos recalcular a distância baseada na ordem cronológica correta para garantir a consistência
-    // caso os dados do DB estejam fora de ordem ou com gaps.
+    // Variáveis de estado para a iteração (acumuladores)
+    let previousNewTank = 0;
     let previousMileage = selectedTruck.initialMileage || 0;
 
-    const calculatedHistoryRaw = rawHistory.map(entry => {
-      // Recalcular distância para garantir consistência visual na tabela (opcional, mas seguro)
-      // Se usarmos o do DB (entry.distanceTraveled), dependemos do save anterior estar correto.
-      // Vamos confiar no DB para distância (já que ele lida com gaps de edição complexos), 
-      // MAS para o tanque usamos a eficiência fixa.
+    const calculatedHistoryRaw = rawHistory.map((entry, index) => {
+      // 1. Calcular distância percorrida desde o ÚLTIMO registro (não do DB, mas recalculado)
+      // Se for o primeiro registro, verificamos se há uma milhagem inicial explicitamente diferente.
+      // Geralmente na primeira adição, entry.newMileage poderia ser == previousMileage se não rodou nada.
+      // Se rodou, dist > 0.
+      let dist = 0;
 
-      const dist = entry.distanceTraveled;
+      // Se for o primeiro registro da lista cronológica
+      if (index === 0) {
+        // Se temos um initialFuel neste registro, ele reseta o estado do tanque,
+        // mas a distância percorrida depende da milhagem inicial do caminhão.
+        dist = Math.max(0, entry.newMileage - previousMileage);
+      } else {
+        // Registros subsequentes: Distância é a diferença entre a km atual e a do registro anterior
+        dist = Math.max(0, entry.newMileage - previousMileage);
+      }
+
+      // 2. Calcular consumo
       const consumido = dist > 0 ? dist / (selectedTruck.expectedKml || 1) : 0;
 
-      // Se for o primeiro registro ele pode ter trazido um initialFuel
-      // Caso contrário calculamos baseado no que sobrou do tanque anterior
-      const remaining = entry.initialFuel > 0 ? entry.initialFuel : (currentTank - consumido);
+      // 3. Calcular Remanescente
+      // Se for o primeiro registro e tiver initialFuel, usamos ele.
+      // Caso contrário, é o tanque anterior menos o consumido.
+      let remaining = 0;
+      if (index === 0 && entry.initialFuel !== undefined) {
+        remaining = Number(entry.initialFuel);
+      } else {
+        remaining = Math.max(0, previousNewTank - consumido);
+      }
+
+      // 4. Calcular Novo Tanque
       const newTank = remaining + entry.liters;
 
-      // Atualiza para o próximo
-      currentTank = newTank;
+      // Atualizar acumuladores para a próxima iteração
+      previousNewTank = newTank;
       previousMileage = entry.newMileage;
 
       return {
         ...entry,
+        // Usamos o dist calculado aqui para exibição se quiser ser estritamente consistente com o tanque,
+        // ou usamos entry.distanceTraveled do DB se preferir. 
+        // Vamos expor o recalculado para debug/consistência.
+        calculatedDistance: dist,
         calculatedRemaining: remaining,
         calculatedNewTank: newTank
       };
@@ -898,45 +1093,121 @@ export default function FleetManager() {
     const h = calculatedHistory; // Alias para manter compatibilidade com contadores se houver
     return (<div className="space-y-8 animate-in slide-in-from-right">
       <style>{globalStyles}</style>
-      <div className="flex justify-between items-center"><div className="flex items-center gap-4"><button onClick={() => setView('trucks')} className="p-2 border rounded-xl hover:bg-white"><ChevronLeft /></button><div><h2 className="text-2xl font-bold">{selectedTruck.plate} <span className="text-sm font-normal text-slate-400">{selectedTruck.model}</span></h2><p className="text-sm text-slate-500">Histórico de abastecimentos e performance.</p></div></div><Button variant="success" onClick={() => { setEditingEntry(null); setIsEntryModalOpen(true); }}><Fuel size={18} /> Novo Registro</Button></div>
-      <div className="grid grid-cols-3 gap-6"><Card className="text-center bg-blue-50/50"><p className="text-[10px] font-bold text-blue-600 uppercase mb-1">Km Percorridos</p><p className="text-2xl font-bold">{selectedTruck.currentMileage - selectedTruck.initialMileage} km</p></Card><Card className="text-center bg-emerald-50/50"><p className="text-[10px] font-bold text-emerald-600 uppercase mb-1">Eficiência Prevista</p><p className="text-2xl font-bold">{selectedTruck.expectedKml.toFixed(2)} Km/L</p></Card><Card className="text-center bg-amber-50/50"><p className="text-[10px] font-bold text-amber-600 uppercase mb-1">Total de Litros</p><p className="text-2xl font-bold">{h.reduce((a, c) => a + c.liters, 0).toFixed(0)} L</p></Card></div>
+      <div className="flex justify-between items-center"><div className="flex items-center gap-4"><button onClick={() => setView('trucks')} className="p-2 border rounded-xl hover:bg-white"><ChevronLeft /></button><div><h2 className="text-2xl font-bold flex items-center gap-2">{selectedTruck.plate} {selectedTruck.vehicleType && <span className="text-sm font-normal bg-slate-200 text-slate-600 px-2 py-0.5 rounded-lg">{selectedTruck.vehicleType}</span>} <span className="text-sm font-normal text-slate-400">| {selectedTruck.model}</span></h2><p className="text-sm text-slate-500">Histórico de abastecimentos e performance.</p></div></div><Button variant="success" onClick={() => { setEditingEntry(null); setIsEntryModalOpen(true); }}><Fuel size={18} /> Novo Registro</Button></div>
+      <div className="grid grid-cols-4 gap-6">
+        <Card className="text-center bg-emerald-50/50"><p className="text-[10px] font-bold text-emerald-600 uppercase mb-1">Eficiência Prevista</p><p className="text-2xl font-bold">{selectedTruck.expectedKml.toFixed(2)} Km/L</p></Card>
+        <Card className="text-center bg-amber-50/50"><p className="text-[10px] font-bold text-amber-600 uppercase mb-1">Capacidade do Tanque</p><p className="text-2xl font-bold">{selectedTruck.capacity} L</p></Card>
+
+        {/* Card de Sugestão de Abastecimento (L) */}
+        {selectedTruck.expectedIntervalKm && selectedTruck.tankLevelGoal && calculatedHistory.length > 0 ? (
+          (() => {
+            const lastEntry = calculatedHistory[0];
+            const lastNewTank = lastEntry.calculatedNewTank || 0;
+            const estimatedConsumption = selectedTruck.expectedIntervalKm / selectedTruck.expectedKml;
+            const estimatedRemaining = Math.max(0, lastNewTank - estimatedConsumption);
+            const suggestion = Math.max(0, selectedTruck.tankLevelGoal - estimatedRemaining);
+
+            return (
+              <Card className="text-center bg-indigo-50/50 relative overflow-hidden group">
+                <div className="absolute top-0 right-0 p-1">
+                  <div className="w-2 h-2 rounded-full bg-indigo-400 animate-pulse"></div>
+                </div>
+                <p className="text-[10px] font-bold text-indigo-600 uppercase mb-1">Sugestão Abastecimento</p>
+                <h3 className="text-2xl font-bold text-indigo-700">{suggestion.toFixed(1)} L</h3>
+                <p className="text-[9px] text-indigo-400 mt-1 font-medium">
+                  Meta: {selectedTruck.tankLevelGoal}L | Est. Rest: {estimatedRemaining.toFixed(0)}L
+                </p>
+              </Card>
+            );
+          })()
+        ) : (
+          <Card className="text-center bg-slate-50/50 flex flex-col items-center justify-center opacity-70">
+            <p className="text-[10px] font-bold text-slate-400 uppercase">Sugestão Indisponível</p>
+            <p className="text-[9px] text-slate-400 mt-1">Configure Meta e Km Esperado</p>
+          </Card>
+        )}
+
+        {/* Card de Próximo Abastecimento (R$) */}
+        {selectedTruck.expectedIntervalKm && selectedTruck.tankLevelGoal && selectedTruck.fuelAveragePrice && calculatedHistory.length > 0 ? (
+          (() => {
+            const lastEntry = calculatedHistory[0];
+            const lastNewTank = lastEntry.calculatedNewTank || 0;
+            const estimatedConsumption = selectedTruck.expectedIntervalKm / selectedTruck.expectedKml;
+            const estimatedRemaining = Math.max(0, lastNewTank - estimatedConsumption);
+            const suggestion = Math.max(0, selectedTruck.tankLevelGoal - estimatedRemaining);
+            const estimatedCost = suggestion * selectedTruck.fuelAveragePrice;
+
+            return (
+              <Card className="text-center bg-blue-50/50">
+                <p className="text-[10px] font-bold text-blue-600 uppercase mb-1">Próximo Abastecimento (R$)</p>
+                <h3 className="text-2xl font-bold text-blue-700">R$ {estimatedCost.toFixed(2)}</h3>
+                <p className="text-[9px] text-blue-400 mt-1 font-medium">
+                  {suggestion.toFixed(1)} L x R$ {selectedTruck.fuelAveragePrice.toFixed(2)}
+                </p>
+              </Card>
+            );
+          })()
+        ) : (
+          <Card className="text-center bg-blue-50/50 flex flex-col items-center justify-center opacity-70">
+            <p className="text-[10px] font-bold text-blue-600 uppercase mb-1">Próximo Abastecimento</p>
+            <p className="text-sm font-bold text-slate-400">---</p>
+          </Card>
+        )}
+      </div>
       <Card noPadding className="overflow-hidden"><div className="overflow-x-auto"><table className="w-full text-sm text-left"><thead className="bg-slate-50 text-slate-400 font-bold uppercase text-[10px] border-b"><tr>
-        <th className="px-6 py-4">Data</th>
-        <th className="px-6 py-4">Custo</th>
-        <th className="px-6 py-4">Combustível Inserido</th>
-        <th className="px-6 py-4">Km Rodada</th>
-        <th className="px-6 py-4 text-emerald-600">Comb. Remanescente</th>
-        <th className="px-6 py-4 text-blue-600">Novo Tanque</th>
-        <th className="px-6 py-4 text-center">Ações</th>
-      </tr></thead><tbody className="divide-y">{calculatedHistory.map(e => (
-        <tr key={e.id} className="hover:bg-slate-50">
-          <td className="px-6 py-4 font-medium">{new Date(e.date).toLocaleDateString('pt-BR')}</td>
-          <td className="px-6 py-4 font-bold text-slate-800">R$ {e.totalCost.toFixed(2)}</td>
-          <td className="px-6 py-4 font-bold">{e.liters.toFixed(1)} L</td>
-          <td className="px-6 py-4">
-            {e.distanceTraveled > 0 ? (
-              <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full text-[10px] font-bold">+{e.distanceTraveled} km</span>
-            ) : (
-              <span className="text-slate-400 text-[10px]">---</span>
-            )}
-          </td>
-          <td className="px-6 py-4 text-emerald-600 font-medium">
-            {e.calculatedRemaining !== null ? e.calculatedRemaining.toFixed(1) + " L" : "-"}
-          </td>
-          <td className="px-6 py-4 text-blue-600 font-bold">
-            {e.calculatedNewTank !== null ? e.calculatedNewTank.toFixed(1) + " L" : "-"}
-          </td>
-          <td className="px-6 py-4 flex justify-center gap-2">
-            {e.receiptUrl && e.receiptUrl !== 'imported' && (
-              <button onClick={() => setPreviewImage({ url: e.receiptUrl, title: 'Recibo de Abastecimento' })} className="p-1.5 hover:bg-white rounded-lg shadow-sm border border-transparent hover:border-slate-200 transition-all text-emerald-600" title="Ver Recibo"><FileText size={14} /></button>
-            )}
-            {e.odometerUrl && e.odometerUrl !== 'imported' && (
-              <button onClick={() => setPreviewImage({ url: e.odometerUrl, title: 'Foto do Odômetro' })} className="p-1.5 hover:bg-white rounded-lg shadow-sm border border-transparent hover:border-slate-200 transition-all text-blue-600" title="Ver Odômetro"><Gauge size={14} /></button>
-            )}
-            <button onClick={() => { setEditingEntry(e); setIsEntryModalOpen(true); }} className="p-1.5 hover:bg-white rounded-lg shadow-sm border border-transparent hover:border-slate-200 transition-all text-amber-600" title="Editar"><Pencil size={14} /></button>
-            <button onClick={() => handleDeleteEntry(e.id, e.date)} className="p-1.5 hover:bg-white rounded-lg shadow-sm border border-transparent hover:border-slate-200 transition-all text-rose-600" title="Excluir"><Trash2 size={14} /></button>
-          </td>
-        </tr>))}</tbody></table></div></Card>
+        <th className="px-6 py-2">Data</th>
+        <th className="px-6 py-2 text-center">Horário</th>
+        <th className="px-6 py-2 text-center">Custo</th>
+        <th className="px-6 py-2 text-center">Combustível Inserido</th>
+        <th className="px-6 py-2 text-center">Km Rodados</th>
+        <th className="px-6 py-2 text-emerald-600 text-center">Comb. Remanescente</th>
+        <th className="px-6 py-2 text-blue-600 text-center">Novo Tanque</th>
+        <th className="px-6 py-2 text-center">Ações</th>
+      </tr></thead><tbody>{calculatedHistory.map((e, idx) => (
+        <React.Fragment key={e.id}>
+          <tr className="hover:bg-slate-50">
+            <td className="px-6 py-2 font-medium">{new Date(e.date).toLocaleDateString('pt-BR')}</td>
+            <td className="px-6 py-2 text-slate-500 text-center">{e.time || '-'}</td>
+            <td className="px-6 py-2 font-bold text-slate-800 text-center">R$ {e.totalCost.toFixed(2)}</td>
+            <td className="px-6 py-2 font-bold text-center">{e.liters.toFixed(1)} L</td>
+            <td className="px-6 py-2 text-center"></td>
+            <td className="px-6 py-2 text-emerald-600 font-medium text-center">
+              {e.calculatedRemaining !== null ? e.calculatedRemaining.toFixed(1) + " L" : "-"}
+            </td>
+            <td className="px-6 py-2 text-blue-600 font-bold text-center">
+              {e.calculatedNewTank !== null ? e.calculatedNewTank.toFixed(1) + " L" : "-"}
+            </td>
+            <td className="px-6 py-2 flex justify-center gap-2">
+              {e.receiptUrl && e.receiptUrl !== 'imported' && (
+                <button onClick={() => setPreviewImage({ url: e.receiptUrl, title: 'Recibo de Abastecimento' })} className="p-1.5 hover:bg-white rounded-lg shadow-sm border border-transparent hover:border-slate-200 transition-all text-emerald-600" title="Ver Recibo"><FileText size={14} /></button>
+              )}
+              {e.odometerUrl && e.odometerUrl !== 'imported' && (
+                <button onClick={() => setPreviewImage({ url: e.odometerUrl, title: 'Foto do Odômetro' })} className="p-1.5 hover:bg-white rounded-lg shadow-sm border border-transparent hover:border-slate-200 transition-all text-blue-600" title="Ver Odômetro"><Gauge size={14} /></button>
+              )}
+              <button onClick={() => { setEditingEntry(e); setIsEntryModalOpen(true); }} className="p-1.5 hover:bg-white rounded-lg shadow-sm border border-transparent hover:border-slate-200 transition-all text-amber-600" title="Editar"><Pencil size={14} /></button>
+              <button onClick={() => handleDeleteEntry(e.id, e.date)} className="p-1.5 hover:bg-white rounded-lg shadow-sm border border-transparent hover:border-slate-200 transition-all text-rose-600" title="Excluir"><Trash2 size={14} /></button>
+            </td>
+          </tr>
+          {idx < calculatedHistory.length - 1 && (
+            <tr className="bg-slate-50/20">
+              <td className="px-6 border-b border-slate-100"></td>
+              <td className="px-6 border-b border-slate-100"></td>
+              <td className="px-6 border-b border-slate-100"></td>
+              <td className="px-6 border-b border-slate-100"></td>
+              <td className="px-6 border-b border-slate-100 text-center">
+                {e.calculatedDistance > 0 ? (
+                  <span className="bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded text-[10px] font-bold border border-indigo-200">+{e.calculatedDistance} km</span>
+                ) : (
+                  <span className="text-slate-300 text-[10px]">---</span>
+                )}
+              </td>
+              <td className="px-6 border-b border-slate-100"></td>
+              <td className="px-6 border-b border-slate-100"></td>
+              <td className="px-6 border-b border-slate-100"></td>
+            </tr>
+          )}
+        </React.Fragment>
+      ))}</tbody></table></div></Card>
       <ImagePreviewModal
         isOpen={!!previewImage}
         onClose={() => setPreviewImage(null)}
@@ -945,6 +1216,8 @@ export default function FleetManager() {
       />
     </div>);
   };
+
+
 
   const renderDataManagement = () => (
     <div className="space-y-8 animate-in fade-in"><h1 className="text-3xl font-bold">Gestão de Dados</h1><div className="grid md:grid-cols-2 gap-8">
