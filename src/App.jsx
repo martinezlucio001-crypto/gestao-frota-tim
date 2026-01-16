@@ -79,6 +79,16 @@ const fileToBase64 = (file) => {
   });
 };
 
+// Função para formatar datas sem problema de fuso horário
+const formatDateBR = (dateString) => {
+  if (!dateString) return '-';
+  // Divide a string de data (YYYY-MM-DD) para evitar interpretação UTC
+  const parts = dateString.split('T')[0].split('-');
+  if (parts.length !== 3) return dateString;
+  const [year, month, day] = parts;
+  return `${day}/${month}/${year}`;
+};
+
 const sendToGoogleSheets = async (payload) => {
   try {
     // mode: 'no-cors' permite enviar dados para o Google sem erro de bloqueio do navegador,
@@ -893,7 +903,7 @@ export default function FleetManager() {
 
             if (truckEntries.length > 0) {
               const lastEntry = truckEntries[0];
-              lastDateDisplay = new Date(lastEntry.date).toLocaleDateString('pt-BR');
+              lastDateDisplay = formatDateBR(lastEntry.date);
 
               // Recalcula lógica de tanque novo para o último registro (simplificado aqui para o card)
               // Idealmente isso estaria numa função helper compartilhada, mas vamos recalcular localmente
@@ -1174,7 +1184,7 @@ export default function FleetManager() {
       </tr></thead><tbody>{calculatedHistory.map((e, idx) => (
         <React.Fragment key={e.id}>
           <tr className="hover:bg-slate-50">
-            <td className="px-6 py-2 font-medium">{new Date(e.date).toLocaleDateString('pt-BR')}</td>
+            <td className="px-6 py-2 font-medium">{formatDateBR(e.date)}</td>
             <td className="px-6 py-2 text-slate-500 text-center">{e.time || '-'}</td>
             <td className="px-6 py-2 font-bold text-slate-800 text-center">R$ {e.totalCost.toFixed(2)}</td>
             <td className="px-6 py-2 font-bold text-center">{e.liters.toFixed(1)} L</td>
