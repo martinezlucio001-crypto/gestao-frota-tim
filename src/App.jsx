@@ -79,22 +79,6 @@ const fileToBase64 = (file) => {
   });
 };
 
-// Helper para parsing robusto de datas (suporta ISO e DD/MM/YYYY)
-const parseDate = (dateStr) => {
-  if (!dateStr) return new Date(0);
-  // Se for formato ISO (YYYY-MM-DD ou YYYY-MM-DDTHH:mm)
-  if (/^\d{4}-\d{2}-\d{2}/.test(dateStr)) {
-    return new Date(dateStr);
-  }
-  // Se for formato brasileiro (DD/MM/YYYY)
-  if (/^\d{2}\/\d{2}\/\d{4}/.test(dateStr)) {
-    const [day, month, year] = dateStr.split('/');
-    return new Date(year, month - 1, day);
-  }
-  // Fallback
-  return new Date(dateStr);
-};
-
 const sendToGoogleSheets = async (payload) => {
   try {
     // mode: 'no-cors' permite enviar dados para o Google sem erro de bloqueio do navegador,
@@ -316,7 +300,7 @@ const EntryModal = ({ isOpen, onClose, onSave, truck, allTrucks = [], editingEnt
       return truckEntries.length === 0;
     } else {
       if (truckEntries.length === 0) return true;
-      const sorted = [...truckEntries].sort((a, b) => a.newMileage - b.newMileage);
+      const sorted = [...truckEntries].sort((a, b) => new Date(a.date) - new Date(b.date));
       return sorted[0]?.id === editingEntry.id;
     }
   }, [activeTruck, editingEntry, entries]);
@@ -367,10 +351,19 @@ const EntryModal = ({ isOpen, onClose, onSave, truck, allTrucks = [], editingEnt
     // O cálculo do gap (diferença) será feito no handleSaveEntry e aplicado ao registro ANTERIOR.
     // Apenas passamos os dados brutos.
 
-    // Pequena validação básica (apenas se não estiver editando e for menor que o atual do caminhão)
-    if (!editingEntry && activeTruck.currentMileage > 0 && newMileage < activeTruck.currentMileage) {
-      alert("Erro: A nova quilometragem deve ser maior que a atual do caminhão.");
-      return;
+    // Validação: Não permitir quilometragem menor que a de um registro anterior (por data)
+    const truckHistory = entries.filter(e => e.truckId === activeTruck.id);
+    const entriesBeforeDate = truckHistory.filter(e => {
+      if (editingEntry && e.id === editingEntry.id) return false; // Ignorar o próprio registro se editando
+      return new Date(e.date) < new Date(formData.date);
+    });
+
+    if (entriesBeforeDate.length > 0) {
+      const maxMileageBeforeDate = Math.max(...entriesBeforeDate.map(e => e.newMileage));
+      if (newMileage < maxMileageBeforeDate) {
+        alert(`Erro: A quilometragem (${newMileage}) não pode ser menor que a de um registro anterior (${maxMileageBeforeDate} km).`);
+        return;
+      }
     }
 
     const payload = {
@@ -630,7 +623,7 @@ export default function FleetManager() {
       // O registro anterior é aquele cuja quilometragem é imediatamente inferior à atual (ou o mais recente por data)
       const truckHistory = entries
         .filter(e => e.truckId === d.truckId)
-        .sort((a, b) => parseDate(b.date) - parseDate(a.date) || b.newMileage - a.newMileage);
+        .sort((a, b) => new Date(b.date) - new Date(a.date) || b.newMileage - a.newMileage);
 
       let previousEntry = null;
 
@@ -689,7 +682,7 @@ export default function FleetManager() {
         const otherEntries = entries.filter(e => e.truckId === d.truckId && e.id !== entryId);
         const truckEntries = [...otherEntries, currentEntryForCalcs];
 
-        const sorted = [...truckEntries].sort((a, b) => a.newMileage - b.newMileage);
+        const sorted = [...truckEntries].sort((a, b) => new Date(a.date) - new Date(b.date));
         const isFirst = sorted[0]?.id === entryId;
         const maxMileage = Math.max(...truckEntries.map(e => e.newMileage), 0);
 
@@ -750,12 +743,12 @@ export default function FleetManager() {
             initialFuel: 0
           });
         } else {
-          const sorted = [...remaining].sort((a, b) => a.newMileage - b.newMileage);
+          const sorted = [...remaining].sort((a, b) => new Date(a.date) - new Date(b.date));
           const first = sorted[0];
           const last = sorted[sorted.length - 1];
 
           await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'trucks', truckId), {
-            currentMileage: last.newMileage,
+            currentMileage: Math.max(...remaining.map(e => e.newMileage)),
             initialMileage: first.newMileage,
             initialFuel: first.initialFuel || 0
           });
@@ -892,7 +885,7 @@ export default function FleetManager() {
             // Cálculos individuais reutilizados da lógica de detalhe
             const truckEntries = entries
               .filter(e => e.truckId === truck.id)
-              .sort((a, b) => parseDate(b.date) - parseDate(a.date) || b.newMileage - a.newMileage);
+              .sort((a, b) => new Date(b.date) - new Date(a.date) || b.newMileage - a.newMileage);
 
             let suggestionDisplay = null;
             let costDisplay = null;
@@ -1047,7 +1040,7 @@ export default function FleetManager() {
     // Ordenar cronologicamente para cálculos (antigo -> novo)
     const rawHistory = entries
       .filter(e => e.truckId === selectedTruck?.id)
-      .sort((a, b) => parseDate(a.date) - parseDate(b.date) || a.newMileage - b.newMileage);
+      .sort((a, b) => new Date(a.date) - new Date(b.date) || a.newMileage - b.newMileage);
 
     // Calcular histórico de tanque
     // Variáveis de estado para a iteração (acumuladores)
