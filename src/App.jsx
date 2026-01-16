@@ -79,6 +79,22 @@ const fileToBase64 = (file) => {
   });
 };
 
+// Helper para parsing robusto de datas (suporta ISO e DD/MM/YYYY)
+const parseDate = (dateStr) => {
+  if (!dateStr) return new Date(0);
+  // Se for formato ISO (YYYY-MM-DD ou YYYY-MM-DDTHH:mm)
+  if (/^\d{4}-\d{2}-\d{2}/.test(dateStr)) {
+    return new Date(dateStr);
+  }
+  // Se for formato brasileiro (DD/MM/YYYY)
+  if (/^\d{2}\/\d{2}\/\d{4}/.test(dateStr)) {
+    const [day, month, year] = dateStr.split('/');
+    return new Date(year, month - 1, day);
+  }
+  // Fallback
+  return new Date(dateStr);
+};
+
 const sendToGoogleSheets = async (payload) => {
   try {
     // mode: 'no-cors' permite enviar dados para o Google sem erro de bloqueio do navegador,
@@ -610,63 +626,82 @@ export default function FleetManager() {
     try {
       let entryId = d.id;
 
+      // Encontra o registro anterior para calcular a diferença (GAP)
+      // O registro anterior é aquele cuja quilometragem é imediatamente inferior à atual (ou o mais recente por data)
+      const truckHistory = entries
+        .filter(e => e.truckId === d.truckId)
+        .sort((a, b) => parseDate(b.date) - parseDate(a.date) || b.newMileage - a.newMileage);
+
+      let previousEntry = null;
+
+      if (d.id) {
+        // Se estiver editando, o anterior é o próximo na lista após o atual
+        const currentIndex = truckHistory.findIndex(e => e.id === d.id);
+        if (currentIndex !== -1 && currentIndex < truckHistory.length - 1) {
+          previousEntry = truckHistory[currentIndex + 1];
+        }
+      } else {
+        // Se for novo, o anterior é o topo da lista (o mais recente até agora)
+        if (truckHistory.length > 0) {
+          previousEntry = truckHistory[0];
+        }
+      }
+
+      // Se existir registro anterior, calculamos a distância percorrida DELE até o ATUAL
+      // E salvamos essa distância NO REGISTRO ANTERIOR.
+      if (previousEntry) {
+        const dist = d.newMileage - previousEntry.newMileage;
+
+        // Atualiza o registro anterior com a distância calculada
+        await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'entries', previousEntry.id), {
+          distanceTraveled: dist
+        });
+      }
+
+      // 3. Converter arquivos e enviar para Google Drive/Sheets
+      // 3. Converter arquivos e enviar para Google Drive/Sheets
       const receiptBase64 = files.receiptFile ? await fileToBase64(files.receiptFile) : null;
       const odometerBase64 = files.odometerFile ? await fileToBase64(files.odometerFile) : null;
 
-      const payloadBase = {
+      // Salva o registro atual (sempre com distância 0 ou pendente, pois só saberemos no próximo)
+      const payloadToSave = {
         ...d,
+        distanceTraveled: 0,
         receiptUrl: receiptBase64 || d.receiptUrl || null,
         odometerUrl: odometerBase64 || d.odometerUrl || null,
         hasReceipt: !!(receiptBase64 || d.receiptUrl),
         hasOdometer: !!(odometerBase64 || d.odometerUrl)
       };
 
-      // Recalcular lógica de encadeamento cronológico
-      const otherEntries = entries
-        .filter(e => e.truckId === d.truckId && e.id !== d.id)
-        .sort((a, b) => new Date(a.date) - new Date(b.date) || a.newMileage - b.newMileage);
-
-      const currentEntryForSort = { ...payloadBase, id: d.id || 'temp-id' };
-      const allEntries = [...otherEntries, currentEntryForSort].sort((a, b) => new Date(a.date) - new Date(b.date) || a.newMileage - b.newMileage);
-
-      const currentIndex = allEntries.findIndex(e => e.id === currentEntryForSort.id);
-      const prevEntry = currentIndex > 0 ? allEntries[currentIndex - 1] : null;
-      const nextEntry = currentIndex < allEntries.length - 1 ? allEntries[currentIndex + 1] : null;
-
-      // Calcular distância deste registro em relação ao anterior
-      let dist = 0;
-      if (prevEntry) {
-        dist = Math.max(0, d.newMileage - prevEntry.newMileage);
-      }
-      payloadBase.distanceTraveled = dist; // Salva no próprio registro
-
+      // 1. Salvar no Firebase
       if (d.id) {
-        await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'entries', d.id), payloadBase);
+        await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'entries', d.id), payloadToSave);
       } else {
-        const docRef = await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'entries'), payloadBase);
+        const docRef = await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'entries'), payloadToSave);
         entryId = docRef.id;
       }
 
-      // Se houver um registro posterior, atualizar a distância dele (pois o anterior mudou ou foi inserido um novo no meio)
-      if (nextEntry) {
-        const nextDist = Math.max(0, nextEntry.newMileage - d.newMileage);
-        await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'entries', nextEntry.id), {
-          distanceTraveled: nextDist
-        });
-      }
-
+      // 2. Atualizar parâmetros do Caminhão
       const truck = trucks.find(t => t.id === d.truckId);
       if (truck) {
-        const maxMileage = Math.max(...allEntries.map(e => e.newMileage), 0);
-        const isFirst = currentIndex === 0;
+        // Obter histórico atualizado (incluindo o que acabamos de salvar)
+        const currentEntryForCalcs = { ...payloadToSave, id: entryId };
+        const otherEntries = entries.filter(e => e.truckId === d.truckId && e.id !== entryId);
+        const truckEntries = [...otherEntries, currentEntryForCalcs];
+
+        const sorted = [...truckEntries].sort((a, b) => a.newMileage - b.newMileage);
+        const isFirst = sorted[0]?.id === entryId;
+        const maxMileage = Math.max(...truckEntries.map(e => e.newMileage), 0);
 
         const truckUpdate = { currentMileage: maxMileage };
+
         if (isFirst) {
           truckUpdate.initialMileage = d.newMileage;
           if (d.initialFuel !== undefined) {
             truckUpdate.initialFuel = Number(d.initialFuel || 0);
           }
         }
+
         await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'trucks', d.truckId), truckUpdate);
       }
 
@@ -680,7 +715,6 @@ export default function FleetManager() {
           totalCost: d.totalCost,
           liters: d.liters,
           newMileage: d.newMileage,
-          distanceTraveled: dist,
           receiptBase64,
           odometerBase64
         });
@@ -858,7 +892,7 @@ export default function FleetManager() {
             // Cálculos individuais reutilizados da lógica de detalhe
             const truckEntries = entries
               .filter(e => e.truckId === truck.id)
-              .sort((a, b) => new Date(b.date) - new Date(a.date) || b.newMileage - a.newMileage);
+              .sort((a, b) => parseDate(b.date) - parseDate(a.date) || b.newMileage - a.newMileage);
 
             let suggestionDisplay = null;
             let costDisplay = null;
@@ -1013,7 +1047,7 @@ export default function FleetManager() {
     // Ordenar cronologicamente para cálculos (antigo -> novo)
     const rawHistory = entries
       .filter(e => e.truckId === selectedTruck?.id)
-      .sort((a, b) => new Date(a.date) - new Date(b.date) || a.newMileage - b.newMileage);
+      .sort((a, b) => parseDate(a.date) - parseDate(b.date) || a.newMileage - b.newMileage);
 
     // Calcular histórico de tanque
     // Variáveis de estado para a iteração (acumuladores)
