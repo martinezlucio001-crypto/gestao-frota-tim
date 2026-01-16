@@ -191,7 +191,6 @@ const TruckModal = ({ isOpen, onClose, onSave, editingTruck = null }) => {
     expectedKml: '',
     tankLevelGoal: '',
     fuelAveragePrice: '',
-    fuelAveragePrice: '',
     expectedIntervalKm: '',
     pixKey: '',
     vehicleType: '',
