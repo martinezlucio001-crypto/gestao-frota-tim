@@ -113,21 +113,23 @@ const globalStyles = `
 
 const Card = ({ children, className = "", noPadding = false, ...props }) => (
   <div className={`bg-white rounded-2xl shadow-sm border border-slate-100 hover:shadow-md transition-all duration-300 ${noPadding ? '' : 'p-6'} ${className}`} {...props}>
-    {children}
-  </div>
-);
+    const Card = ({children, className = "", noPadding = false, ...props }) => (
+    <div className={`bg-white rounded-2xl shadow-sm border border-slate-100 hover:shadow-md transition-all duration-300 ${noPadding ? '' : 'p-6'} ${className}`} {...props}>
+      {children}
+    </div>
+    );
 
-const StatCard = ({ title, value, icon: Icon, subtext, color = "blue", trend }) => {
+    const StatCard = ({title, value, icon: Icon, subtext, color = "blue", trend }) => {
   const styles = {
-    blue: { bg: "bg-blue-50", text: "text-blue-600", border: "border-blue-100" },
-    green: { bg: "bg-emerald-50", text: "text-emerald-600", border: "border-emerald-100" },
-    amber: { bg: "bg-amber-50", text: "text-amber-600", border: "border-amber-100" },
-    indigo: { bg: "bg-indigo-50", text: "text-indigo-600", border: "border-indigo-100" },
+      blue: {bg: "bg-blue-50", text: "text-blue-600", border: "border-blue-100" },
+    green: {bg: "bg-emerald-50", text: "text-emerald-600", border: "border-emerald-100" },
+    amber: {bg: "bg-amber-50", text: "text-amber-600", border: "border-amber-100" },
+    indigo: {bg: "bg-indigo-50", text: "text-indigo-600", border: "border-indigo-100" },
   };
 
-  const currentStyle = styles[color] || styles.blue;
+    const currentStyle = styles[color] || styles.blue;
 
-  return (
+    return (
     <div className="bg-white rounded-2xl p-6 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] border border-slate-100 transition-transform hover:-translate-y-1 duration-300">
       <div className="flex items-start justify-between mb-4">
         <div className={`p-3 rounded-xl ${currentStyle.bg} ${currentStyle.text}`}>
@@ -140,52 +142,52 @@ const StatCard = ({ title, value, icon: Icon, subtext, color = "blue", trend }) 
         {subtext && <p className="text-xs text-slate-400 mt-2 font-medium">{subtext}</p>}
       </div>
     </div>
-  );
+    );
 };
 
-const Button = ({ children, onClick, variant = "primary", className = "", ...props }) => {
+    const Button = ({children, onClick, variant = "primary", className = "", ...props }) => {
   const baseStyle = "px-5 py-2.5 rounded-xl font-medium transition-all duration-200 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed active:scale-95";
-  const variants = {
-    primary: "bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg shadow-indigo-200 hover:shadow-indigo-300",
+    const variants = {
+      primary: "bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg shadow-indigo-200 hover:shadow-indigo-300",
     secondary: "bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 shadow-sm hover:border-slate-300",
     danger: "bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-100",
     ghost: "hover:bg-slate-100 text-slate-600",
     success: "bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg shadow-emerald-200",
   };
 
-  return (
+    return (
     <button onClick={onClick} className={`${baseStyle} ${variants[variant]} ${className}`} {...props}>
       {children}
     </button>
-  );
+    );
 };
 
-const Input = ({ label, type, ...props }) => (
-  <div className="mb-5 group">
-    <label className="block text-sm font-semibold text-slate-700 mb-2 transition-colors group-focus-within:text-indigo-600">{label}</label>
-    <input
-      type={type}
-      className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all placeholder:text-slate-400 disabled:bg-slate-100 disabled:text-slate-500"
-      onWheel={type === 'number' ? (e) => e.target.blur() : undefined}
-      {...props}
-    />
-  </div>
-);
-
-// --- Modais ---
-
-const ModalBackdrop = ({ children, onClose }) => (
-  <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 transition-opacity duration-300">
-    <div className="bg-white rounded-3xl w-full max-w-lg shadow-2xl animate-in fade-in zoom-in-95 duration-200 overflow-hidden flex flex-col max-h-[90vh]" onClick={e => e.stopPropagation()}>
-      {children}
+    const Input = ({label, type, ...props }) => (
+    <div className="mb-5 group">
+      <label className="block text-sm font-semibold text-slate-700 mb-2 transition-colors group-focus-within:text-indigo-600">{label}</label>
+      <input
+        type={type}
+        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all placeholder:text-slate-400 disabled:bg-slate-100 disabled:text-slate-500"
+        onWheel={type === 'number' ? (e) => e.target.blur() : undefined}
+        {...props}
+      />
     </div>
-    <div className="absolute inset-0 -z-10" onClick={onClose}></div>
-  </div>
-);
+    );
 
-const TruckModal = ({ isOpen, onClose, onSave, editingTruck = null }) => {
+    // --- Modais ---
+
+    const ModalBackdrop = ({children, onClose}) => (
+    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 transition-opacity duration-300">
+      <div className="bg-white rounded-3xl w-full max-w-lg shadow-2xl animate-in fade-in zoom-in-95 duration-200 overflow-hidden flex flex-col max-h-[90vh]" onClick={e => e.stopPropagation()}>
+        {children}
+      </div>
+      <div className="absolute inset-0 -z-10" onClick={onClose}></div>
+    </div>
+    );
+
+    const TruckModal = ({isOpen, onClose, onSave, editingTruck = null}) => {
   const [formData, setFormData] = useState({
-    plate: '',
+      plate: '',
     model: '',
     capacity: '',
     expectedKml: '',
@@ -195,36 +197,36 @@ const TruckModal = ({ isOpen, onClose, onSave, editingTruck = null }) => {
   useEffect(() => {
     if (isOpen) {
       if (editingTruck) {
-        setFormData({
-          plate: editingTruck.plate || '',
-          model: editingTruck.model || '',
-          capacity: String(editingTruck.capacity || ''),
-          expectedKml: String(editingTruck.expectedKml || ''),
-          driver: editingTruck.driver || ''
-        });
+      setFormData({
+        plate: editingTruck.plate || '',
+        model: editingTruck.model || '',
+        capacity: String(editingTruck.capacity || ''),
+        expectedKml: String(editingTruck.expectedKml || ''),
+        driver: editingTruck.driver || ''
+      });
       } else {
-        setFormData({ plate: '', model: '', capacity: '', expectedKml: '', driver: '' });
+      setFormData({ plate: '', model: '', capacity: '', expectedKml: '', driver: '' });
       }
     }
   }, [isOpen, editingTruck]);
 
-  if (!isOpen) return null;
+    if (!isOpen) return null;
 
   const handleSubmit = (e) => {
-    e.preventDefault();
+      e.preventDefault();
     onSave({
       ...(editingTruck ? { id: editingTruck.id } : {}),
       ...formData,
-      capacity: Number(formData.capacity),
-      expectedKml: Number(formData.expectedKml),
-      initialFuel: editingTruck ? (editingTruck.initialFuel || 0) : 0,
-      initialMileage: editingTruck ? (editingTruck.initialMileage || 0) : 0,
-      currentMileage: editingTruck ? editingTruck.currentMileage : 0,
+    capacity: Number(formData.capacity),
+    expectedKml: Number(formData.expectedKml),
+    initialFuel: editingTruck ? (editingTruck.initialFuel || 0) : 0,
+    initialMileage: editingTruck ? (editingTruck.initialMileage || 0) : 0,
+    currentMileage: editingTruck ? editingTruck.currentMileage : 0,
     });
     onClose();
   };
 
-  return (
+    return (
     <ModalBackdrop onClose={onClose}>
       <div className={`p-8 border-b border-slate-100 ${editingTruck ? 'bg-amber-50/50' : 'bg-slate-50/50'} flex justify-between items-center flex-shrink-0`}>
         <div>
@@ -251,20 +253,20 @@ const TruckModal = ({ isOpen, onClose, onSave, editingTruck = null }) => {
         </div>
       </form>
     </ModalBackdrop>
-  );
+    );
 };
 
-const EntryModal = ({ isOpen, onClose, onSave, truck, allTrucks = [], editingEntry = null, isSaving, entries = [] }) => {
+    const EntryModal = ({isOpen, onClose, onSave, truck, allTrucks = [], editingEntry = null, isSaving, entries = []}) => {
   const [localTruckId, setLocalTruckId] = useState('');
-  const [formData, setFormData] = useState({
-    date: new Date().toISOString().split('T')[0],
+    const [formData, setFormData] = useState({
+      date: new Date().toISOString().split('T')[0],
     totalCost: '',
     liters: '',
     newMileage: '',
     initialFuel: ''
   });
-  const [receiptFile, setReceiptFile] = useState(null);
-  const [odometerFile, setOdometerFile] = useState(null);
+    const [receiptFile, setReceiptFile] = useState(null);
+    const [odometerFile, setOdometerFile] = useState(null);
 
   const activeTruck = truck || allTrucks.find(t => t.id === localTruckId);
 
@@ -278,7 +280,7 @@ const EntryModal = ({ isOpen, onClose, onSave, truck, allTrucks = [], editingEnt
     } else {
       if (truckEntries.length === 0) return true;
       const sorted = [...truckEntries].sort((a, b) => a.newMileage - b.newMileage);
-      return sorted[0]?.id === editingEntry.id;
+    return sorted[0]?.id === editingEntry.id;
     }
   }, [activeTruck, editingEntry, entries]);
 
@@ -286,34 +288,34 @@ const EntryModal = ({ isOpen, onClose, onSave, truck, allTrucks = [], editingEnt
     if (isOpen) {
       // Resetar arquivos
       setReceiptFile(null);
-      setOdometerFile(null);
+    setOdometerFile(null);
 
-      if (editingEntry) {
-        setFormData({
-          date: editingEntry.date,
-          totalCost: editingEntry.totalCost,
-          liters: editingEntry.liters,
-          newMileage: editingEntry.newMileage,
-          initialFuel: editingEntry.initialFuel !== undefined ? String(editingEntry.initialFuel) : ''
-        });
-        if (!truck) setLocalTruckId(editingEntry.truckId);
+    if (editingEntry) {
+      setFormData({
+        date: editingEntry.date,
+        totalCost: editingEntry.totalCost,
+        liters: editingEntry.liters,
+        newMileage: editingEntry.newMileage,
+        initialFuel: editingEntry.initialFuel !== undefined ? String(editingEntry.initialFuel) : ''
+      });
+    if (!truck) setLocalTruckId(editingEntry.truckId);
       } else {
-        setFormData({
-          date: new Date().toISOString().split('T')[0],
-          totalCost: '',
-          liters: '',
-          newMileage: '',
-          initialFuel: ''
-        });
-        if (!truck) setLocalTruckId('');
+      setFormData({
+        date: new Date().toISOString().split('T')[0],
+        totalCost: '',
+        liters: '',
+        newMileage: '',
+        initialFuel: ''
+      });
+    if (!truck) setLocalTruckId('');
       }
     }
   }, [isOpen, editingEntry, truck]);
 
-  if (!isOpen) return null;
+    if (!isOpen) return null;
 
   const handleSubmit = (e) => {
-    e.preventDefault();
+      e.preventDefault();
     if (!activeTruck) return;
 
     const liters = Number(formData.liters);
@@ -329,28 +331,28 @@ const EntryModal = ({ isOpen, onClose, onSave, truck, allTrucks = [], editingEnt
     // Pequena validação básica (apenas se não estiver editando e for menor que o atual do caminhão)
     if (!editingEntry && activeTruck.currentMileage > 0 && newMileage < activeTruck.currentMileage) {
       alert("Erro: A nova quilometragem deve ser maior que a atual do caminhão.");
-      return;
+    return;
     }
 
     const payload = {
       ...(editingEntry ? { id: editingEntry.id } : {}),
       truckId: activeTruck.id,
-      date: formData.date,
-      totalCost,
-      liters,
-      costPerLiter,
-      newMileage,
-      distanceTraveled: 0,
+    date: formData.date,
+    totalCost,
+    liters,
+    costPerLiter,
+    newMileage,
+    distanceTraveled: 0,
     };
 
     if (isFirst) {
       payload.initialFuel = Number(formData.initialFuel || 0);
     }
 
-    onSave(payload, { receiptFile, odometerFile });
+    onSave(payload, {receiptFile, odometerFile});
   };
 
-  return (
+    return (
     <ModalBackdrop onClose={onClose}>
       <div className={`p-8 border-b border-slate-100 ${editingEntry ? 'bg-amber-50/30' : 'bg-emerald-50/30'} flex justify-between items-center flex-shrink-0`}>
         <div>
@@ -431,12 +433,12 @@ const EntryModal = ({ isOpen, onClose, onSave, truck, allTrucks = [], editingEnt
         </fieldset>
       </form>
     </ModalBackdrop>
-  );
+    );
 };
 
-const ImagePreviewModal = ({ isOpen, onClose, imageUrl, title }) => {
+    const ImagePreviewModal = ({isOpen, onClose, imageUrl, title}) => {
   if (!isOpen || !imageUrl) return null;
-  return (
+    return (
     <div className="fixed inset-0 bg-slate-900/95 backdrop-blur-lg flex items-center justify-center z-[100] p-4 md:p-8" onClick={onClose}>
       <div className="relative max-w-5xl w-full flex flex-col items-center animate-in zoom-in-95 duration-300" onClick={e => e.stopPropagation()}>
         {/* Header de Ações */}
@@ -472,14 +474,14 @@ const ImagePreviewModal = ({ isOpen, onClose, imageUrl, title }) => {
         </div>
       </div>
     </div>
-  );
+    );
 };
 
-// --- Dashboard Charts ---
+    // --- Dashboard Charts ---
 
-const EfficiencyChart = ({ data, period, onPeriodChange }) => {
+    const EfficiencyChart = ({data, period, onPeriodChange}) => {
   const maxVal = Math.max(...data.map(d => d.value), 1);
-  return (
+    return (
     <Card className="min-h-[400px] flex flex-col h-full">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
         <div>
@@ -502,25 +504,25 @@ const EfficiencyChart = ({ data, period, onPeriodChange }) => {
         ))}
       </div>
     </Card>
-  );
+    );
 };
 
-// --- Componente Principal ---
+    // --- Componente Principal ---
 
-export default function FleetManager() {
+    export default function FleetManager() {
   const [user, setUser] = useState(null);
-  const [view, setView] = useState('dashboard');
-  const [trucks, setTrucks] = useState([]);
-  const [entries, setEntries] = useState([]);
-  const [selectedTruck, setSelectedTruck] = useState(null);
-  const [editingEntry, setEditingEntry] = useState(null);
-  const [editingTruck, setEditingTruck] = useState(null);
-  const [isTruckModalOpen, setIsTruckModalOpen] = useState(false);
-  const [isEntryModalOpen, setIsEntryModalOpen] = useState(false);
-  const [chartPeriod, setChartPeriod] = useState('week');
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [isSavingEntry, setIsSavingEntry] = useState(false);
-  const [previewImage, setPreviewImage] = useState(null);
+    const [view, setView] = useState('dashboard');
+    const [trucks, setTrucks] = useState([]);
+    const [entries, setEntries] = useState([]);
+    const [selectedTruck, setSelectedTruck] = useState(null);
+    const [editingEntry, setEditingEntry] = useState(null);
+    const [editingTruck, setEditingTruck] = useState(null);
+    const [isTruckModalOpen, setIsTruckModalOpen] = useState(false);
+    const [isEntryModalOpen, setIsEntryModalOpen] = useState(false);
+    const [chartPeriod, setChartPeriod] = useState('week');
+    const [isProcessing, setIsProcessing] = useState(false);
+    const [isSavingEntry, setIsSavingEntry] = useState(false);
+    const [previewImage, setPreviewImage] = useState(null);
 
   useEffect(() => {
     const scripts = ['https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js', 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js', 'https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.25/jspdf.plugin.autotable.min.js'];
@@ -530,7 +532,7 @@ export default function FleetManager() {
   useEffect(() => {
     const initAuth = async () => {
       if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) await signInWithCustomToken(auth, __initial_auth_token);
-      else await signInAnonymously(auth);
+    else await signInAnonymously(auth);
     };
     initAuth();
     const unsub = onAuthStateChanged(auth, setUser);
@@ -539,9 +541,9 @@ export default function FleetManager() {
 
   useEffect(() => {
     if (!user) return;
-    const unsubT = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'trucks'), (snap) => setTrucks(snap.docs.map(doc => ({ id: doc.id, ...doc.data() }))));
-    const unsubE = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'entries'), (snap) => setEntries(snap.docs.map(doc => ({ id: doc.id, ...doc.data() }))));
-    return () => { unsubT(); unsubE(); };
+    const unsubT = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'trucks'), (snap) => setTrucks(snap.docs.map(doc => ({id: doc.id, ...doc.data() }))));
+    const unsubE = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'entries'), (snap) => setEntries(snap.docs.map(doc => ({id: doc.id, ...doc.data() }))));
+    return () => {unsubT(); unsubE(); };
   }, [user]);
 
   // Função para adicionar ou atualizar caminhão
@@ -551,12 +553,12 @@ export default function FleetManager() {
     if (d.id) {
       // Editar
       await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'trucks', d.id), d);
-      sendToGoogleSheets({ type: 'truck_update', id: d.id, ...d });
+    sendToGoogleSheets({type: 'truck_update', id: d.id, ...d });
     } else {
       // Adicionar novo
       const ref = await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'trucks'), d);
-      sendToGoogleSheets({ type: 'truck', id: ref.id, ...d });
-      return { id: ref.id, ...d };
+    sendToGoogleSheets({type: 'truck', id: ref.id, ...d });
+    return {id: ref.id, ...d };
     }
   };
 
@@ -566,120 +568,121 @@ export default function FleetManager() {
 
     try {
       await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'trucks', id));
-      sendToGoogleSheets({ type: 'truck_delete', id });
+    sendToGoogleSheets({type: 'truck_delete', id });
     } catch (err) {
       console.error(err);
-      alert("Erro ao excluir caminhão.");
+    alert("Erro ao excluir caminhão.");
     }
   };
 
-  // Função para salvar abastecimento (com fotos)
-  const handleSaveEntry = async (d, files = {}) => {
+    // Função para salvar abastecimento (com fotos)
+    const handleSaveEntry = async (d, files = { }) => {
     if (!user) return;
     setIsSavingEntry(true);
 
     try {
       let entryId = d.id;
 
-      // Encontra o registro anterior para calcular a diferença (GAP)
-      // O registro anterior é aquele cuja quilometragem é imediatamente inferior à atual (ou o mais recente por data)
-      const truckHistory = entries
+    // Encontra o registro anterior para calcular a diferença (GAP)
+    // O registro anterior é aquele cuja quilometragem é imediatamente inferior à atual (ou o mais recente por data)
+    const truckHistory = entries
         .filter(e => e.truckId === d.truckId)
         .sort((a, b) => new Date(b.date) - new Date(a.date) || b.newMileage - a.newMileage);
 
-      let previousEntry = null;
+    let previousEntry = null;
 
-      if (d.id) {
+    if (d.id) {
         // Se estiver editando, o anterior é o próximo na lista após o atual
         const currentIndex = truckHistory.findIndex(e => e.id === d.id);
-        if (currentIndex !== -1 && currentIndex < truckHistory.length - 1) {
-          previousEntry = truckHistory[currentIndex + 1];
+    if (currentIndex !== -1 && currentIndex < truckHistory.length - 1) {
+      previousEntry = truckHistory[currentIndex + 1];
         }
       } else {
         // Se for novo, o anterior é o topo da lista (o mais recente até agora)
         if (truckHistory.length > 0) {
-          previousEntry = truckHistory[0];
+      previousEntry = truckHistory[0];
         }
       }
 
-      // Se existir registro anterior, calculamos a distância percorrida DELE até o ATUAL
-      // E salvamos essa distância NO REGISTRO ANTERIOR.
-      if (previousEntry) {
+    // Se existir registro anterior, calculamos a distância percorrida DELE até o ATUAL
+    // E salvamos essa distância NO REGISTRO ANTERIOR.
+    if (previousEntry) {
         const dist = d.newMileage - previousEntry.newMileage;
 
-        // Atualiza o registro anterior com a distância calculada
-        await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'entries', previousEntry.id), {
-          distanceTraveled: dist
+    // Atualiza o registro anterior com a distância calculada
+    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'entries', previousEntry.id), {
+      distanceTraveled: dist
         });
       }
 
-      // 3. Converter arquivos e enviar para Google Drive/Sheets
-      const receiptBase64 = files.receiptFile ? await fileToBase64(files.receiptFile) : null;
-      const odometerBase64 = files.odometerFile ? await fileToBase64(files.odometerFile) : null;
+    // 3. Converter arquivos e enviar para Google Drive/Sheets
+    // 3. Converter arquivos e enviar para Google Drive/Sheets
+    const receiptBase64 = files.receiptFile ? await fileToBase64(files.receiptFile) : null;
+    const odometerBase64 = files.odometerFile ? await fileToBase64(files.odometerFile) : null;
 
-      // Salva o registro atual (sempre com distância 0 ou pendente, pois só saberemos no próximo)
-      const payloadToSave = {
-        ...d,
-        distanceTraveled: 0,
-        receiptUrl: receiptBase64 || d.receiptUrl || null,
-        odometerUrl: odometerBase64 || d.odometerUrl || null,
-        hasReceipt: !!(receiptBase64 || d.receiptUrl),
-        hasOdometer: !!(odometerBase64 || d.odometerUrl)
+    // Salva o registro atual (sempre com distância 0 ou pendente, pois só saberemos no próximo)
+    const payloadToSave = {
+      ...d,
+      distanceTraveled: 0,
+    receiptUrl: receiptBase64 || d.receiptUrl || null,
+    odometerUrl: odometerBase64 || d.odometerUrl || null,
+    hasReceipt: !!(receiptBase64 || d.receiptUrl),
+    hasOdometer: !!(odometerBase64 || d.odometerUrl)
       };
 
-      // 1. Salvar no Firebase
-      if (d.id) {
-        await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'entries', d.id), payloadToSave);
+    // 1. Salvar no Firebase
+    if (d.id) {
+      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'entries', d.id), payloadToSave);
       } else {
         const docRef = await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'entries'), payloadToSave);
-        entryId = docRef.id;
+    entryId = docRef.id;
       }
 
       // 2. Atualizar parâmetros do Caminhão
       const truck = trucks.find(t => t.id === d.truckId);
-      if (truck) {
+    if (truck) {
         // Obter histórico atualizado (incluindo o que acabamos de salvar)
-        const currentEntryForCalcs = { ...payloadToSave, id: entryId };
+        const currentEntryForCalcs = {...payloadToSave, id: entryId };
         const otherEntries = entries.filter(e => e.truckId === d.truckId && e.id !== entryId);
-        const truckEntries = [...otherEntries, currentEntryForCalcs];
+    const truckEntries = [...otherEntries, currentEntryForCalcs];
 
         const sorted = [...truckEntries].sort((a, b) => a.newMileage - b.newMileage);
-        const isFirst = sorted[0]?.id === entryId;
+    const isFirst = sorted[0]?.id === entryId;
         const maxMileage = Math.max(...truckEntries.map(e => e.newMileage), 0);
 
-        const truckUpdate = { currentMileage: maxMileage };
+    const truckUpdate = {currentMileage: maxMileage };
 
-        if (isFirst) {
-          truckUpdate.initialMileage = d.newMileage;
-          if (d.initialFuel !== undefined) {
-            truckUpdate.initialFuel = Number(d.initialFuel || 0);
+    if (isFirst) {
+      truckUpdate.initialMileage = d.newMileage;
+    if (d.initialFuel !== undefined) {
+      truckUpdate.initialFuel = Number(d.initialFuel || 0);
           }
         }
 
-        await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'trucks', d.truckId), truckUpdate);
+    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'trucks', d.truckId), truckUpdate);
       }
 
-      if (!d.id) {
-        sendToGoogleSheets({
-          type: 'entry',
-          id: entryId,
-          truckId: d.truckId,
-          date: d.date,
-          totalCost: d.totalCost,
-          liters: d.liters,
-          newMileage: d.newMileage,
-          receiptBase64,
-          odometerBase64
-        });
+    if (!d.id) {
+      sendToGoogleSheets({
+        type: 'entry',
+        id: entryId,
+        truckId: d.truckId,
+        date: d.date,
+        totalCost: d.totalCost,
+        liters: d.liters,
+        newMileage: d.newMileage,
+        receiptBase64,
+        odometerBase64
+      });
       }
 
     } catch (err) {
       console.error(err);
-      alert("Erro ao salvar dados.");
+    alert("Erro ao salvar dados.");
     } finally {
       setIsSavingEntry(false);
-      setEditingEntry(null);
-      setIsEntryModalOpen(false);
+    setEditingEntry(null);
+    setIsEntryModalOpen(false);
     }
   };
 
@@ -689,34 +692,34 @@ export default function FleetManager() {
 
     try {
       await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'entries', id));
-      sendToGoogleSheets({ type: 'entry_delete', id });
+    sendToGoogleSheets({type: 'entry_delete', id });
 
       // 2. Atualizar parâmetros do Caminhão com base no que restou
       const truckId = entries.find(e => e.id === id)?.truckId;
-      if (truckId) {
+    if (truckId) {
         const remaining = entries.filter(e => e.truckId === truckId && e.id !== id);
 
-        if (remaining.length === 0) {
-          await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'trucks', truckId), {
-            currentMileage: 0,
-            initialMileage: 0,
-            initialFuel: 0
-          });
+    if (remaining.length === 0) {
+      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'trucks', truckId), {
+        currentMileage: 0,
+        initialMileage: 0,
+        initialFuel: 0
+      });
         } else {
           const sorted = [...remaining].sort((a, b) => a.newMileage - b.newMileage);
-          const first = sorted[0];
-          const last = sorted[sorted.length - 1];
+    const first = sorted[0];
+    const last = sorted[sorted.length - 1];
 
-          await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'trucks', truckId), {
-            currentMileage: last.newMileage,
-            initialMileage: first.newMileage,
-            initialFuel: first.initialFuel || 0
+    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'trucks', truckId), {
+      currentMileage: last.newMileage,
+    initialMileage: first.newMileage,
+    initialFuel: first.initialFuel || 0
           });
         }
       }
     } catch (err) {
       console.error(err);
-      alert("Erro ao excluir registro.");
+    alert("Erro ao excluir registro.");
     }
   };
 
@@ -725,13 +728,13 @@ export default function FleetManager() {
   const downloadTemplate = () => {
     if (!window.XLSX) return alert("Carregando ferramentas...");
     const data = [
-      {
-        "Placa": "ABC1D23", "Modelo": "Volvo FH 540", "Motorista": "João Silva", "Capacidade Tanque (L)": 500, "Eficiência Esperada (Km/L)": 2.5, "Km Inicial": 100000,
-        "Data/Hora": "2024-01-01 08:00", "Valor Abastecimento (R$)": 1200, "Litros Abastecidos": 300, "Nova Km": 100750
+    {
+      "Placa": "ABC1D23", "Modelo": "Volvo FH 540", "Motorista": "João Silva", "Capacidade Tanque (L)": 500, "Eficiência Esperada (Km/L)": 2.5, "Km Inicial": 100000,
+    "Data/Hora": "2024-01-01 08:00", "Valor Abastecimento (R$)": 1200, "Litros Abastecidos": 300, "Nova Km": 100750
       },
-      {
-        "Placa": "ABC1D23", "Modelo": "Volvo FH 540", "Motorista": "João Silva", "Capacidade Tanque (L)": 500, "Eficiência Esperada (Km/L)": 2.5, "Km Inicial": 100000,
-        "Data/Hora": "2024-01-05 10:00", "Valor Abastecimento (R$)": 1500, "Litros Abastecidos": 380, "Nova Km": 101800
+    {
+      "Placa": "ABC1D23", "Modelo": "Volvo FH 540", "Motorista": "João Silva", "Capacidade Tanque (L)": 500, "Eficiência Esperada (Km/L)": 2.5, "Km Inicial": 100000,
+    "Data/Hora": "2024-01-05 10:00", "Valor Abastecimento (R$)": 1500, "Litros Abastecidos": 380, "Nova Km": 101800
       }
     ];
     const ws = window.XLSX.utils.json_to_sheet(data);
@@ -746,53 +749,53 @@ export default function FleetManager() {
     setIsProcessing(true);
     const reader = new FileReader();
     reader.onload = async (evt) => {
-      const workbook = window.XLSX.read(evt.target.result, { type: 'binary' });
-      const json = window.XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]]);
+      const workbook = window.XLSX.read(evt.target.result, {type: 'binary' });
+    const json = window.XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]]);
 
       json.sort((a, b) => new Date(a["Data/Hora"]) - new Date(b["Data/Hora"]));
 
-      const truckMap = {};
+    const truckMap = { };
 
-      for (const row of json) {
+    for (const row of json) {
         const plate = String(row.Placa || "");
-        if (!plate) continue;
+    if (!plate) continue;
 
         let truck = trucks.find(t => t.plate === plate) || truckMap[plate];
 
-        if (!truck) {
-          truck = await handleAddTruck({
-            plate: plate, model: String(row.Modelo || "N/A"), driver: String(row.Motorista || "Importado"),
-            capacity: Number(row["Capacidade Tanque (L)"] || 0), expectedKml: Number(row["Eficiência Esperada (Km/L)"] || 0),
-            initialMileage: Number(row["Km Inicial"] || 0), currentMileage: Number(row["Km Inicial"] || 0), initialFuel: 0
-          });
+    if (!truck) {
+      truck = await handleAddTruck({
+        plate: plate, model: String(row.Modelo || "N/A"), driver: String(row.Motorista || "Importado"),
+        capacity: Number(row["Capacidade Tanque (L)"] || 0), expectedKml: Number(row["Eficiência Esperada (Km/L)"] || 0),
+        initialMileage: Number(row["Km Inicial"] || 0), currentMileage: Number(row["Km Inicial"] || 0), initialFuel: 0
+      });
         }
-        truckMap[plate] = truck;
+    truckMap[plate] = truck;
 
-        const newKm = Number(row["Nova Km"] || 0);
-        const prevKm = truck.currentMileage;
-        const dist = newKm - prevKm;
+    const newKm = Number(row["Nova Km"] || 0);
+    const prevKm = truck.currentMileage;
+    const dist = newKm - prevKm;
 
         if (dist >= 0) {
-          await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'entries'), {
-            truckId: truck.id, date: String(row["Data/Hora"]), totalCost: Number(row["Valor Abastecimento (R$)"] || 0),
-            liters: Number(row["Litros Abastecidos"] || 1), costPerLiter: Number(row["Valor Abastecimento (R$)"] || 0) / (Number(row["Litros Abastecidos"] || 1)),
-            newMileage: newKm, distanceTraveled: dist, receiptUrl: "imported", odometerUrl: "imported"
-          });
-          await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'trucks', truck.id), { currentMileage: newKm });
-          truck.currentMileage = newKm;
+      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'entries'), {
+        truckId: truck.id, date: String(row["Data/Hora"]), totalCost: Number(row["Valor Abastecimento (R$)"] || 0),
+        liters: Number(row["Litros Abastecidos"] || 1), costPerLiter: Number(row["Valor Abastecimento (R$)"] || 0) / (Number(row["Litros Abastecidos"] || 1)),
+        newMileage: newKm, distanceTraveled: dist, receiptUrl: "imported", odometerUrl: "imported"
+      });
+    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'trucks', truck.id), {currentMileage: newKm });
+    truck.currentMileage = newKm;
         }
       }
-      setIsProcessing(false);
-      alert("Histórico importado com sucesso!");
-      setView('dashboard');
+    setIsProcessing(false);
+    alert("Histórico importado com sucesso!");
+    setView('dashboard');
     };
     reader.readAsBinaryString(file);
   };
 
   const exportToExcel = () => {
     if (!window.XLSX) return;
-    const tData = trucks.map(t => ({ Placa: t.plate, Modelo: t.model, Km: t.currentMileage, Motorista: t.driver }));
-    const eData = entries.map(e => ({ Data: e.date, Placa: trucks.find(t => t.id === e.truckId)?.plate, Valor: e.totalCost, Litros: e.liters, Km: e.newMileage }));
+    const tData = trucks.map(t => ({Placa: t.plate, Modelo: t.model, Km: t.currentMileage, Motorista: t.driver }));
+    const eData = entries.map(e => ({Data: e.date, Placa: trucks.find(t => t.id === e.truckId)?.plate, Valor: e.totalCost, Litros: e.liters, Km: e.newMileage }));
     const wb = window.XLSX.utils.book_new();
     window.XLSX.utils.book_append_sheet(wb, window.XLSX.utils.json_to_sheet(tData), "Frota");
     window.XLSX.utils.book_append_sheet(wb, window.XLSX.utils.json_to_sheet(eData), "Historico");
@@ -801,10 +804,10 @@ export default function FleetManager() {
 
   const exportToPDF = () => {
     if (!window.jspdf) return;
-    const { jsPDF } = window.jspdf;
+    const {jsPDF} = window.jspdf;
     const doc = new jsPDF();
     doc.text("Relatório Geral de Frota", 14, 20);
-    doc.autoTable({ startY: 30, head: [['Placa', 'Modelo', 'Motorista', 'Km Atual']], body: trucks.map(t => [t.plate, t.model, t.driver, t.currentMileage]) });
+    doc.autoTable({startY: 30, head: [['Placa', 'Modelo', 'Motorista', 'Km Atual']], body: trucks.map(t => [t.plate, t.model, t.driver, t.currentMileage]) });
     doc.save("Relatorio_Frota.pdf");
   };
 
@@ -815,18 +818,18 @@ export default function FleetManager() {
     const lit = entries.reduce((a, c) => a + c.liters, 0);
     const dist = entries.reduce((a, c) => a + c.distanceTraveled, 0);
     return {
-      cost: cost.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }),
-      liters: lit.toFixed(1) + " L",
+      cost: cost.toLocaleString('pt-BR', {style: 'currency', currency: 'BRL' }),
+    liters: lit.toFixed(1) + " L",
       eff: trucks.length > 0 ? (trucks.reduce((a, t) => a + (t.expectedKml || 0), 0) / trucks.length).toFixed(2) + " Km/L" : "0.00 Km/L",
-      count: trucks.length
+    count: trucks.length
     };
   }, [entries, trucks]);
 
   const chartData = useMemo(() => {
     const p = [];
-    for (let i = 6; i >= 0; i--) { const d = new Date(); d.setDate(d.getDate() - i); p.push({ k: d.toISOString().split('T')[0], l: d.toLocaleDateString('pt-BR', { weekday: 'short' }), d: 0, li: 0 }); }
-    entries.forEach(e => { p.forEach(item => { if (e.date.startsWith(item.k)) { item.d += e.distanceTraveled; item.li += e.liters; } }); });
-    return p.map(item => ({ label: item.l, value: item.li > 0 ? item.d / item.li : 0 }));
+    for (let i = 6; i >= 0; i--) { const d = new Date(); d.setDate(d.getDate() - i); p.push({k: d.toISOString().split('T')[0], l: d.toLocaleDateString('pt-BR', {weekday: 'short' }), d: 0, li: 0 }); }
+    entries.forEach(e => {p.forEach(item => { if (e.date.startsWith(item.k)) { item.d += e.distanceTraveled; item.li += e.liters; } }); });
+    return p.map(item => ({label: item.l, value: item.li > 0 ? item.d / item.li : 0 }));
   }, [entries]);
 
   const renderDashboard = () => (
@@ -835,7 +838,7 @@ export default function FleetManager() {
       <div className="flex justify-between items-center"><h1 className="text-3xl font-bold">Painel de Controle</h1><div className="flex gap-3"><Button variant="success" onClick={() => { setEditingEntry(null); setIsEntryModalOpen(true); }}><Fuel size={18} /> Novo Registro</Button><Button onClick={() => { setEditingTruck(null); setIsTruckModalOpen(true); }}><Plus size={18} /> Novo Veículo</Button></div></div>
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6"><StatCard title="Total Gasto" value={globalStats.cost} icon={DollarSign} color="green" /><StatCard title="Combustível" value={globalStats.liters} icon={Droplet} color="indigo" /><StatCard title="Eficiência Média" value={globalStats.eff} icon={TrendingUp} color="amber" /><StatCard title="Frota" value={globalStats.count} icon={Truck} color="blue" /></div>
     </div>
-  );
+    );
 
   const renderTrucksList = () => (
     <div className="space-y-8 animate-in slide-in-from-right">
@@ -851,7 +854,7 @@ export default function FleetManager() {
         </div>
         <h3 className="font-bold mb-1">{t.model}</h3><p className="text-xs text-slate-400 mb-6 font-medium">{t.driver}</p><div className="grid grid-cols-2 gap-4 mb-6"><div className="bg-slate-50 p-2 rounded text-center"><p className="text-[10px] text-slate-400 font-bold uppercase">KM Atual</p><p className="text-sm font-bold">{t.currentMileage}</p></div><div className="bg-emerald-50 p-2 rounded text-center"><p className="text-[10px] text-emerald-600 font-bold uppercase">Meta</p><p className="text-sm font-bold">{t.expectedKml}</p></div></div><Button variant="secondary" className="w-full justify-between" onClick={(e) => { e.stopPropagation(); setSelectedTruck(t); setView('truck-detail'); }}><span>Mostrar histórico</span><ChevronLeft className="rotate-180" size={16} /></Button></div></Card>))}</div>
     </div>
-  );
+    );
 
   const renderTruckDetail = () => {
     // Ordenar cronologicamente para cálculos (antigo -> novo)
@@ -878,16 +881,16 @@ export default function FleetManager() {
       // Se for o primeiro registro ele pode ter trazido um initialFuel
       // Caso contrário calculamos baseado no que sobrou do tanque anterior
       const remaining = entry.initialFuel > 0 ? entry.initialFuel : (currentTank - consumido);
-      const newTank = remaining + entry.liters;
+    const newTank = remaining + entry.liters;
 
-      // Atualiza para o próximo
-      currentTank = newTank;
-      previousMileage = entry.newMileage;
+    // Atualiza para o próximo
+    currentTank = newTank;
+    previousMileage = entry.newMileage;
 
-      return {
-        ...entry,
-        calculatedRemaining: remaining,
-        calculatedNewTank: newTank
+    return {
+      ...entry,
+      calculatedRemaining: remaining,
+    calculatedNewTank: newTank
       };
     });
 
@@ -952,11 +955,11 @@ export default function FleetManager() {
         <div className="mb-6 flex justify-between items-center bg-white p-3 border border-indigo-100 rounded-xl"><div className="flex gap-2 text-indigo-600 font-bold text-[10px] uppercase"><HelpCircle size={18} />Modelo Completo</div><button onClick={downloadTemplate} className="text-xs font-bold text-indigo-600 hover:underline">Baixar Planilha Exemplo</button></div>
         <div className="relative overflow-hidden"><input type="file" accept=".xlsx" onChange={handleImportExcel} className="absolute inset-0 opacity-0 cursor-pointer" disabled={isProcessing} /><Button variant="primary" className="w-full" disabled={isProcessing}>{isProcessing ? "Processando Histórico..." : "Escolher Arquivo XLSX"}</Button></div></Card>
     </div></div>
-  );
+    );
 
-  if (!user) return <div className="min-h-screen flex items-center justify-center bg-slate-50"><Truck className="animate-bounce text-indigo-600" size={48} /><p className="ml-4 font-bold text-indigo-900 tracking-widest uppercase text-xs">Carregando Sistema...</p></div>;
+    if (!user) return <div className="min-h-screen flex items-center justify-center bg-slate-50"><Truck className="animate-bounce text-indigo-600" size={48} /><p className="ml-4 font-bold text-indigo-900 tracking-widest uppercase text-xs">Carregando Sistema...</p></div>;
 
-  return (
+    return (
     <div className="min-h-screen bg-slate-50/50 font-sans text-slate-900 pb-10">
       <nav className="bg-white border-b sticky top-0 z-40 backdrop-blur-md bg-white/80"><div className="max-w-7xl mx-auto px-4 flex items-center justify-between h-20"><div className="flex items-center gap-3 cursor-pointer" onClick={() => setView('dashboard')}><div className="bg-indigo-600 p-2 rounded-xl text-white shadow-lg"><Truck size={24} /></div><div><span className="font-black text-xl tracking-tight block">Gestão de Combustível Tim</span><span className="text-[10px] uppercase font-bold text-indigo-500 tracking-widest">Enterprise v3.0</span></div></div><div className="flex space-x-2"><button onClick={() => setView('dashboard')} className={`px-4 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all ${view === 'dashboard' ? 'bg-indigo-50 text-indigo-600 shadow-inner' : 'text-slate-400'}`}>Painel</button><button onClick={() => setView('trucks')} className={`px-4 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all ${view.includes('truck') ? 'bg-indigo-50 text-indigo-600 shadow-inner' : 'text-slate-400'}`}>Frota</button><button onClick={() => setView('data-management')} className={`px-4 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all ${view === 'data-management' ? 'bg-indigo-50 text-indigo-600 shadow-inner' : 'text-slate-400'}`}>Dados</button></div></div></nav>
       <main className="max-w-7xl mx-auto px-4 py-10">
@@ -974,5 +977,5 @@ export default function FleetManager() {
         isSaving={isSavingEntry}
       />
     </div>
-  );
+    );
 }
