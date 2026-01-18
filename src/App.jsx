@@ -468,7 +468,6 @@ const EntryModal = ({ isOpen, onClose, onSave, truck, allTrucks = [], editingEnt
             label="Quilometragem Atual"
             type="number"
             required
-            min={editingEntry ? 0 : (activeTruck?.currentMileage || 0)}
             value={formData.newMileage}
             onChange={e => setFormData({ ...formData, newMileage: e.target.value })}
           />
