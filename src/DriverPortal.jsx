@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Fuel, Camera, Check, Loader2, LogOut, History, AlertCircle } from 'lucide-react';
-import { initializeApp } from 'firebase/app';
+import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getFirestore, collection, query, where, getDocs, addDoc, orderBy, limit } from 'firebase/firestore';
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 
@@ -14,7 +14,8 @@ const firebaseConfig = {
     appId: "1:393877912498:web:9d5b3a23c0c2f6e8e7c3a9"
 };
 
-const app = initializeApp(firebaseConfig);
+// Evitar inicialização duplicada
+const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 const db = getFirestore(app);
 const storage = getStorage(app);
 const appId = "frota-tim-oficial";
