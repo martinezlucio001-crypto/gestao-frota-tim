@@ -588,22 +588,28 @@ const ImagePreviewModal = ({ isOpen, onClose, imageUrl, imageUrl2, title, title2
           </div>
           <div className="flex items-center gap-3">
             {imageUrl && (
-              <a
-                href={imageUrl}
-                download={`${hasTwo ? 'odometro_antes' : (title || 'foto')}.jpg`}
+              <button
+                onClick={() => {
+                  // Baixar primeira imagem
+                  const link1 = document.createElement('a');
+                  link1.href = imageUrl;
+                  link1.download = hasTwo ? 'odometro_antes.jpg' : `${title || 'foto'}.jpg`;
+                  link1.click();
+
+                  // Se tiver segunda imagem, baixar também após pequeno delay
+                  if (imageUrl2) {
+                    setTimeout(() => {
+                      const link2 = document.createElement('a');
+                      link2.href = imageUrl2;
+                      link2.download = 'odometro_depois.jpg';
+                      link2.click();
+                    }, 500);
+                  }
+                }}
                 className="bg-white/10 hover:bg-white/20 text-white px-4 py-2 rounded-xl backdrop-blur-md flex items-center gap-2 font-bold transition-all border border-white/10 active:scale-95"
               >
-                <Download size={18} /> <span className="hidden sm:inline">{hasTwo ? 'Baixar Antes' : 'Baixar'}</span>
-              </a>
-            )}
-            {imageUrl2 && (
-              <a
-                href={imageUrl2}
-                download="odometro_depois.jpg"
-                className="bg-emerald-500/20 hover:bg-emerald-500/40 text-white px-4 py-2 rounded-xl backdrop-blur-md flex items-center gap-2 font-bold transition-all border border-emerald-500/20 active:scale-95"
-              >
-                <Download size={18} /> <span className="hidden sm:inline">Baixar Depois</span>
-              </a>
+                <Download size={18} /> <span className="hidden sm:inline">Baixar {hasTwo ? 'Fotos' : ''}</span>
+              </button>
             )}
             <button
               onClick={onClose}
