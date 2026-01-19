@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Fuel, Camera, Check, Loader2, LogOut, History, AlertCircle, Eye, EyeOff, Plus, RefreshCw, ChevronLeft, User, Truck, Calendar } from 'lucide-react';
+import { Fuel, Camera, Check, Loader2, LogOut, History, AlertCircle, Eye, EyeOff, Plus, RefreshCw, ChevronLeft, User, Truck, Calendar, CheckCircle2 } from 'lucide-react';
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getFirestore, collection, query, where, getDocs, addDoc, orderBy, limit } from 'firebase/firestore';
+import { getFirestore, collection, query, where, getDocs, addDoc } from 'firebase/firestore';
 
 // Firebase config (MESMO do App.jsx)
 const firebaseConfig = {
@@ -27,7 +27,7 @@ const formatDateBR = (dateString) => {
 };
 
 // Componente de captura de câmera com marca d'água e botão refazer
-const CameraCapture = ({ onCapture, label, plate, onReset }) => {
+const CameraCapture = ({ onCapture, label, plate }) => {
     const inputRef = useRef(null);
     const [preview, setPreview] = useState(null);
     const [processing, setProcessing] = useState(false);
@@ -61,7 +61,7 @@ const CameraCapture = ({ onCapture, label, plate, onReset }) => {
             ctx.textAlign = 'center';
             ctx.fillText(watermark, canvas.width / 2, canvas.height - 14);
 
-            // Converter para base64 em vez de blob
+            // Converter para base64
             const base64 = canvas.toDataURL('image/jpeg', 0.7);
             setPreview(base64);
             onCapture(base64);
@@ -136,7 +136,7 @@ const DriverPortal = () => {
     const [isSaving, setIsSaving] = useState(false);
     const [saveSuccess, setSaveSuccess] = useState(false);
     const [recentEntries, setRecentEntries] = useState([]);
-    const [currentPage, setCurrentPage] = useState('home'); // 'home', 'newEntry', 'history'
+    const [currentPage, setCurrentPage] = useState('home'); // 'home', 'newEntry', 'history', 'success'
     const [showWelcome, setShowWelcome] = useState(false);
 
     const [formData, setFormData] = useState({
@@ -144,7 +144,9 @@ const DriverPortal = () => {
         totalCost: '',
         newMileage: ''
     });
-    const [odometerPhoto, setOdometerPhoto] = useState(null);
+    // 3 fotos: antes, depois, nota fiscal
+    const [odometerBeforePhoto, setOdometerBeforePhoto] = useState(null);
+    const [odometerAfterPhoto, setOdometerAfterPhoto] = useState(null);
     const [receiptPhoto, setReceiptPhoto] = useState(null);
 
     // Verificar login salvo
@@ -159,17 +161,18 @@ const DriverPortal = () => {
         setIsLoading(false);
     }, []);
 
-    // Carregar registros recentes
+    // Carregar registros recentes (sem orderBy para evitar necessidade de índice)
     const loadRecentEntries = async (truckId) => {
         try {
             const q = query(
                 collection(db, 'artifacts', appId, 'public', 'data', 'entries'),
-                where('truckId', '==', truckId),
-                orderBy('date', 'desc'),
-                limit(20)
+                where('truckId', '==', truckId)
             );
             const snapshot = await getDocs(q);
-            setRecentEntries(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+            // Ordenar localmente por data
+            const entries = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+            entries.sort((a, b) => new Date(b.date) - new Date(a.date));
+            setRecentEntries(entries.slice(0, 20));
         } catch (error) {
             console.error('Erro ao carregar histórico:', error);
         }
@@ -234,8 +237,8 @@ const DriverPortal = () => {
     const handleSubmit = async (e) => {
         e.preventDefault();
 
-        if (!odometerPhoto || !receiptPhoto) {
-            alert('Tire as duas fotos antes de enviar!');
+        if (!odometerBeforePhoto || !odometerAfterPhoto || !receiptPhoto) {
+            alert('Tire as três fotos antes de enviar!');
             return;
         }
 
@@ -251,8 +254,9 @@ const DriverPortal = () => {
                 liters: Number(formData.liters),
                 totalCost: Number(formData.totalCost),
                 newMileage: Number(formData.newMileage),
-                odometerPhoto: odometerPhoto, // base64
-                receiptPhoto: receiptPhoto, // base64
+                odometerBeforePhoto: odometerBeforePhoto,
+                odometerAfterPhoto: odometerAfterPhoto,
+                receiptPhoto: receiptPhoto,
                 registeredBy: 'driver',
                 createdAt: now.toISOString()
             };
@@ -260,16 +264,14 @@ const DriverPortal = () => {
             await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'entries'), entry);
 
             setFormData({ liters: '', totalCost: '', newMileage: '' });
-            setOdometerPhoto(null);
+            setOdometerBeforePhoto(null);
+            setOdometerAfterPhoto(null);
             setReceiptPhoto(null);
             setSaveSuccess(true);
             loadRecentEntries(truck.id);
 
-            // Voltar para home após 2s
-            setTimeout(() => {
-                setSaveSuccess(false);
-                setCurrentPage('home');
-            }, 2000);
+            // Ir para tela de sucesso
+            setCurrentPage('success');
         } catch (error) {
             console.error('Erro ao salvar:', error);
             alert('Erro ao salvar. Tente novamente.');
@@ -369,7 +371,7 @@ const DriverPortal = () => {
 
             {/* Header */}
             <div className="bg-indigo-600 text-white p-4 flex justify-between items-center sticky top-0 z-10">
-                {currentPage !== 'home' ? (
+                {currentPage !== 'home' && currentPage !== 'success' ? (
                     <button onClick={() => setCurrentPage('home')} className="p-2 hover:bg-indigo-700 rounded-xl">
                         <ChevronLeft size={20} />
                     </button>
@@ -389,11 +391,20 @@ const DriverPortal = () => {
             </div>
 
             <div className="p-4 max-w-lg mx-auto">
-                {/* Mensagem de sucesso */}
-                {saveSuccess && (
-                    <div className="mb-4 p-4 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-xl flex items-center gap-2">
-                        <Check size={20} />
-                        <span className="font-medium">Abastecimento registrado com sucesso!</span>
+                {/* Página de Sucesso */}
+                {currentPage === 'success' && (
+                    <div className="bg-white rounded-2xl shadow-sm p-8 text-center">
+                        <div className="w-20 h-20 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                            <CheckCircle2 size={48} className="text-emerald-600" />
+                        </div>
+                        <h2 className="text-2xl font-bold text-slate-800 mb-2">Registro Enviado!</h2>
+                        <p className="text-slate-500 mb-6">Seu abastecimento foi registrado com sucesso e já está disponível no sistema.</p>
+                        <button
+                            onClick={() => setCurrentPage('home')}
+                            className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-4 rounded-xl transition-colors"
+                        >
+                            Voltar ao Início
+                        </button>
                     </div>
                 )}
 
@@ -414,7 +425,10 @@ const DriverPortal = () => {
                         </button>
 
                         <button
-                            onClick={() => setCurrentPage('history')}
+                            onClick={() => {
+                                loadRecentEntries(truck.id);
+                                setCurrentPage('history');
+                            }}
                             className="w-full bg-white hover:bg-slate-50 text-slate-800 p-6 rounded-2xl flex items-center gap-4 transition-colors shadow-sm border border-slate-100"
                         >
                             <div className="w-14 h-14 bg-indigo-100 rounded-xl flex items-center justify-center">
@@ -496,13 +510,19 @@ const DriverPortal = () => {
                             </div>
 
                             <CameraCapture
-                                label="Foto do Odômetro"
+                                label="📷 Foto do Odômetro ANTES do Abastecimento"
                                 plate={truck.plate}
-                                onCapture={setOdometerPhoto}
+                                onCapture={setOdometerBeforePhoto}
                             />
 
                             <CameraCapture
-                                label="Foto da Nota Fiscal"
+                                label="📷 Foto do Odômetro DEPOIS do Abastecimento"
+                                plate={truck.plate}
+                                onCapture={setOdometerAfterPhoto}
+                            />
+
+                            <CameraCapture
+                                label="📷 Foto da Nota Fiscal"
                                 plate={truck.plate}
                                 onCapture={setReceiptPhoto}
                             />
@@ -510,7 +530,7 @@ const DriverPortal = () => {
                             <button
                                 type="submit"
                                 disabled={isSaving}
-                                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 rounded-xl mt-4 transition-colors flex items-center justify-center gap-2"
+                                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-4 rounded-xl mt-4 transition-colors flex items-center justify-center gap-2"
                             >
                                 {isSaving ? (
                                     <>
