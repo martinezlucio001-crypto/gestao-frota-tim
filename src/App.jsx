@@ -574,25 +574,19 @@ const EntryModal = ({ isOpen, onClose, onSave, truck, allTrucks = [], editingEnt
   );
 };
 
-const ImagePreviewModal = ({ isOpen, onClose, imageUrl, title }) => {
-  if (!isOpen || !imageUrl) return null;
+const ImagePreviewModal = ({ isOpen, onClose, imageUrl, imageUrl2, title, title2 }) => {
+  if (!isOpen || (!imageUrl && !imageUrl2)) return null;
+  const hasTwo = imageUrl && imageUrl2;
   return (
     <div className="fixed inset-0 bg-slate-900/95 backdrop-blur-lg flex items-center justify-center z-[100] p-4 md:p-8" onClick={onClose}>
       <div className="relative max-w-5xl w-full flex flex-col items-center animate-in zoom-in-95 duration-300" onClick={e => e.stopPropagation()}>
         {/* Header de Ações */}
         <div className="w-full flex justify-between items-center mb-4 px-2">
           <div className="flex flex-col">
-            <p className="text-white font-black text-xl tracking-tight uppercase">{title}</p>
+            <p className="text-white font-black text-xl tracking-tight uppercase">{hasTwo ? 'Fotos do Odômetro' : title}</p>
             <div className="h-1 w-12 bg-indigo-500 rounded-full mt-1"></div>
           </div>
           <div className="flex items-center gap-3">
-            <a
-              href={imageUrl}
-              download={`${title}.png`}
-              className="bg-white/10 hover:bg-white/20 text-white px-4 py-2 rounded-xl backdrop-blur-md flex items-center gap-2 font-bold transition-all border border-white/10 active:scale-95"
-            >
-              <Download size={18} /> <span className="hidden sm:inline">Baixar</span>
-            </a>
             <button
               onClick={onClose}
               className="bg-rose-500/20 hover:bg-rose-500 text-rose-500 hover:text-white p-2.5 rounded-xl backdrop-blur-md transition-all border border-rose-500/20 active:scale-95"
@@ -603,12 +597,27 @@ const ImagePreviewModal = ({ isOpen, onClose, imageUrl, title }) => {
         </div>
 
         {/* Container da Imagem */}
-        <div className="bg-white p-1 md:p-2 rounded-[2rem] shadow-2xl border border-white/20 overflow-hidden ring-8 ring-black/20">
-          <img
-            src={imageUrl}
-            alt={title}
-            className="max-w-full max-h-[75vh] object-contain rounded-[1.5rem] select-none"
-          />
+        <div className={`${hasTwo ? 'grid grid-cols-2 gap-4' : ''} w-full`}>
+          {imageUrl && (
+            <div className="bg-white p-1 md:p-2 rounded-[2rem] shadow-2xl border border-white/20 overflow-hidden ring-4 ring-black/20">
+              {hasTwo && <p className="text-center text-xs font-bold text-slate-600 bg-amber-100 py-1 rounded-t-2xl mb-1">📍 ANTES do Abastecimento</p>}
+              <img
+                src={imageUrl}
+                alt={title}
+                className="max-w-full max-h-[60vh] object-contain rounded-[1.5rem] select-none mx-auto"
+              />
+            </div>
+          )}
+          {imageUrl2 && (
+            <div className="bg-white p-1 md:p-2 rounded-[2rem] shadow-2xl border border-white/20 overflow-hidden ring-4 ring-black/20">
+              {hasTwo && <p className="text-center text-xs font-bold text-slate-600 bg-emerald-100 py-1 rounded-t-2xl mb-1">✅ DEPOIS do Abastecimento</p>}
+              <img
+                src={imageUrl2}
+                alt={title2}
+                className="max-w-full max-h-[60vh] object-contain rounded-[1.5rem] select-none mx-auto"
+              />
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -1354,7 +1363,12 @@ export default function FleetManager() {
       </tr></thead><tbody>{calculatedHistory.map((e, idx) => (
         <React.Fragment key={e.id}>
           <tr className="hover:bg-slate-50">
-            <td className="px-6 py-2 font-medium">{formatDateBR(e.date)}</td>
+            <td className="px-6 py-2 font-medium flex items-center gap-2">
+              {e.registeredBy === 'driver' && (
+                <span className="w-5 h-5 bg-emerald-500 text-white rounded-full flex items-center justify-center text-[10px] font-bold" title="Registrado pelo Motorista">M</span>
+              )}
+              {formatDateBR(e.date)}
+            </td>
             <td className="px-6 py-2 text-slate-500 text-center">{e.time || '-'}</td>
             <td className="px-6 py-2 font-bold text-slate-800 text-center">R$ {e.totalCost.toFixed(2)}</td>
             <td className="px-6 py-2 font-bold text-center">{e.liters.toFixed(2)} L</td>
@@ -1377,11 +1391,16 @@ export default function FleetManager() {
               ) : "-"}
             </td>
             <td className="px-6 py-2 flex justify-center gap-2">
-              {e.receiptUrl && e.receiptUrl !== 'imported' && (
-                <button onClick={() => setPreviewImage({ url: e.receiptUrl, title: 'Recibo de Abastecimento' })} className="p-1.5 hover:bg-white rounded-lg shadow-sm border border-transparent hover:border-slate-200 transition-all text-emerald-600" title="Ver Recibo"><FileText size={14} /></button>
+              {(e.receiptUrl || e.receiptPhoto) && (e.receiptUrl !== 'imported' || e.receiptPhoto) && (
+                <button onClick={() => setPreviewImage({ url: e.receiptUrl || e.receiptPhoto, url2: null, title: 'Recibo de Abastecimento', title2: null })} className="p-1.5 hover:bg-white rounded-lg shadow-sm border border-transparent hover:border-slate-200 transition-all text-emerald-600" title="Ver Recibo"><FileText size={14} /></button>
               )}
-              {e.odometerUrl && e.odometerUrl !== 'imported' && (
-                <button onClick={() => setPreviewImage({ url: e.odometerUrl, title: 'Foto do Odômetro' })} className="p-1.5 hover:bg-white rounded-lg shadow-sm border border-transparent hover:border-slate-200 transition-all text-blue-600" title="Ver Odômetro"><Gauge size={14} /></button>
+              {(e.odometerUrl || e.odometerBeforePhoto) && (e.odometerUrl !== 'imported' || e.odometerBeforePhoto) && (
+                <button onClick={() => setPreviewImage({
+                  url: e.odometerBeforePhoto || e.odometerUrl,
+                  url2: e.odometerAfterPhoto || null,
+                  title: e.odometerBeforePhoto ? 'Antes do Abastecimento' : 'Foto do Odômetro',
+                  title2: e.odometerAfterPhoto ? 'Depois do Abastecimento' : null
+                })} className="p-1.5 hover:bg-white rounded-lg shadow-sm border border-transparent hover:border-slate-200 transition-all text-blue-600" title="Ver Odômetro"><Gauge size={14} /></button>
               )}
               <button onClick={() => { setEditingEntry(e); setIsEntryModalOpen(true); }} className="p-1.5 hover:bg-white rounded-lg shadow-sm border border-transparent hover:border-slate-200 transition-all text-amber-600" title="Editar"><Pencil size={14} /></button>
               <button onClick={() => handleDeleteEntry(e.id, e.date)} className="p-1.5 hover:bg-white rounded-lg shadow-sm border border-transparent hover:border-slate-200 transition-all text-rose-600" title="Excluir"><Trash2 size={14} /></button>
@@ -1466,6 +1485,14 @@ export default function FleetManager() {
         entries={entries}
         editingEntry={editingEntry}
         isSaving={isSavingEntry}
+      />
+      <ImagePreviewModal
+        isOpen={!!previewImage}
+        onClose={() => setPreviewImage(null)}
+        imageUrl={previewImage?.url}
+        imageUrl2={previewImage?.url2}
+        title={previewImage?.title}
+        title2={previewImage?.title2}
       />
     </div>
   );
