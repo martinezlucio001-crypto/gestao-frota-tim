@@ -173,14 +173,18 @@ const DriverPortal = () => {
         try {
             // Buscar caminhão com esse CPF
             const cleanCpf = cpf.replace(/\D/g, '');
+            console.log('Tentando login com CPF:', cleanCpf);
+
             const q = query(
                 collection(db, `artifacts/${appId}/trucks`),
                 where('driverCpf', '==', cleanCpf)
             );
             const snapshot = await getDocs(q);
 
+            console.log('Resultados encontrados:', snapshot.size);
+
             if (snapshot.empty) {
-                setLoginError('CPF ou senha incorretos');
+                setLoginError(`CPF não encontrado. CPF buscado: ${cleanCpf}`);
                 setIsLoading(false);
                 return;
             }
@@ -189,8 +193,12 @@ const DriverPortal = () => {
             const truckDoc = snapshot.docs[0];
             const truckData = { id: truckDoc.id, ...truckDoc.data() };
 
+            console.log('Caminhão encontrado:', truckData.plate);
+            console.log('Senha no banco:', truckData.driverPassword);
+            console.log('Senha digitada:', password);
+
             if (truckData.driverPassword !== password) {
-                setLoginError('CPF ou senha incorretos');
+                setLoginError(`Senha incorreta. Esperado: ${truckData.driverPassword}`);
                 setIsLoading(false);
                 return;
             }
