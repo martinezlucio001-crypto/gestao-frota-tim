@@ -170,11 +170,11 @@ const DriverPortal = () => {
         setIsLoading(true);
 
         try {
-            // Buscar caminhão com esse CPF e senha
+            // Buscar caminhão com esse CPF
+            const cleanCpf = cpf.replace(/\D/g, '');
             const q = query(
                 collection(db, `artifacts/${appId}/trucks`),
-                where('driverCpf', '==', cpf.replace(/\D/g, '')),
-                where('driverPassword', '==', password)
+                where('driverCpf', '==', cleanCpf)
             );
             const snapshot = await getDocs(q);
 
@@ -184,7 +184,16 @@ const DriverPortal = () => {
                 return;
             }
 
-            const truckData = { id: snapshot.docs[0].id, ...snapshot.docs[0].data() };
+            // Verificar senha manualmente
+            const truckDoc = snapshot.docs[0];
+            const truckData = { id: truckDoc.id, ...truckDoc.data() };
+
+            if (truckData.driverPassword !== password) {
+                setLoginError('CPF ou senha incorretos');
+                setIsLoading(false);
+                return;
+            }
+
             setTruck(truckData);
             setIsLoggedIn(true);
             localStorage.setItem('driverTruck', JSON.stringify(truckData));
