@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Fuel, Camera, Check, Loader2, LogOut, History, AlertCircle, Eye, EyeOff } from 'lucide-react';
+import { Fuel, Camera, Check, Loader2, LogOut, History, AlertCircle, Eye, EyeOff, Plus, RefreshCw, ChevronLeft, User, Truck, Calendar } from 'lucide-react';
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getFirestore, collection, query, where, getDocs, addDoc, orderBy, limit } from 'firebase/firestore';
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
@@ -28,8 +28,8 @@ const formatDateBR = (dateString) => {
     return `${day}/${month}/${year}`;
 };
 
-// Componente de captura de câmera com marca d'água
-const CameraCapture = ({ onCapture, label, plate }) => {
+// Componente de captura de câmera com marca d'água e botão refazer
+const CameraCapture = ({ onCapture, label, plate, onReset }) => {
     const inputRef = useRef(null);
     const [preview, setPreview] = useState(null);
     const [processing, setProcessing] = useState(false);
@@ -40,10 +40,8 @@ const CameraCapture = ({ onCapture, label, plate }) => {
 
         setProcessing(true);
 
-        // Criar imagem
         const img = new Image();
         img.onload = () => {
-            // Criar canvas
             const canvas = document.createElement('canvas');
             const maxWidth = 1200;
             const scale = Math.min(1, maxWidth / img.width);
@@ -65,7 +63,6 @@ const CameraCapture = ({ onCapture, label, plate }) => {
             ctx.textAlign = 'center';
             ctx.fillText(watermark, canvas.width / 2, canvas.height - 14);
 
-            // Converter para blob
             canvas.toBlob((blob) => {
                 const previewUrl = URL.createObjectURL(blob);
                 setPreview(previewUrl);
@@ -75,6 +72,12 @@ const CameraCapture = ({ onCapture, label, plate }) => {
         };
 
         img.src = URL.createObjectURL(file);
+    };
+
+    const handleReset = () => {
+        setPreview(null);
+        onCapture(null);
+        if (inputRef.current) inputRef.current.value = '';
     };
 
     return (
@@ -94,6 +97,14 @@ const CameraCapture = ({ onCapture, label, plate }) => {
                     <div className="absolute top-2 right-2 bg-emerald-500 text-white p-1 rounded-full">
                         <Check size={16} />
                     </div>
+                    <button
+                        type="button"
+                        onClick={handleReset}
+                        className="absolute bottom-2 right-2 bg-slate-800/80 text-white px-3 py-1.5 rounded-lg text-sm flex items-center gap-1 hover:bg-slate-700"
+                    >
+                        <RefreshCw size={14} />
+                        Refazer
+                    </button>
                 </div>
             ) : (
                 <button
@@ -128,6 +139,8 @@ const DriverPortal = () => {
     const [isSaving, setIsSaving] = useState(false);
     const [saveSuccess, setSaveSuccess] = useState(false);
     const [recentEntries, setRecentEntries] = useState([]);
+    const [currentPage, setCurrentPage] = useState('home'); // 'home', 'newEntry', 'history'
+    const [showWelcome, setShowWelcome] = useState(false);
 
     const [formData, setFormData] = useState({
         liters: '',
@@ -156,7 +169,7 @@ const DriverPortal = () => {
                 collection(db, 'artifacts', appId, 'public', 'data', 'entries'),
                 where('truckId', '==', truckId),
                 orderBy('date', 'desc'),
-                limit(5)
+                limit(20)
             );
             const snapshot = await getDocs(q);
             setRecentEntries(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
@@ -172,34 +185,24 @@ const DriverPortal = () => {
         setIsLoading(true);
 
         try {
-            // Buscar caminhão com esse CPF
             const cleanCpf = cpf.replace(/\D/g, '');
-            console.log('Tentando login com CPF:', cleanCpf);
-
             const q = query(
                 collection(db, 'artifacts', appId, 'public', 'data', 'trucks'),
                 where('driverCpf', '==', cleanCpf)
             );
             const snapshot = await getDocs(q);
 
-            console.log('Resultados encontrados:', snapshot.size);
-
             if (snapshot.empty) {
-                setLoginError(`CPF não encontrado. CPF buscado: ${cleanCpf}`);
+                setLoginError('CPF ou senha incorretos');
                 setIsLoading(false);
                 return;
             }
 
-            // Verificar senha manualmente
             const truckDoc = snapshot.docs[0];
             const truckData = { id: truckDoc.id, ...truckDoc.data() };
 
-            console.log('Caminhão encontrado:', truckData.plate);
-            console.log('Senha no banco:', truckData.driverPassword);
-            console.log('Senha digitada:', password);
-
             if (truckData.driverPassword !== password) {
-                setLoginError(`Senha incorreta. Esperado: ${truckData.driverPassword}`);
+                setLoginError('CPF ou senha incorretos');
                 setIsLoading(false);
                 return;
             }
@@ -208,6 +211,10 @@ const DriverPortal = () => {
             setIsLoggedIn(true);
             localStorage.setItem('driverTruck', JSON.stringify(truckData));
             loadRecentEntries(truckData.id);
+
+            // Mostrar mensagem de boas-vindas
+            setShowWelcome(true);
+            setTimeout(() => setShowWelcome(false), 3000);
         } catch (error) {
             console.error('Erro no login:', error);
             setLoginError('Erro ao conectar. Tente novamente.');
@@ -223,6 +230,7 @@ const DriverPortal = () => {
         setIsLoggedIn(false);
         setCpf('');
         setPassword('');
+        setCurrentPage('home');
     };
 
     // Upload de foto
@@ -246,13 +254,11 @@ const DriverPortal = () => {
         setSaveSuccess(false);
 
         try {
-            // Upload das fotos
             const [odometerUrl, receiptUrl] = await Promise.all([
                 uploadPhoto(odometerPhoto, 'odometer'),
                 uploadPhoto(receiptPhoto, 'receipt')
             ]);
 
-            // Criar registro
             const now = new Date();
             const entry = {
                 truckId: truck.id,
@@ -269,15 +275,17 @@ const DriverPortal = () => {
 
             await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'entries'), entry);
 
-            // Limpar formulário
             setFormData({ liters: '', totalCost: '', newMileage: '' });
             setOdometerPhoto(null);
             setReceiptPhoto(null);
             setSaveSuccess(true);
             loadRecentEntries(truck.id);
 
-            // Limpar mensagem de sucesso após 3s
-            setTimeout(() => setSaveSuccess(false), 3000);
+            // Voltar para home após 2s
+            setTimeout(() => {
+                setSaveSuccess(false);
+                setCurrentPage('home');
+            }, 2000);
         } catch (error) {
             console.error('Erro ao salvar:', error);
             alert('Erro ao salvar. Tente novamente.');
@@ -365,12 +373,28 @@ const DriverPortal = () => {
     // Tela Principal (logado)
     return (
         <div className="min-h-screen bg-slate-100">
+            {/* Mensagem de boas-vindas */}
+            {showWelcome && (
+                <div className="fixed top-0 left-0 right-0 z-50 flex justify-center pt-4 animate-in fade-in slide-in-from-top duration-300">
+                    <div className="bg-emerald-500 text-white px-6 py-3 rounded-2xl shadow-lg flex items-center gap-2">
+                        <span className="text-lg">👋</span>
+                        <span className="font-medium">Bem-vindo, {truck.driver}!</span>
+                    </div>
+                </div>
+            )}
+
             {/* Header */}
             <div className="bg-indigo-600 text-white p-4 flex justify-between items-center sticky top-0 z-10">
-                <div>
-                    <p className="text-indigo-200 text-xs">Motorista</p>
-                    <p className="font-bold">{truck.driver}</p>
-                </div>
+                {currentPage !== 'home' ? (
+                    <button onClick={() => setCurrentPage('home')} className="p-2 hover:bg-indigo-700 rounded-xl">
+                        <ChevronLeft size={20} />
+                    </button>
+                ) : (
+                    <div>
+                        <p className="text-indigo-200 text-xs">Motorista</p>
+                        <p className="font-bold">{truck.driver}</p>
+                    </div>
+                )}
                 <div className="text-right">
                     <p className="text-indigo-200 text-xs">Veículo</p>
                     <p className="font-bold">{truck.plate}</p>
@@ -389,110 +413,164 @@ const DriverPortal = () => {
                     </div>
                 )}
 
-                {/* Formulário */}
-                <div className="bg-white rounded-2xl shadow-sm p-6 mb-6">
-                    <h2 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
-                        <Fuel size={20} className="text-indigo-600" />
-                        Novo Abastecimento
-                    </h2>
-
-                    <form onSubmit={handleSubmit}>
-                        <div className="grid grid-cols-2 gap-4 mb-4">
-                            <div>
-                                <label className="block text-sm font-semibold text-slate-700 mb-2">Litros</label>
-                                <input
-                                    type="number"
-                                    step="0.01"
-                                    value={formData.liters}
-                                    onChange={(e) => setFormData({ ...formData, liters: e.target.value })}
-                                    placeholder="Ex: 50.00"
-                                    required
-                                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none"
-                                />
+                {/* Página Home */}
+                {currentPage === 'home' && (
+                    <div className="space-y-4">
+                        <button
+                            onClick={() => setCurrentPage('newEntry')}
+                            className="w-full bg-indigo-600 hover:bg-indigo-700 text-white p-6 rounded-2xl flex items-center gap-4 transition-colors shadow-lg"
+                        >
+                            <div className="w-14 h-14 bg-white/20 rounded-xl flex items-center justify-center">
+                                <Plus size={28} />
                             </div>
-                            <div>
-                                <label className="block text-sm font-semibold text-slate-700 mb-2">Valor Total (R$)</label>
-                                <input
-                                    type="number"
-                                    step="0.01"
-                                    value={formData.totalCost}
-                                    onChange={(e) => setFormData({ ...formData, totalCost: e.target.value })}
-                                    placeholder="Ex: 275.00"
-                                    required
-                                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none"
-                                />
+                            <div className="text-left">
+                                <p className="text-lg font-bold">Novo Registro</p>
+                                <p className="text-indigo-200 text-sm">Registrar abastecimento</p>
                             </div>
-                        </div>
-
-                        <div className="mb-4">
-                            <label className="block text-sm font-semibold text-slate-700 mb-2">Quilometragem Atual</label>
-                            <input
-                                type="number"
-                                value={formData.newMileage}
-                                onChange={(e) => setFormData({ ...formData, newMileage: e.target.value })}
-                                placeholder="Ex: 125000"
-                                required
-                                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none"
-                            />
-                        </div>
-
-                        <CameraCapture
-                            label="Foto do Odômetro"
-                            plate={truck.plate}
-                            onCapture={setOdometerPhoto}
-                        />
-
-                        <CameraCapture
-                            label="Foto da Nota Fiscal"
-                            plate={truck.plate}
-                            onCapture={setReceiptPhoto}
-                        />
+                        </button>
 
                         <button
-                            type="submit"
-                            disabled={isSaving}
-                            className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 rounded-xl mt-4 transition-colors flex items-center justify-center gap-2"
+                            onClick={() => setCurrentPage('history')}
+                            className="w-full bg-white hover:bg-slate-50 text-slate-800 p-6 rounded-2xl flex items-center gap-4 transition-colors shadow-sm border border-slate-100"
                         >
-                            {isSaving ? (
-                                <>
-                                    <Loader2 size={20} className="animate-spin" />
-                                    Enviando...
-                                </>
-                            ) : (
-                                <>
-                                    <Check size={20} />
-                                    Registrar Abastecimento
-                                </>
-                            )}
+                            <div className="w-14 h-14 bg-indigo-100 rounded-xl flex items-center justify-center">
+                                <History size={28} className="text-indigo-600" />
+                            </div>
+                            <div className="text-left">
+                                <p className="text-lg font-bold">Histórico de Registros</p>
+                                <p className="text-slate-500 text-sm">Ver abastecimentos anteriores</p>
+                            </div>
                         </button>
-                    </form>
-                </div>
+                    </div>
+                )}
 
-                {/* Histórico recente */}
-                <div className="bg-white rounded-2xl shadow-sm p-6">
-                    <h2 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
-                        <History size={20} className="text-indigo-600" />
-                        Últimos Registros
-                    </h2>
+                {/* Página Novo Registro */}
+                {currentPage === 'newEntry' && (
+                    <div className="bg-white rounded-2xl shadow-sm p-6">
+                        <h2 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
+                            <Fuel size={20} className="text-indigo-600" />
+                            Novo Abastecimento
+                        </h2>
 
-                    {recentEntries.length === 0 ? (
-                        <p className="text-slate-400 text-sm text-center py-4">Nenhum registro ainda</p>
-                    ) : (
-                        <div className="space-y-3">
-                            {recentEntries.map((entry) => (
-                                <div key={entry.id} className="p-3 bg-slate-50 rounded-xl border border-slate-100">
-                                    <div className="flex justify-between items-center">
-                                        <span className="font-medium text-slate-700">{formatDateBR(entry.date)}</span>
-                                        <span className="text-indigo-600 font-bold">R$ {entry.totalCost?.toFixed(2)}</span>
-                                    </div>
-                                    <div className="text-sm text-slate-500 mt-1">
-                                        {entry.liters?.toFixed(2)} L • {entry.newMileage?.toLocaleString()} km
-                                    </div>
-                                </div>
-                            ))}
+                        {/* Informações pré-preenchidas */}
+                        <div className="bg-slate-50 rounded-xl p-4 mb-6 space-y-2">
+                            <div className="flex items-center gap-2 text-sm">
+                                <User size={16} className="text-indigo-600" />
+                                <span className="text-slate-600">Motorista:</span>
+                                <span className="font-medium text-slate-800">{truck.driver}</span>
+                            </div>
+                            <div className="flex items-center gap-2 text-sm">
+                                <Truck size={16} className="text-indigo-600" />
+                                <span className="text-slate-600">Veículo:</span>
+                                <span className="font-medium text-slate-800">{truck.plate}</span>
+                            </div>
+                            <div className="flex items-center gap-2 text-sm">
+                                <Calendar size={16} className="text-indigo-600" />
+                                <span className="text-slate-600">Data:</span>
+                                <span className="font-medium text-slate-800">{new Date().toLocaleDateString('pt-BR')}</span>
+                            </div>
                         </div>
-                    )}
-                </div>
+
+                        <form onSubmit={handleSubmit}>
+                            <div className="grid grid-cols-2 gap-4 mb-4">
+                                <div>
+                                    <label className="block text-sm font-semibold text-slate-700 mb-2">Litros</label>
+                                    <input
+                                        type="number"
+                                        step="0.01"
+                                        value={formData.liters}
+                                        onChange={(e) => setFormData({ ...formData, liters: e.target.value })}
+                                        placeholder="Ex: 50.00"
+                                        required
+                                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-semibold text-slate-700 mb-2">Valor Total (R$)</label>
+                                    <input
+                                        type="number"
+                                        step="0.01"
+                                        value={formData.totalCost}
+                                        onChange={(e) => setFormData({ ...formData, totalCost: e.target.value })}
+                                        placeholder="Ex: 275.00"
+                                        required
+                                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none"
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="mb-4">
+                                <label className="block text-sm font-semibold text-slate-700 mb-2">Quilometragem Atual</label>
+                                <input
+                                    type="number"
+                                    value={formData.newMileage}
+                                    onChange={(e) => setFormData({ ...formData, newMileage: e.target.value })}
+                                    placeholder="Ex: 125000"
+                                    required
+                                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none"
+                                />
+                            </div>
+
+                            <CameraCapture
+                                label="Foto do Odômetro"
+                                plate={truck.plate}
+                                onCapture={setOdometerPhoto}
+                            />
+
+                            <CameraCapture
+                                label="Foto da Nota Fiscal"
+                                plate={truck.plate}
+                                onCapture={setReceiptPhoto}
+                            />
+
+                            <button
+                                type="submit"
+                                disabled={isSaving}
+                                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 rounded-xl mt-4 transition-colors flex items-center justify-center gap-2"
+                            >
+                                {isSaving ? (
+                                    <>
+                                        <Loader2 size={20} className="animate-spin" />
+                                        Enviando...
+                                    </>
+                                ) : (
+                                    <>
+                                        <Check size={20} />
+                                        Registrar Abastecimento
+                                    </>
+                                )}
+                            </button>
+                        </form>
+                    </div>
+                )}
+
+                {/* Página Histórico */}
+                {currentPage === 'history' && (
+                    <div className="bg-white rounded-2xl shadow-sm p-6">
+                        <h2 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
+                            <History size={20} className="text-indigo-600" />
+                            Histórico de Registros
+                        </h2>
+
+                        {recentEntries.length === 0 ? (
+                            <p className="text-slate-400 text-sm text-center py-8">Nenhum registro ainda</p>
+                        ) : (
+                            <div className="space-y-3">
+                                {recentEntries.map((entry) => (
+                                    <div key={entry.id} className="p-4 bg-slate-50 rounded-xl border border-slate-100">
+                                        <div className="flex justify-between items-center">
+                                            <span className="font-medium text-slate-700">{formatDateBR(entry.date)}</span>
+                                            <span className="text-indigo-600 font-bold">R$ {entry.totalCost?.toFixed(2)}</span>
+                                        </div>
+                                        <div className="text-sm text-slate-500 mt-1">
+                                            {entry.liters?.toFixed(2)} L • {entry.newMileage?.toLocaleString()} km
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                )}
             </div>
         </div>
     );
