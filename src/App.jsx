@@ -348,7 +348,7 @@ const TruckModal = ({ isOpen, onClose, onSave, editingTruck = null }) => {
           <p className="text-xs font-bold text-indigo-600 uppercase mb-3">Acesso do Motorista (Portal)</p>
           <div className="grid grid-cols-2 gap-6">
             <Input label="CPF do Motorista" placeholder="Apenas números" value={formData.driverCpf} onChange={e => setFormData({ ...formData, driverCpf: e.target.value.replace(/\D/g, '').slice(0, 11) })} />
-            <Input label="Senha de Acesso" type="password" placeholder="Definida por você" value={formData.driverPassword} onChange={e => setFormData({ ...formData, driverPassword: e.target.value })} />
+            <Input label="Senha de Acesso" type="text" placeholder="Definida por você" value={formData.driverPassword} onChange={e => setFormData({ ...formData, driverPassword: e.target.value })} />
           </div>
         </div>
         <div className="flex gap-4 mt-8 pt-4 border-t border-slate-100">
