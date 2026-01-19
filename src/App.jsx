@@ -587,6 +587,15 @@ const ImagePreviewModal = ({ isOpen, onClose, imageUrl, imageUrl2, title, title2
             <div className="h-1 w-12 bg-indigo-500 rounded-full mt-1"></div>
           </div>
           <div className="flex items-center gap-3">
+            {imageUrl && (
+              <a
+                href={imageUrl}
+                download={`${title || 'foto'}.jpg`}
+                className="bg-white/10 hover:bg-white/20 text-white px-4 py-2 rounded-xl backdrop-blur-md flex items-center gap-2 font-bold transition-all border border-white/10 active:scale-95"
+              >
+                <Download size={18} /> <span className="hidden sm:inline">Baixar</span>
+              </a>
+            )}
             <button
               onClick={onClose}
               className="bg-rose-500/20 hover:bg-rose-500 text-rose-500 hover:text-white p-2.5 rounded-xl backdrop-blur-md transition-all border border-rose-500/20 active:scale-95"
@@ -779,6 +788,12 @@ export default function FleetManager() {
 
       // 1. Salvar no Firebase
       if (d.id) {
+        // Se estiver editando um registro de motorista, marcar como editado pelo gestor
+        const originalEntry = entries.find(e => e.id === d.id);
+        if (originalEntry && originalEntry.registeredBy === 'driver') {
+          payloadToSave.editedByController = true;
+          payloadToSave.registeredBy = 'driver'; // Manter como registro original do motorista
+        }
         await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'entries', d.id), payloadToSave);
       } else {
         const docRef = await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'entries'), payloadToSave);
@@ -1364,8 +1379,15 @@ export default function FleetManager() {
         <React.Fragment key={e.id}>
           <tr className="hover:bg-slate-50">
             <td className="px-6 py-2 font-medium flex items-center gap-2">
-              {e.registeredBy === 'driver' && (
+              {/* Badges: M = Motorista, E = Editado pelo Gestor, G = Gestor */}
+              {e.registeredBy === 'driver' && !e.editedByController && (
                 <span className="w-5 h-5 bg-emerald-500 text-white rounded-full flex items-center justify-center text-[10px] font-bold" title="Registrado pelo Motorista">M</span>
+              )}
+              {e.registeredBy === 'driver' && e.editedByController && (
+                <span className="w-5 h-5 bg-amber-500 text-white rounded-full flex items-center justify-center text-[10px] font-bold" title="Registrado pelo Motorista e Editado pelo Gestor">E</span>
+              )}
+              {e.registeredBy !== 'driver' && (
+                <span className="w-5 h-5 bg-indigo-600 text-white rounded-full flex items-center justify-center text-[10px] font-bold" title="Registrado pelo Gestor">G</span>
               )}
               {formatDateBR(e.date)}
             </td>

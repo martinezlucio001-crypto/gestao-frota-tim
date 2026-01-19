@@ -49,17 +49,18 @@ const CameraCapture = ({ onCapture, label, plate }) => {
             const ctx = canvas.getContext('2d');
             ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
 
-            // Adicionar marca d'água
+            // Adicionar marca d'água maior e mais visível
             const now = new Date();
             const watermark = `📅 ${now.toLocaleDateString('pt-BR')} ${now.toLocaleTimeString('pt-BR')} | 🚛 ${plate}`;
 
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
-            ctx.fillRect(0, canvas.height - 40, canvas.width, 40);
+            // Barra maior para a marca d'água
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
+            ctx.fillRect(0, canvas.height - 60, canvas.width, 60);
 
             ctx.fillStyle = '#ffffff';
-            ctx.font = 'bold 16px Arial';
+            ctx.font = 'bold 24px Arial';
             ctx.textAlign = 'center';
-            ctx.fillText(watermark, canvas.width / 2, canvas.height - 14);
+            ctx.fillText(watermark, canvas.width / 2, canvas.height - 22);
 
             // Converter para base64
             const base64 = canvas.toDataURL('image/jpeg', 0.7);
