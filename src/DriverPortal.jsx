@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Fuel, Camera, Check, Loader2, LogOut, History, AlertCircle, Eye, EyeOff, Plus, RefreshCw, ChevronLeft, User, Truck, Calendar } from 'lucide-react';
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getFirestore, collection, query, where, getDocs, addDoc, orderBy, limit } from 'firebase/firestore';
-import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 
 // Firebase config (MESMO do App.jsx)
 const firebaseConfig = {
@@ -18,7 +17,6 @@ const firebaseConfig = {
 // Evitar inicialização duplicada
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 const db = getFirestore(app);
-const storage = getStorage(app);
 const appId = "frota-tim-oficial";
 
 // Formatador de data BR
@@ -63,12 +61,11 @@ const CameraCapture = ({ onCapture, label, plate, onReset }) => {
             ctx.textAlign = 'center';
             ctx.fillText(watermark, canvas.width / 2, canvas.height - 14);
 
-            canvas.toBlob((blob) => {
-                const previewUrl = URL.createObjectURL(blob);
-                setPreview(previewUrl);
-                onCapture(blob);
-                setProcessing(false);
-            }, 'image/jpeg', 0.85);
+            // Converter para base64 em vez de blob
+            const base64 = canvas.toDataURL('image/jpeg', 0.7);
+            setPreview(base64);
+            onCapture(base64);
+            setProcessing(false);
         };
 
         img.src = URL.createObjectURL(file);
@@ -233,14 +230,6 @@ const DriverPortal = () => {
         setCurrentPage('home');
     };
 
-    // Upload de foto
-    const uploadPhoto = async (blob, type) => {
-        const filename = `${truck.id}_${type}_${Date.now()}.jpg`;
-        const storageRef = ref(storage, `${appId}/photos/${filename}`);
-        await uploadBytes(storageRef, blob);
-        return getDownloadURL(storageRef);
-    };
-
     // Salvar abastecimento
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -254,11 +243,6 @@ const DriverPortal = () => {
         setSaveSuccess(false);
 
         try {
-            const [odometerUrl, receiptUrl] = await Promise.all([
-                uploadPhoto(odometerPhoto, 'odometer'),
-                uploadPhoto(receiptPhoto, 'receipt')
-            ]);
-
             const now = new Date();
             const entry = {
                 truckId: truck.id,
@@ -267,8 +251,8 @@ const DriverPortal = () => {
                 liters: Number(formData.liters),
                 totalCost: Number(formData.totalCost),
                 newMileage: Number(formData.newMileage),
-                odometerUrl,
-                receiptUrl,
+                odometerPhoto: odometerPhoto, // base64
+                receiptPhoto: receiptPhoto, // base64
                 registeredBy: 'driver',
                 createdAt: now.toISOString()
             };
