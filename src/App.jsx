@@ -199,6 +199,56 @@ const Input = ({ label, type, ...props }) => (
   </div>
 );
 
+// Componente InfoCard com tooltip explicativo
+const InfoCard = ({ children, className = "", tooltip, style }) => {
+  const [showTooltip, setShowTooltip] = useState(false);
+  const timeoutRef = useRef(null);
+
+  const handleMouseEnter = () => {
+    timeoutRef.current = setTimeout(() => {
+      setShowTooltip(true);
+    }, 2000); // 2 segundos
+  };
+
+  const handleMouseLeave = () => {
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    setShowTooltip(false);
+  };
+
+  const toggleTooltip = (e) => {
+    e.stopPropagation();
+    setShowTooltip(!showTooltip);
+  };
+
+  return (
+    <div
+      className={`rounded-2xl shadow-sm border border-slate-100 hover:shadow-md transition-all duration-300 p-6 relative ${className}`}
+      style={style}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
+    >
+      {/* Ícone de informação */}
+      <button
+        onClick={toggleTooltip}
+        className="absolute top-2 right-2 p-1 text-slate-300 hover:text-slate-500 transition-colors z-10"
+        title="Ver explicação"
+      >
+        <HelpCircle size={14} />
+      </button>
+
+      {/* Tooltip */}
+      {showTooltip && tooltip && (
+        <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 z-50 w-64 p-3 bg-slate-800 text-white text-xs rounded-xl shadow-xl animate-in fade-in zoom-in-95 duration-200">
+          <div className="absolute -top-1.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-slate-800 rotate-45"></div>
+          <p className="relative z-10 leading-relaxed">{tooltip}</p>
+        </div>
+      )}
+
+      {children}
+    </div>
+  );
+};
+
 // --- Modais ---
 
 const ModalBackdrop = ({ children, onClose }) => (
@@ -220,7 +270,9 @@ const TruckModal = ({ isOpen, onClose, onSave, editingTruck = null }) => {
     expectedIntervalKm: '',
     pixKey: '',
     vehicleType: '',
-    driver: ''
+    driver: '',
+    driverCpf: '',
+    driverPassword: ''
   });
 
   useEffect(() => {
@@ -235,10 +287,12 @@ const TruckModal = ({ isOpen, onClose, onSave, editingTruck = null }) => {
           expectedIntervalKm: String(editingTruck.expectedIntervalKm || ''),
           pixKey: editingTruck.pixKey || '',
           vehicleType: editingTruck.vehicleType || '',
-          driver: editingTruck.driver || ''
+          driver: editingTruck.driver || '',
+          driverCpf: editingTruck.driverCpf || '',
+          driverPassword: editingTruck.driverPassword || ''
         });
       } else {
-        setFormData({ plate: '', model: '', capacity: '', expectedKml: '', tankLevelGoal: '', expectedIntervalKm: '', pixKey: '', vehicleType: '', driver: '' });
+        setFormData({ plate: '', model: '', capacity: '', expectedKml: '', tankLevelGoal: '', expectedIntervalKm: '', pixKey: '', vehicleType: '', driver: '', driverCpf: '', driverPassword: '' });
       }
     }
   }, [isOpen, editingTruck]);
@@ -289,6 +343,13 @@ const TruckModal = ({ isOpen, onClose, onSave, editingTruck = null }) => {
         <div className="grid grid-cols-2 gap-6">
           <Input label="Motorista Responsável" placeholder="Nome Completo" required value={formData.driver} onChange={e => setFormData({ ...formData, driver: e.target.value })} />
           <Input label="Chave Pix" placeholder="CPF/Email/Celular" value={formData.pixKey} onChange={e => setFormData({ ...formData, pixKey: e.target.value })} />
+        </div>
+        <div className="p-4 bg-indigo-50 rounded-xl border border-indigo-200 mt-2">
+          <p className="text-xs font-bold text-indigo-600 uppercase mb-3">Acesso do Motorista (Portal)</p>
+          <div className="grid grid-cols-2 gap-6">
+            <Input label="CPF do Motorista" placeholder="Apenas números" value={formData.driverCpf} onChange={e => setFormData({ ...formData, driverCpf: e.target.value.replace(/\D/g, '').slice(0, 11) })} />
+            <Input label="Senha de Acesso" type="password" placeholder="Definida por você" value={formData.driverPassword} onChange={e => setFormData({ ...formData, driverPassword: e.target.value })} />
+          </div>
         </div>
         <div className="flex gap-4 mt-8 pt-4 border-t border-slate-100">
           <Button type="button" variant="ghost" onClick={onClose} className="flex-1">Cancelar</Button>
@@ -987,7 +1048,7 @@ export default function FleetManager() {
             }
 
             return (
-              <Card key={truck.id} className="p-6 transition-all hover:shadow-md border-l-4 border-l-indigo-500">
+              <Card key={truck.id} className="p-6 transition-all hover:shadow-md border-l-4 border-l-indigo-500 cursor-pointer" onClick={() => { setSelectedTruck(truck); setView('truck-detail'); }}>
                 <div className="grid md:grid-cols-4 gap-6 items-center">
 
                   {/* Identificação */}
@@ -1159,10 +1220,65 @@ export default function FleetManager() {
     const h = calculatedHistory; // Alias para manter compatibilidade com contadores se houver
     return (<div className="space-y-8 animate-in slide-in-from-right">
       <style>{globalStyles}</style>
-      <div className="flex justify-between items-center"><div className="flex items-center gap-4"><button onClick={() => setView('trucks')} className="p-2 border rounded-xl hover:bg-white"><ChevronLeft /></button><div><h2 className="text-2xl font-bold flex items-center gap-2">{selectedTruck.plate} {selectedTruck.vehicleType && <span className="text-sm font-normal bg-slate-200 text-slate-600 px-2 py-0.5 rounded-lg">{selectedTruck.vehicleType}</span>} <span className="text-sm font-normal text-slate-400">| {selectedTruck.model}</span></h2><p className="text-sm text-slate-500">Histórico de abastecimentos e performance.</p></div></div><Button variant="success" onClick={() => { setEditingEntry(null); setIsEntryModalOpen(true); }}><Fuel size={18} /> Novo Registro</Button></div>
-      <div className="grid grid-cols-4 gap-6">
-        <Card className="text-center bg-emerald-50/50"><p className="text-[10px] font-bold text-emerald-600 uppercase mb-1">Eficiência Prevista</p><p className="text-2xl font-bold">{selectedTruck.expectedKml.toFixed(2)} Km/L</p></Card>
-        <Card className="text-center bg-amber-50/50"><p className="text-[10px] font-bold text-amber-600 uppercase mb-1">Capacidade do Tanque</p><p className="text-2xl font-bold">{selectedTruck.capacity} L</p></Card>
+      <div className="flex justify-between items-center"><div className="flex items-center gap-4"><button onClick={() => setView('trucks')} className="p-2 border rounded-xl hover:bg-white"><ChevronLeft /></button><div><h2 className="text-2xl font-bold flex items-center gap-2">{selectedTruck.plate} {selectedTruck.vehicleType && <span className="text-sm font-normal bg-slate-200 text-slate-600 px-2 py-0.5 rounded-lg">{selectedTruck.vehicleType}</span>} <span className="text-sm font-normal text-slate-400">| {selectedTruck.model}</span></h2><p className="text-sm text-slate-500">Motorista: <span className="font-medium text-slate-700">{selectedTruck.driver || 'Não informado'}</span> • Histórico de abastecimentos e performance.</p></div></div><Button variant="success" onClick={() => { setEditingEntry(null); setIsEntryModalOpen(true); }}><Fuel size={18} /> Novo Registro</Button></div>
+      <div className="grid grid-cols-6 gap-4">
+        {/* Calcular valores necessários para os cards */}
+        {(() => {
+          // Custo por Km Previsto
+          const lastEntry = calculatedHistory[0];
+          const fuelPrice = lastEntry && lastEntry.liters > 0 ? lastEntry.totalCost / lastEntry.liters : 0;
+          const costPerKmPrevisto = selectedTruck.expectedKml > 0 ? fuelPrice / selectedTruck.expectedKml : 0;
+
+          // Custo por Km Realizado
+          let costPerKmRealizado = 0;
+          let hasRealizado = false;
+          if (calculatedHistory.length >= 2) {
+            const oldestIndex = Math.min(7, calculatedHistory.length - 1);
+            const kmMostRecent = calculatedHistory[0].newMileage || 0;
+            const kmOldest = calculatedHistory[oldestIndex].newMileage || 0;
+            const totalDistance = kmMostRecent - kmOldest;
+            let totalCost = 0;
+            for (let i = 1; i <= oldestIndex; i++) {
+              totalCost += calculatedHistory[i].totalCost || 0;
+            }
+            if (totalDistance > 0) {
+              costPerKmRealizado = totalCost / totalDistance;
+              hasRealizado = true;
+            }
+          }
+
+          // Determinar cor do fundo do Custo do Km Realizado
+          const realizadoBgClass = !hasRealizado ? 'bg-white' :
+            (costPerKmRealizado > costPerKmPrevisto ? 'bg-rose-50' : 'bg-emerald-50');
+
+          return (
+            <>
+              {/* Eficiência Prevista */}
+              <InfoCard className="text-center bg-white" tooltip="Quantos km o veículo deve percorrer por litro de combustível, conforme meta cadastrada. Use para comparar com o realizado.">
+                <p className="text-[10px] font-bold text-indigo-600 uppercase mb-1">Eficiência Prevista</p>
+                <p className="text-xl font-bold text-slate-800">{selectedTruck.expectedKml.toFixed(2)} Km/L</p>
+              </InfoCard>
+
+              {/* Custo do Km Previsto */}
+              <InfoCard className="text-center bg-white" tooltip="Custo estimado por km baseado no preço atual do combustível e na eficiência prevista. Quanto menor, melhor.">
+                <p className="text-[10px] font-bold text-indigo-600 uppercase mb-1">Custo do Km Previsto</p>
+                <p className="text-xl font-bold text-slate-800">{fuelPrice > 0 ? `R$ ${costPerKmPrevisto.toFixed(2)}` : '---'}</p>
+              </InfoCard>
+
+              {/* Custo do Km Realizado */}
+              <InfoCard className={`text-center ${realizadoBgClass}`} tooltip="Custo real por km dos últimos 7 abastecimentos. Verde = igual ou melhor que o previsto. Vermelho = pior que o previsto.">
+                <p className="text-[10px] font-bold text-indigo-600 uppercase mb-1">Custo do Km Realizado</p>
+                <p className="text-xl font-bold text-slate-800">{hasRealizado ? `R$ ${costPerKmRealizado.toFixed(2)}` : '---'}</p>
+              </InfoCard>
+
+              {/* Capacidade do Tanque */}
+              <InfoCard className="text-center bg-white" tooltip="Capacidade máxima do tanque de combustível em litros.">
+                <p className="text-[10px] font-bold text-indigo-600 uppercase mb-1">Capacidade do Tanque</p>
+                <p className="text-xl font-bold text-slate-800">{selectedTruck.capacity} L</p>
+              </InfoCard>
+            </>
+          );
+        })()}
 
         {/* Card de Sugestão de Abastecimento (L) */}
         {selectedTruck.expectedIntervalKm && selectedTruck.tankLevelGoal && calculatedHistory.length > 0 ? (
@@ -1174,23 +1290,20 @@ export default function FleetManager() {
             const suggestion = Math.max(0, selectedTruck.tankLevelGoal - estimatedRemaining);
 
             return (
-              <Card className="text-center bg-indigo-50/50 relative overflow-hidden group">
-                <div className="absolute top-0 right-0 p-1">
-                  <div className="w-2 h-2 rounded-full bg-indigo-400 animate-pulse"></div>
-                </div>
-                <p className="text-[10px] font-bold text-indigo-600 uppercase mb-1">Sugestão Abastecimento</p>
-                <h3 className="text-2xl font-bold text-indigo-700">{suggestion.toFixed(2)} L</h3>
-                <p className="text-[9px] text-indigo-400 mt-1 font-medium">
+              <InfoCard className="text-center bg-indigo-600" tooltip="Quantidade de litros sugerida para o próximo abastecimento, baseada na meta de tanque e consumo estimado.">
+                <p className="text-[10px] font-bold text-indigo-200 uppercase mb-1">Sugestão Abastecimento</p>
+                <h3 className="text-xl font-bold text-white">{suggestion.toFixed(2)} L</h3>
+                <p className="text-[9px] text-indigo-200 mt-1 font-medium">
                   Meta: {selectedTruck.tankLevelGoal}L | Est. Rest: {estimatedRemaining.toFixed(2)}L
                 </p>
-              </Card>
+              </InfoCard>
             );
           })()
         ) : (
-          <Card className="text-center bg-slate-50/50 flex flex-col items-center justify-center opacity-70">
-            <p className="text-[10px] font-bold text-slate-400 uppercase">Sugestão Indisponível</p>
+          <InfoCard className="text-center bg-white opacity-70" tooltip="Configure Meta de Tanque e Km Esperado para ver a sugestão.">
+            <p className="text-[10px] font-bold text-indigo-600 uppercase">Sugestão Indisponível</p>
             <p className="text-[9px] text-slate-400 mt-1">Configure Meta e Km Esperado</p>
-          </Card>
+          </InfoCard>
         )}
 
         {/* Card de Próximo Abastecimento (R$) */}
@@ -1207,25 +1320,25 @@ export default function FleetManager() {
             const estimatedCost = suggestion * fuelPrice;
 
             return fuelPrice > 0 ? (
-              <Card className="text-center bg-blue-50/50">
-                <p className="text-[10px] font-bold text-blue-600 uppercase mb-1">Próximo Abastecimento (R$)</p>
-                <h3 className="text-2xl font-bold text-blue-700">R$ {estimatedCost.toFixed(2)}</h3>
-                <p className="text-[9px] text-blue-400 mt-1 font-medium">
+              <InfoCard className="text-center bg-indigo-600" tooltip="Valor estimado em reais para o próximo abastecimento, baseado na sugestão de litros e preço atual.">
+                <p className="text-[10px] font-bold text-indigo-200 uppercase mb-1">Próximo Abastecimento (R$)</p>
+                <h3 className="text-xl font-bold text-white">R$ {estimatedCost.toFixed(2)}</h3>
+                <p className="text-[9px] text-indigo-200 mt-1 font-medium">
                   {suggestion.toFixed(2)} L x R$ {fuelPrice.toFixed(2)}
                 </p>
-              </Card>
+              </InfoCard>
             ) : (
-              <Card className="text-center bg-blue-50/50 flex flex-col items-center justify-center opacity-70">
-                <p className="text-[10px] font-bold text-blue-600 uppercase mb-1">Próximo Abastecimento</p>
+              <InfoCard className="text-center bg-white opacity-70" tooltip="Valor estimado em reais para o próximo abastecimento. Precisa de registros anteriores.">
+                <p className="text-[10px] font-bold text-indigo-600 uppercase mb-1">Próximo Abastecimento</p>
                 <p className="text-sm font-bold text-slate-400">---</p>
-              </Card>
+              </InfoCard>
             );
           })()
         ) : (
-          <Card className="text-center bg-blue-50/50 flex flex-col items-center justify-center opacity-70">
-            <p className="text-[10px] font-bold text-blue-600 uppercase mb-1">Próximo Abastecimento</p>
+          <InfoCard className="text-center bg-white opacity-70" tooltip="Configure Meta de Tanque e Km Esperado para ver o valor estimado.">
+            <p className="text-[10px] font-bold text-indigo-600 uppercase mb-1">Próximo Abastecimento</p>
             <p className="text-sm font-bold text-slate-400">---</p>
-          </Card>
+          </InfoCard>
         )}
       </div>
       <Card noPadding className="overflow-hidden"><div className="overflow-x-auto"><table className="w-full text-sm text-left"><thead className="bg-slate-50 text-slate-400 font-bold uppercase text-[10px] border-b"><tr>
@@ -1234,6 +1347,7 @@ export default function FleetManager() {
         <th className="px-6 py-2 text-center">Custo</th>
         <th className="px-6 py-2 text-center">Combustível Inserido</th>
         <th className="px-6 py-2 text-center">Km Rodados</th>
+        <th className="px-6 py-2 text-center">Custo do Km Rodado</th>
         <th className="px-6 py-2 text-emerald-600 text-center">Comb. Remanescente</th>
         <th className="px-6 py-2 text-blue-600 text-center">Novo Tanque</th>
         <th className="px-6 py-2 text-center">Ações</th>
@@ -1244,6 +1358,7 @@ export default function FleetManager() {
             <td className="px-6 py-2 text-slate-500 text-center">{e.time || '-'}</td>
             <td className="px-6 py-2 font-bold text-slate-800 text-center">R$ {e.totalCost.toFixed(2)}</td>
             <td className="px-6 py-2 font-bold text-center">{e.liters.toFixed(2)} L</td>
+            <td className="px-6 py-2 text-center"></td>
             <td className="px-6 py-2 text-center"></td>
             <td className="px-6 py-2 text-emerald-600 font-medium text-center">
               {e.calculatedRemaining !== null ? (
@@ -1284,6 +1399,27 @@ export default function FleetManager() {
                 ) : (
                   <span className="text-slate-300 text-[10px]">---</span>
                 )}
+              </td>
+              <td className="px-6 border-b border-slate-100 text-center">
+                {(() => {
+                  // Custo do Km Rodado = custo do abastecimento anterior / km percorridos
+                  // calculatedHistory[idx+1] é o registro anterior (mais antigo)
+                  const previousEntry = calculatedHistory[idx + 1];
+                  if (previousEntry && e.calculatedDistance > 0) {
+                    const costPerKm = previousEntry.totalCost / e.calculatedDistance;
+                    // Comparar com custo por km previsto
+                    const lastEntry = calculatedHistory[0];
+                    const fuelPrice = lastEntry && lastEntry.liters > 0 ? lastEntry.totalCost / lastEntry.liters : 0;
+                    const costPerKmPrevisto = selectedTruck.expectedKml > 0 ? fuelPrice / selectedTruck.expectedKml : 0;
+
+                    // Verde se <= previsto, vermelho se > previsto
+                    const isGood = costPerKmPrevisto > 0 && costPerKm <= costPerKmPrevisto;
+                    const bgClass = isGood ? 'bg-emerald-50 text-emerald-600 border-emerald-200' : 'bg-rose-50 text-rose-600 border-rose-200';
+
+                    return <span className={`${bgClass} px-2 py-0.5 rounded text-[10px] font-bold border`}>R$ {costPerKm.toFixed(2)}</span>;
+                  }
+                  return <span className="text-slate-300 text-[10px]">---</span>;
+                })()}
               </td>
               <td className="px-6 border-b border-slate-100"></td>
               <td className="px-6 border-b border-slate-100"></td>
