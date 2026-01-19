@@ -4,14 +4,15 @@ import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getFirestore, collection, query, where, getDocs, addDoc, orderBy, limit } from 'firebase/firestore';
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 
-// Firebase config (mesmo do App.jsx)
+// Firebase config (MESMO do App.jsx)
 const firebaseConfig = {
-    apiKey: "AIzaSyBxRfLqGLieFe7Be97cGYNkQStG3BbLzXg",
-    authDomain: "nimble-willow-461118-s7.firebaseapp.com",
-    projectId: "nimble-willow-461118-s7",
-    storageBucket: "nimble-willow-461118-s7.firebasestorage.app",
-    messagingSenderId: "393877912498",
-    appId: "1:393877912498:web:9d5b3a23c0c2f6e8e7c3a9"
+    apiKey: "AIzaSyB-pYZlzUNPuR30gn2cauYdpkDhMYGoHLQ",
+    authDomain: "gestao-frota-tim.firebaseapp.com",
+    projectId: "gestao-frota-tim",
+    storageBucket: "gestao-frota-tim.firebasestorage.app",
+    messagingSenderId: "455143595757",
+    appId: "1:455143595757:web:036dc514ad7f983ca336e4",
+    measurementId: "G-LDYRESTCTG"
 };
 
 // Evitar inicialização duplicada
@@ -152,7 +153,7 @@ const DriverPortal = () => {
     const loadRecentEntries = async (truckId) => {
         try {
             const q = query(
-                collection(db, `artifacts/${appId}/fuelEntries`),
+                collection(db, 'artifacts', appId, 'public', 'data', 'entries'),
                 where('truckId', '==', truckId),
                 orderBy('date', 'desc'),
                 limit(5)
@@ -176,7 +177,7 @@ const DriverPortal = () => {
             console.log('Tentando login com CPF:', cleanCpf);
 
             const q = query(
-                collection(db, `artifacts/${appId}/trucks`),
+                collection(db, 'artifacts', appId, 'public', 'data', 'trucks'),
                 where('driverCpf', '==', cleanCpf)
             );
             const snapshot = await getDocs(q);
@@ -266,7 +267,7 @@ const DriverPortal = () => {
                 createdAt: now.toISOString()
             };
 
-            await addDoc(collection(db, `artifacts/${appId}/fuelEntries`), entry);
+            await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'entries'), entry);
 
             // Limpar formulário
             setFormData({ liters: '', totalCost: '', newMileage: '' });
