@@ -590,10 +590,19 @@ const ImagePreviewModal = ({ isOpen, onClose, imageUrl, imageUrl2, title, title2
             {imageUrl && (
               <a
                 href={imageUrl}
-                download={`${title || 'foto'}.jpg`}
+                download={`${hasTwo ? 'odometro_antes' : (title || 'foto')}.jpg`}
                 className="bg-white/10 hover:bg-white/20 text-white px-4 py-2 rounded-xl backdrop-blur-md flex items-center gap-2 font-bold transition-all border border-white/10 active:scale-95"
               >
-                <Download size={18} /> <span className="hidden sm:inline">Baixar</span>
+                <Download size={18} /> <span className="hidden sm:inline">{hasTwo ? 'Baixar Antes' : 'Baixar'}</span>
+              </a>
+            )}
+            {imageUrl2 && (
+              <a
+                href={imageUrl2}
+                download="odometro_depois.jpg"
+                className="bg-emerald-500/20 hover:bg-emerald-500/40 text-white px-4 py-2 rounded-xl backdrop-blur-md flex items-center gap-2 font-bold transition-all border border-emerald-500/20 active:scale-95"
+              >
+                <Download size={18} /> <span className="hidden sm:inline">Baixar Depois</span>
               </a>
             )}
             <button

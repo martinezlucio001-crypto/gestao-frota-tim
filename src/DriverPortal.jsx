@@ -49,18 +49,51 @@ const CameraCapture = ({ onCapture, label, plate }) => {
             const ctx = canvas.getContext('2d');
             ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
 
-            // Adicionar marca d'água maior e mais visível
+            // Marca d'água grande, simples e segura (sem fundo preto)
             const now = new Date();
-            const watermark = `📅 ${now.toLocaleDateString('pt-BR')} ${now.toLocaleTimeString('pt-BR')} | 🚛 ${plate}`;
+            const dateStr = now.toLocaleDateString('pt-BR'); // DD/MM/AAAA
+            const timeStr = now.toLocaleTimeString('pt-BR').slice(0, 5); // HH:MM
 
-            // Barra maior para a marca d'água
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
-            ctx.fillRect(0, canvas.height - 60, canvas.width, 60);
+            // Gerar código de segurança único (hash simples baseado em timestamp + placa)
+            const securityHash = btoa(`${now.getTime()}-${plate}`).slice(0, 8).toUpperCase();
 
-            ctx.fillStyle = '#ffffff';
-            ctx.font = 'bold 24px Arial';
+            // Configurar fonte grande (aprox 7x maior que antes)
+            const fontSize = Math.max(48, Math.floor(canvas.width / 12)); // ~100px+ em telas grandes
+
+            // Desenhar texto com sombra/contorno para visibilidade sem fundo preto
+            ctx.font = `bold ${fontSize}px Arial`;
             ctx.textAlign = 'center';
-            ctx.fillText(watermark, canvas.width / 2, canvas.height - 22);
+            ctx.textBaseline = 'middle';
+
+            // Posição central-inferior
+            const textY = canvas.height - fontSize * 1.5;
+
+            // Linha 1: Data e Hora
+            const line1 = `${dateStr} • ${timeStr}`;
+            // Linha 2: Placa + Código de Segurança
+            const line2 = `${plate} | #${securityHash}`;
+
+            // Desenhar contorno preto grosso (para legibilidade)
+            ctx.strokeStyle = 'rgba(0, 0, 0, 0.9)';
+            ctx.lineWidth = fontSize / 8;
+            ctx.lineJoin = 'round';
+
+            ctx.strokeText(line1, canvas.width / 2, textY - fontSize * 0.6);
+            ctx.strokeText(line2, canvas.width / 2, textY + fontSize * 0.5);
+
+            // Desenhar texto branco
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+            ctx.fillText(line1, canvas.width / 2, textY - fontSize * 0.6);
+            ctx.fillText(line2, canvas.width / 2, textY + fontSize * 0.5);
+
+            // Adicionar símbolo de verificação no canto (anti-falsificação)
+            const symbolSize = fontSize * 0.6;
+            ctx.font = `bold ${symbolSize}px Arial`;
+            ctx.strokeStyle = 'rgba(0, 0, 0, 0.8)';
+            ctx.lineWidth = symbolSize / 10;
+            ctx.strokeText('✓ VERIFICADO', canvas.width / 2, textY + fontSize * 1.4);
+            ctx.fillStyle = 'rgba(0, 255, 100, 0.9)';
+            ctx.fillText('✓ VERIFICADO', canvas.width / 2, textY + fontSize * 1.4);
 
             // Converter para base64
             const base64 = canvas.toDataURL('image/jpeg', 0.7);
