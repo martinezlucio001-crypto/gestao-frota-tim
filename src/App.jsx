@@ -738,7 +738,7 @@ const SectionManagementModal = ({ isOpen, onClose, onSave, truck }) => {
           <Calendar size={24} />
         </div>
       </div>
-      <div className="p-8 flex flex-col h-full overflow-hidden">
+      <div className="p-8 flex flex-col flex-1 min-h-0 overflow-hidden">
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6 flex-shrink-0">
           <div className="flex items-start gap-3">
             <AlertTriangle className="text-amber-600 flex-shrink-0 mt-0.5" size={20} />
@@ -1480,7 +1480,8 @@ export default function FleetManager() {
       .sort((a, b) => new Date(a.date) - new Date(a.date) || a.newMileage - b.newMileage);
 
     // Histórico completo ordenado cronologicamente (Antigo -> Novo) para cálculos sequenciais
-    const rawHistory = [...allHistory].reverse();
+    // AVISO: NÃO INVERTER AQUI. O cálculo precisa ser cronológico. Inverter apenas no final para exibição.
+    const rawHistory = [...allHistory];
 
     // Calcular histórico de tanque sequencialmente (respeitando seções)
     let previousNewTank = 0;
