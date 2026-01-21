@@ -703,15 +703,19 @@ const SectionManagementModal = ({ isOpen, onClose, onSave, truck }) => {
     resetForm();
   };
 
-  const handleEdit = (section) => {
+  const handleEdit = (e, section) => {
+    e.preventDefault();
+    e.stopPropagation();
     const [d, t] = section.date.split('T');
     setEditingId(section.id);
     setDateInput(d);
     setTimeInput(t || '00:00');
   };
 
-  const handleDelete = (id) => {
-    if (confirm('Tem certeza que deseja remover esta seção?')) {
+  const handleDelete = (e, id) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (window.confirm('Tem certeza que deseja remover esta seção?')) {
       const newSections = sections.filter(s => s.id !== id);
       setSections(newSections);
       if (editingId === id) resetForm();
@@ -791,8 +795,8 @@ const SectionManagementModal = ({ isOpen, onClose, onSave, truck }) => {
                     </div>
                   </div>
                   <div className="flex gap-2">
-                    <button onClick={() => handleEdit(s)} className="p-2 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"><Pencil size={16} /></button>
-                    <button onClick={() => handleDelete(s.id)} className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"><Trash2 size={16} /></button>
+                    <button type="button" onClick={(e) => handleEdit(e, s)} className="p-2 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"><Pencil size={16} /></button>
+                    <button type="button" onClick={(e) => handleDelete(e, s.id)} className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"><Trash2 size={16} /></button>
                   </div>
                 </div>
               ))}
