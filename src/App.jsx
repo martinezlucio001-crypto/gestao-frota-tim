@@ -658,11 +658,19 @@ const ImagePreviewModal = ({ isOpen, onClose, imageUrl, imageUrl2, title, title2
 // Modal para Quebra de Seção
 const SectionBreakModal = ({ isOpen, onClose, onSave, truck }) => {
   const [selectedDate, setSelectedDate] = useState('');
+  const [selectedTime, setSelectedTime] = useState('00:00');
   const [confirmClear, setConfirmClear] = useState(false);
 
   useEffect(() => {
     if (isOpen && truck) {
-      setSelectedDate(truck.sectionStartDate || '');
+      if (truck.sectionStartDate) {
+        const [date, time] = truck.sectionStartDate.split('T');
+        setSelectedDate(date || '');
+        setSelectedTime(time || '00:00');
+      } else {
+        setSelectedDate('');
+        setSelectedTime('00:00');
+      }
       setConfirmClear(false);
     }
   }, [isOpen, truck]);
@@ -670,7 +678,8 @@ const SectionBreakModal = ({ isOpen, onClose, onSave, truck }) => {
   if (!isOpen || !truck) return null;
 
   const handleSave = () => {
-    onSave(truck.id, selectedDate || null);
+    const fullDateTime = `${selectedDate}T${selectedTime}`;
+    onSave(truck.id, fullDateTime);
     onClose();
   };
 
@@ -711,25 +720,38 @@ const SectionBreakModal = ({ isOpen, onClose, onSave, truck }) => {
           </div>
         </div>
 
-        <div className="mb-6">
-          <label className="block text-sm font-semibold text-slate-700 mb-2">
-            Data de Início da Nova Seção
-          </label>
-          <input
-            type="date"
-            value={selectedDate}
-            onChange={(e) => setSelectedDate(e.target.value)}
-            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 outline-none"
-          />
-          <p className="text-xs text-slate-500 mt-2">
-            Registros a partir desta data serão considerados nos cálculos.
-          </p>
+        <div className="grid grid-cols-2 gap-4 mb-6">
+          <div>
+            <label className="block text-sm font-semibold text-slate-700 mb-2">
+              Data de Início
+            </label>
+            <input
+              type="date"
+              value={selectedDate}
+              onChange={(e) => setSelectedDate(e.target.value)}
+              className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 outline-none"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-semibold text-slate-700 mb-2">
+              Horário
+            </label>
+            <input
+              type="time"
+              value={selectedTime}
+              onChange={(e) => setSelectedTime(e.target.value)}
+              className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 outline-none"
+            />
+          </div>
         </div>
+        <p className="text-xs text-slate-500 mb-6">
+          Registros a partir deste exato momento serão considerados nos cálculos.
+        </p>
 
         {truck.sectionStartDate && (
           <div className="mb-6 p-4 bg-slate-50 rounded-xl border border-slate-200">
             <p className="text-sm text-slate-600">
-              <strong>Seção atual:</strong> Iniciada em {formatDateBR(truck.sectionStartDate)}
+              <strong>Seção atual:</strong> Iniciada em {formatDateBR(truck.sectionStartDate.split('T')[0])} às {truck.sectionStartDate.split('T')[1]}
             </p>
             <button
               type="button"
@@ -1245,9 +1267,13 @@ export default function FleetManager() {
               .sort((a, b) => new Date(b.date) - new Date(a.date) || b.newMileage - a.newMileage);
 
             // Registros ativos (após sectionStartDate) para cálculos
-            const activeEntries = allTruckEntries.filter(e =>
-              !truck.sectionStartDate || e.date >= truck.sectionStartDate
-            );
+            const activeEntries = allTruckEntries.filter(e => {
+              if (!truck.sectionStartDate) return true;
+              const [sDate, sTime] = truck.sectionStartDate.split('T');
+              const entryDateTime = `${e.date}T${e.time || '00:00'}`;
+              const sectionDateTime = `${sDate}T${sTime || '00:00'}`;
+              return entryDateTime >= sectionDateTime;
+            });
 
             let suggestionDisplay = null;
             let costDisplay = null;
@@ -1415,9 +1441,13 @@ export default function FleetManager() {
       .sort((a, b) => new Date(a.date) - new Date(a.date) || a.newMileage - b.newMileage);
 
     // Registros ativos (após sectionStartDate) para cálculos
-    const rawHistory = allHistory.filter(e =>
-      !selectedTruck.sectionStartDate || e.date >= selectedTruck.sectionStartDate
-    );
+    const rawHistory = allHistory.filter(e => {
+      if (!selectedTruck.sectionStartDate) return true;
+      const [sDate, sTime] = selectedTruck.sectionStartDate.split('T');
+      const entryDateTime = `${e.date}T${e.time || '00:00'}`;
+      const sectionDateTime = `${sDate}T${sTime || '00:00'}`;
+      return entryDateTime >= sectionDateTime;
+    });
 
     // Calcular histórico de tanque apenas com registros ativos
     let previousNewTank = 0;
@@ -1465,7 +1495,13 @@ export default function FleetManager() {
 
     // Registros inativos (antes da seção) - apenas para exibição
     const inactiveHistory = allHistory
-      .filter(e => selectedTruck.sectionStartDate && e.date < selectedTruck.sectionStartDate)
+      .filter(e => {
+        if (!selectedTruck.sectionStartDate) return false;
+        const [sDate, sTime] = selectedTruck.sectionStartDate.split('T');
+        const entryDateTime = `${e.date}T${e.time || '00:00'}`;
+        const sectionDateTime = `${sDate}T${sTime || '00:00'}`;
+        return entryDateTime < sectionDateTime;
+      })
       .map(entry => ({
         ...entry,
         calculatedDistance: 0,
@@ -1474,8 +1510,13 @@ export default function FleetManager() {
         isInActiveSection: false
       }));
 
-    // Inverter para mostrar do mais novo para o mais antigo
-    const calculatedHistory = [...calculatedHistoryRaw].reverse();
+    // Inverter ativos e concatenar com inativos (também invertidos para manter ordem cronológica reversa)
+    const activeHistory = [...calculatedHistoryRaw].reverse();
+    const inactiveHistoryReversed = [...inactiveHistory].reverse();
+
+    // Lista final combinada para o render
+    const fullHistoryList = [...activeHistory, ...inactiveHistoryReversed];
+    const calculatedHistory = fullHistoryList;
 
     const h = calculatedHistory; // Alias para manter compatibilidade com contadores se houver
     return (<div className="space-y-8 animate-in slide-in-from-right">
@@ -1490,7 +1531,7 @@ export default function FleetManager() {
               <span className="text-sm font-normal text-slate-400">| {selectedTruck.model}</span>
               {selectedTruck.sectionStartDate && (
                 <span className="text-xs font-medium bg-amber-100 text-amber-700 px-2 py-1 rounded-lg border border-amber-200">
-                  📅 Seção desde {formatDateBR(selectedTruck.sectionStartDate)}
+                  📅 Seção desde {formatDateBR(selectedTruck.sectionStartDate.split('T')[0])} às {selectedTruck.sectionStartDate.split('T')[1]}
                 </span>
               )}
             </h2>
@@ -1636,100 +1677,117 @@ export default function FleetManager() {
         <th className="px-6 py-2 text-emerald-600 text-center">Comb. Remanescente</th>
         <th className="px-6 py-2 text-blue-600 text-center">Novo Tanque</th>
         <th className="px-6 py-2 text-center">Ações</th>
-      </tr></thead><tbody>{calculatedHistory.map((e, idx) => (
-        <React.Fragment key={e.id}>
-          <tr className="hover:bg-slate-50">
-            <td className="px-6 py-2 font-medium flex items-center gap-2">
-              {/* Badges: M = Motorista, E = Editado pelo Gestor, G = Gestor */}
-              {e.registeredBy === 'driver' && !e.editedByController && (
-                <span className="w-5 h-5 bg-emerald-500 text-white rounded-full flex items-center justify-center text-[10px] font-bold" title="Registrado pelo Motorista">M</span>
-              )}
-              {e.registeredBy === 'driver' && e.editedByController && (
-                <span className="w-5 h-5 bg-amber-500 text-white rounded-full flex items-center justify-center text-[10px] font-bold" title="Registrado pelo Motorista e Editado pelo Gestor">E</span>
-              )}
-              {e.registeredBy !== 'driver' && (
-                <span className="w-5 h-5 bg-indigo-600 text-white rounded-full flex items-center justify-center text-[10px] font-bold" title="Registrado pelo Gestor">G</span>
-              )}
-              {formatDateBR(e.date)}
-            </td>
-            <td className="px-6 py-2 text-slate-500 text-center">{e.time || '-'}</td>
-            <td className="px-6 py-2 font-bold text-slate-800 text-center">R$ {e.totalCost.toFixed(2)}</td>
-            <td className="px-6 py-2 font-bold text-center">{e.liters.toFixed(2)} L</td>
-            <td className="px-6 py-2 text-center"></td>
-            <td className="px-6 py-2 text-center"></td>
-            <td className="px-6 py-2 text-emerald-600 font-medium text-center">
-              {e.calculatedRemaining !== null ? (
-                <span className="flex items-center justify-center gap-1">
-                  {(e.calculatedRemaining < 0 || e.calculatedRemaining > selectedTruck.capacity) && <AlertTriangle size={14} className="text-red-500" />}
-                  {e.calculatedRemaining.toFixed(2)} L
-                </span>
-              ) : "-"}
-            </td>
-            <td className="px-6 py-2 text-blue-600 font-bold text-center">
-              {e.calculatedNewTank !== null ? (
-                <span className="flex items-center justify-center gap-1">
-                  {(e.calculatedNewTank < 0 || e.calculatedNewTank > selectedTruck.capacity) && <AlertTriangle size={14} className="text-red-500" />}
-                  {e.calculatedNewTank.toFixed(2)} L
-                </span>
-              ) : "-"}
-            </td>
-            <td className="px-6 py-2 flex justify-center gap-2">
-              {(e.receiptUrl || e.receiptPhoto) && (e.receiptUrl !== 'imported' || e.receiptPhoto) && (
-                <button onClick={() => setPreviewImage({ url: e.receiptUrl || e.receiptPhoto, url2: null, title: 'Recibo de Abastecimento', title2: null })} className="p-1.5 hover:bg-white rounded-lg shadow-sm border border-transparent hover:border-slate-200 transition-all text-emerald-600" title="Ver Recibo"><FileText size={14} /></button>
-              )}
-              {(e.odometerUrl || e.odometerBeforePhoto) && (e.odometerUrl !== 'imported' || e.odometerBeforePhoto) && (
-                <button onClick={() => setPreviewImage({
-                  url: e.odometerBeforePhoto || e.odometerUrl,
-                  url2: e.odometerAfterPhoto || null,
-                  title: e.odometerBeforePhoto ? 'Antes do Abastecimento' : 'Foto do Odômetro',
-                  title2: e.odometerAfterPhoto ? 'Depois do Abastecimento' : null
-                })} className="p-1.5 hover:bg-white rounded-lg shadow-sm border border-transparent hover:border-slate-200 transition-all text-blue-600" title="Ver Odômetro"><Gauge size={14} /></button>
-              )}
-              <button onClick={() => { setEditingEntry(e); setIsEntryModalOpen(true); }} className="p-1.5 hover:bg-white rounded-lg shadow-sm border border-transparent hover:border-slate-200 transition-all text-amber-600" title="Editar"><Pencil size={14} /></button>
-              <button onClick={() => handleDeleteEntry(e.id, e.date)} className="p-1.5 hover:bg-white rounded-lg shadow-sm border border-transparent hover:border-slate-200 transition-all text-rose-600" title="Excluir"><Trash2 size={14} /></button>
-            </td>
-          </tr>
-          {idx < calculatedHistory.length - 1 && (
-            <tr className="bg-slate-50/20">
-              <td className="px-6 border-b border-slate-100"></td>
-              <td className="px-6 border-b border-slate-100"></td>
-              <td className="px-6 border-b border-slate-100"></td>
-              <td className="px-6 border-b border-slate-100"></td>
-              <td className="px-6 border-b border-slate-100 text-center">
-                {e.calculatedDistance > 0 ? (
-                  <span className="bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded text-[10px] font-bold border border-indigo-200">+{e.calculatedDistance} km</span>
-                ) : (
-                  <span className="text-slate-300 text-[10px]">---</span>
+      </tr></thead><tbody>{calculatedHistory.map((e, idx) => {
+        // Encontrar o ponto de quebra para inserir a barra
+        const isFirstInactive = selectedTruck.sectionStartDate && !e.isInActiveSection && (idx === 0 || calculatedHistory[idx - 1].isInActiveSection);
+
+        return (
+          <React.Fragment key={e.id}>
+            {isFirstInactive && (
+              <tr className="bg-amber-50">
+                <td colSpan="9" className="px-6 py-3">
+                  <div className="flex items-center justify-center gap-2 text-amber-700 font-bold text-xs uppercase tracking-widest">
+                    <div className="h-px bg-amber-200 flex-1"></div>
+                    <Calendar size={14} />
+                    Nova Seção Iniciada Aqui ({formatDateBR(selectedTruck.sectionStartDate.split('T')[0])} {selectedTruck.sectionStartDate.split('T')[1]})
+                    <div className="h-px bg-amber-200 flex-1"></div>
+                  </div>
+                </td>
+              </tr>
+            )}
+            <tr className={`hover:bg-slate-50 ${!e.isInActiveSection ? 'opacity-60 bg-slate-50/30' : ''}`}>
+              <td className="px-6 py-2 font-medium flex items-center gap-2">
+                {/* Badges: M = Motorista, E = Editado pelo Gestor, G = Gestor */}
+                {e.registeredBy === 'driver' && !e.editedByController && (
+                  <span className="w-5 h-5 bg-emerald-500 text-white rounded-full flex items-center justify-center text-[10px] font-bold" title="Registrado pelo Motorista">M</span>
                 )}
+                {e.registeredBy === 'driver' && e.editedByController && (
+                  <span className="w-5 h-5 bg-amber-500 text-white rounded-full flex items-center justify-center text-[10px] font-bold" title="Registrado pelo Motorista e Editado pelo Gestor">E</span>
+                )}
+                {e.registeredBy !== 'driver' && (
+                  <span className="w-5 h-5 bg-indigo-600 text-white rounded-full flex items-center justify-center text-[10px] font-bold" title="Registrado pelo Gestor">G</span>
+                )}
+                {formatDateBR(e.date)}
               </td>
-              <td className="px-6 border-b border-slate-100 text-center">
-                {(() => {
-                  // Custo do Km Rodado = custo do abastecimento anterior / km percorridos
-                  // calculatedHistory[idx+1] é o registro anterior (mais antigo)
-                  const previousEntry = calculatedHistory[idx + 1];
-                  if (previousEntry && e.calculatedDistance > 0) {
-                    const costPerKm = previousEntry.totalCost / e.calculatedDistance;
-                    // Comparar com custo por km previsto
-                    const lastEntry = calculatedHistory[0];
-                    const fuelPrice = lastEntry && lastEntry.liters > 0 ? lastEntry.totalCost / lastEntry.liters : 0;
-                    const costPerKmPrevisto = selectedTruck.expectedKml > 0 ? fuelPrice / selectedTruck.expectedKml : 0;
-
-                    // Verde se <= previsto, vermelho se > previsto
-                    const isGood = costPerKmPrevisto > 0 && costPerKm <= costPerKmPrevisto;
-                    const bgClass = isGood ? 'bg-emerald-50 text-emerald-600 border-emerald-200' : 'bg-rose-50 text-rose-600 border-rose-200';
-
-                    return <span className={`${bgClass} px-2 py-0.5 rounded text-[10px] font-bold border`}>R$ {costPerKm.toFixed(2)}</span>;
-                  }
-                  return <span className="text-slate-300 text-[10px]">---</span>;
-                })()}
+              <td className="px-6 py-2 text-slate-500 text-center">{e.time || '-'}</td>
+              <td className="px-6 py-2 font-bold text-slate-800 text-center">R$ {e.totalCost.toFixed(2)}</td>
+              <td className="px-6 py-2 font-bold text-center">{e.liters.toFixed(2)} L</td>
+              <td className="px-6 py-2 text-center"></td>
+              <td className="px-6 py-2 text-center"></td>
+              <td className="px-6 py-2 text-emerald-600 font-medium text-center">
+                {e.calculatedRemaining !== null ? (
+                  <span className="flex items-center justify-center gap-1">
+                    {(e.calculatedRemaining < 0 || e.calculatedRemaining > selectedTruck.capacity) && <AlertTriangle size={14} className="text-red-500" />}
+                    {e.calculatedRemaining.toFixed(2)} L
+                  </span>
+                ) : "-"}
               </td>
-              <td className="px-6 border-b border-slate-100"></td>
-              <td className="px-6 border-b border-slate-100"></td>
-              <td className="px-6 border-b border-slate-100"></td>
+              <td className="px-6 py-2 text-blue-600 font-bold text-center">
+                {e.calculatedNewTank !== null ? (
+                  <span className="flex items-center justify-center gap-1">
+                    {(e.calculatedNewTank < 0 || e.calculatedNewTank > selectedTruck.capacity) && <AlertTriangle size={14} className="text-red-500" />}
+                    {e.calculatedNewTank.toFixed(2)} L
+                  </span>
+                ) : "-"}
+              </td>
+              <td className="px-6 py-2 flex justify-center gap-2">
+                {(e.receiptUrl || e.receiptPhoto) && (e.receiptUrl !== 'imported' || e.receiptPhoto) && (
+                  <button onClick={() => setPreviewImage({ url: e.receiptUrl || e.receiptPhoto, url2: null, title: 'Recibo de Abastecimento', title2: null })} className="p-1.5 hover:bg-white rounded-lg shadow-sm border border-transparent hover:border-slate-200 transition-all text-emerald-600" title="Ver Recibo"><FileText size={14} /></button>
+                )}
+                {(e.odometerUrl || e.odometerBeforePhoto) && (e.odometerUrl !== 'imported' || e.odometerBeforePhoto) && (
+                  <button onClick={() => setPreviewImage({
+                    url: e.odometerBeforePhoto || e.odometerUrl,
+                    url2: e.odometerAfterPhoto || null,
+                    title: e.odometerBeforePhoto ? 'Antes do Abastecimento' : 'Foto do Odômetro',
+                    title2: e.odometerAfterPhoto ? 'Depois do Abastecimento' : null
+                  })} className="p-1.5 hover:bg-white rounded-lg shadow-sm border border-transparent hover:border-slate-200 transition-all text-blue-600" title="Ver Odômetro"><Gauge size={14} /></button>
+                )}
+                <button onClick={() => { setEditingEntry(e); setIsEntryModalOpen(true); }} className="p-1.5 hover:bg-white rounded-lg shadow-sm border border-transparent hover:border-slate-200 transition-all text-amber-600" title="Editar"><Pencil size={14} /></button>
+                <button onClick={() => handleDeleteEntry(e.id, e.date)} className="p-1.5 hover:bg-white rounded-lg shadow-sm border border-transparent hover:border-slate-200 transition-all text-rose-600" title="Excluir"><Trash2 size={14} /></button>
+              </td>
             </tr>
-          )}
-        </React.Fragment>
-      ))}</tbody></table></div></Card>
+            {idx < calculatedHistory.length - 1 && (
+              <tr className="bg-slate-50/20">
+                <td className="px-6 border-b border-slate-100"></td>
+                <td className="px-6 border-b border-slate-100"></td>
+                <td className="px-6 border-b border-slate-100"></td>
+                <td className="px-6 border-b border-slate-100"></td>
+                <td className="px-6 border-b border-slate-100 text-center">
+                  {e.calculatedDistance > 0 ? (
+                    <span className="bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded text-[10px] font-bold border border-indigo-200">+{e.calculatedDistance} km</span>
+                  ) : (
+                    <span className="text-slate-300 text-[10px]">---</span>
+                  )}
+                </td>
+                <td className="px-6 border-b border-slate-100 text-center">
+                  {(() => {
+                    // Custo do Km Rodado = custo do abastecimento anterior / km percorridos
+                    // calculatedHistory[idx+1] é o registro anterior (mais antigo)
+                    const previousEntry = calculatedHistory[idx + 1];
+                    if (previousEntry && e.calculatedDistance > 0) {
+                      const costPerKm = previousEntry.totalCost / e.calculatedDistance;
+                      // Comparar com custo por km previsto
+                      const lastEntry = calculatedHistory[0];
+                      const fuelPrice = lastEntry && lastEntry.liters > 0 ? lastEntry.totalCost / lastEntry.liters : 0;
+                      const costPerKmPrevisto = selectedTruck.expectedKml > 0 ? fuelPrice / selectedTruck.expectedKml : 0;
+
+                      // Verde se <= previsto, vermelho se > previsto
+                      const isGood = costPerKmPrevisto > 0 && costPerKm <= costPerKmPrevisto;
+                      const bgClass = isGood ? 'bg-emerald-50 text-emerald-600 border-emerald-200' : 'bg-rose-50 text-rose-600 border-rose-200';
+
+                      return <span className={`${bgClass} px-2 py-0.5 rounded text-[10px] font-bold border`}>R$ {costPerKm.toFixed(2)}</span>;
+                    }
+                    return <span className="text-slate-300 text-[10px]">---</span>;
+                  })()}
+                </td>
+                <td className="px-6 border-b border-slate-100"></td>
+                <td className="px-6 border-b border-slate-100"></td>
+                <td className="px-6 border-b border-slate-100"></td>
+              </tr>
+            )}
+          </React.Fragment>
+        );
+      })}</tbody></table></div></Card>
       <ImagePreviewModal
         isOpen={!!previewImage}
         onClose={() => setPreviewImage(null)}
