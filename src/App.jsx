@@ -655,6 +655,111 @@ const ImagePreviewModal = ({ isOpen, onClose, imageUrl, imageUrl2, title, title2
   );
 };
 
+// Modal para Quebra de Seção
+const SectionBreakModal = ({ isOpen, onClose, onSave, truck }) => {
+  const [selectedDate, setSelectedDate] = useState('');
+  const [confirmClear, setConfirmClear] = useState(false);
+
+  useEffect(() => {
+    if (isOpen && truck) {
+      setSelectedDate(truck.sectionStartDate || '');
+      setConfirmClear(false);
+    }
+  }, [isOpen, truck]);
+
+  if (!isOpen || !truck) return null;
+
+  const handleSave = () => {
+    onSave(truck.id, selectedDate || null);
+    onClose();
+  };
+
+  const handleClear = () => {
+    if (confirmClear) {
+      onSave(truck.id, null);
+      onClose();
+    } else {
+      setConfirmClear(true);
+    }
+  };
+
+  return (
+    <ModalBackdrop onClose={onClose}>
+      <div className="p-8 border-b border-slate-100 bg-amber-50/30 flex justify-between items-center flex-shrink-0">
+        <div>
+          <h2 className="text-2xl font-bold text-slate-800">Iniciar Nova Seção</h2>
+          <p className="text-sm text-slate-500 mt-1">
+            Definir data de corte para cálculos de {truck.plate}
+          </p>
+        </div>
+        <div className="p-2 rounded-full bg-amber-100 text-amber-600">
+          <Calendar size={24} />
+        </div>
+      </div>
+      <div className="p-8">
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="text-amber-600 flex-shrink-0 mt-0.5" size={20} />
+            <div className="text-sm text-amber-800">
+              <p className="font-bold mb-1">O que acontece ao definir uma data de seção?</p>
+              <ul className="list-disc list-inside space-y-1 text-amber-700">
+                <li>Registros <strong>anteriores</strong> à data continuam visíveis no histórico</li>
+                <li>Registros anteriores <strong>não afetam</strong> os cálculos de tanque e eficiência</li>
+                <li>O primeiro registro <strong>após</strong> a data será tratado como registro inicial</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <div className="mb-6">
+          <label className="block text-sm font-semibold text-slate-700 mb-2">
+            Data de Início da Nova Seção
+          </label>
+          <input
+            type="date"
+            value={selectedDate}
+            onChange={(e) => setSelectedDate(e.target.value)}
+            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 outline-none"
+          />
+          <p className="text-xs text-slate-500 mt-2">
+            Registros a partir desta data serão considerados nos cálculos.
+          </p>
+        </div>
+
+        {truck.sectionStartDate && (
+          <div className="mb-6 p-4 bg-slate-50 rounded-xl border border-slate-200">
+            <p className="text-sm text-slate-600">
+              <strong>Seção atual:</strong> Iniciada em {formatDateBR(truck.sectionStartDate)}
+            </p>
+            <button
+              type="button"
+              onClick={handleClear}
+              className={`mt-3 text-sm font-medium ${confirmClear ? 'text-rose-600' : 'text-slate-500 hover:text-rose-600'} transition-colors`}
+            >
+              {confirmClear ? '⚠️ Clique novamente para confirmar remoção' : 'Remover seção (usar todo histórico)'}
+            </button>
+          </div>
+        )}
+
+        <div className="flex gap-4">
+          <Button type="button" variant="ghost" onClick={onClose} className="flex-1">
+            Cancelar
+          </Button>
+          <Button
+            type="button"
+            variant="primary"
+            onClick={handleSave}
+            className="flex-1 bg-amber-600 hover:bg-amber-700 shadow-amber-200"
+            disabled={!selectedDate}
+          >
+            Definir Nova Seção
+          </Button>
+        </div>
+      </div>
+    </ModalBackdrop>
+  );
+};
+
 // --- Dashboard Charts ---
 
 const EfficiencyChart = ({ data, period, onPeriodChange }) => {
@@ -701,6 +806,7 @@ export default function FleetManager() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [isSavingEntry, setIsSavingEntry] = useState(false);
   const [previewImage, setPreviewImage] = useState(null);
+  const [isSectionModalOpen, setIsSectionModalOpen] = useState(false);
 
   // Estado de autenticação do admin (Firebase Auth)
   const [adminUser, setAdminUser] = useState(null);
@@ -836,6 +942,23 @@ export default function FleetManager() {
     } catch (err) {
       console.error(err);
       alert("Erro ao excluir caminhão.");
+    }
+  };
+
+  // Função para definir quebra de seção
+  const handleSectionBreak = async (truckId, sectionStartDate) => {
+    if (!user) return;
+    try {
+      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'trucks', truckId), {
+        sectionStartDate: sectionStartDate
+      });
+      // Atualizar o selectedTruck local se for o mesmo
+      if (selectedTruck && selectedTruck.id === truckId) {
+        setSelectedTruck({ ...selectedTruck, sectionStartDate });
+      }
+    } catch (err) {
+      console.error('Erro ao definir seção:', err);
+      alert("Erro ao definir seção. Tente novamente.");
     }
   };
 
@@ -1116,40 +1239,38 @@ export default function FleetManager() {
 
         <div className="grid gap-6">
           {trucks.map(truck => {
-            // Cálculos individuais reutilizados da lógica de detalhe
-            const truckEntries = entries
+            // Todos os registros para exibição de última data
+            const allTruckEntries = entries
               .filter(e => e.truckId === truck.id)
               .sort((a, b) => new Date(b.date) - new Date(a.date) || b.newMileage - a.newMileage);
+
+            // Registros ativos (após sectionStartDate) para cálculos
+            const activeEntries = allTruckEntries.filter(e =>
+              !truck.sectionStartDate || e.date >= truck.sectionStartDate
+            );
 
             let suggestionDisplay = null;
             let costDisplay = null;
             let lastDateDisplay = "Sem registros";
 
-            if (truckEntries.length > 0) {
-              const lastEntry = truckEntries[0];
+            if (allTruckEntries.length > 0) {
+              const lastEntry = allTruckEntries[0];
               lastDateDisplay = formatDateBR(lastEntry.date);
 
-              // Recalcula lógica de tanque novo para o último registro (simplificado aqui para o card)
-              // Idealmente isso estaria numa função helper compartilhada, mas vamos recalcular localmente
-              // Precisamos saber o tanque APÓS o abastecimento.
-              // O 'calculatedNewTank' real depende de todo histórico, mas para o ULTIMO, podemos estimar:
-              // Se usarmos a lógica simples: InitialFuel + Liters (se fosse o primeiro).
-              // Mas como não temos o histórico calculado aqui facilmente sem percorrer tudo, 
-              // vamos confiar que se o usuário acessou o detalhe, os dados estão ok? Não.
-              // Vamos fazer um cálculo rápido do ultimo estado se possível.
-
-              // Simplificação Robusta: Vamos pegar apenas a estimativa baseada na KM atual vs prevista.
-              // Mas o cálculo da sugestão depende de 'lastNewTank'.
-              // Vamos assumir que o 'calculatedHistory' no renderTruckDetail é a fonte da verdade.
-              // Para o dashboard, vamos recalcular RAPIDAMENTE o 'lastNewTank' apenas para este caminhão?
-              // Sim, é rápido.
-
+              // Cálculos apenas com registros ativos (após sectionStartDate)
               let currentTank = truck.initialFuel || 0;
               let previousMile = truck.initialMileage || 0;
               let calculatedLastNewTank = 0;
 
               // Recriando histórico cronológico para chegar ao valor atual
-              const chronologicalEntries = [...truckEntries].reverse(); // Oldest first
+              const chronologicalEntries = [...activeEntries].reverse(); // Oldest first
+
+              // Se temos seção ativa, o primeiro registro da seção é tratado como inicial
+              if (chronologicalEntries.length > 0 && truck.sectionStartDate) {
+                const firstActiveEntry = chronologicalEntries[0];
+                currentTank = firstActiveEntry.initialFuel || 0;
+                previousMile = firstActiveEntry.newMileage - (firstActiveEntry.distanceTraveled || 0);
+              }
 
               chronologicalEntries.forEach(entry => {
                 const dist = entry.newMileage - previousMile;
@@ -1288,39 +1409,39 @@ export default function FleetManager() {
   );
 
   const renderTruckDetail = () => {
-    // Ordenar cronologicamente para cálculos (antigo -> novo)
-    const rawHistory = entries
+    // Todos os registros (para exibição completa)
+    const allHistory = entries
       .filter(e => e.truckId === selectedTruck?.id)
-      .sort((a, b) => new Date(a.date) - new Date(b.date) || a.newMileage - b.newMileage);
+      .sort((a, b) => new Date(a.date) - new Date(a.date) || a.newMileage - b.newMileage);
 
-    // Calcular histórico de tanque
-    // Variáveis de estado para a iteração (acumuladores)
+    // Registros ativos (após sectionStartDate) para cálculos
+    const rawHistory = allHistory.filter(e =>
+      !selectedTruck.sectionStartDate || e.date >= selectedTruck.sectionStartDate
+    );
+
+    // Calcular histórico de tanque apenas com registros ativos
     let previousNewTank = 0;
     let previousMileage = selectedTruck.initialMileage || 0;
 
+    // Se tem seção ativa, resetar valores iniciais baseado no primeiro registro ativo
+    if (selectedTruck.sectionStartDate && rawHistory.length > 0) {
+      const firstActiveEntry = rawHistory[0];
+      if (firstActiveEntry.initialFuel !== undefined) {
+        previousNewTank = 0; // Será definido no primeiro loop
+      }
+    }
+
     const calculatedHistoryRaw = rawHistory.map((entry, index) => {
-      // 1. Calcular distância percorrida desde o ÚLTIMO registro (não do DB, mas recalculado)
-      // Se for o primeiro registro, verificamos se há uma milhagem inicial explicitamente diferente.
-      // Geralmente na primeira adição, entry.newMileage poderia ser == previousMileage se não rodou nada.
-      // Se rodou, dist > 0.
       let dist = 0;
 
-      // Se for o primeiro registro da lista cronológica
       if (index === 0) {
-        // Se temos um initialFuel neste registro, ele reseta o estado do tanque,
-        // mas a distância percorrida depende da milhagem inicial do caminhão.
         dist = Math.max(0, entry.newMileage - previousMileage);
       } else {
-        // Registros subsequentes: Distância é a diferença entre a km atual e a do registro anterior
         dist = Math.max(0, entry.newMileage - previousMileage);
       }
 
-      // 2. Calcular consumo
       const consumido = dist > 0 ? dist / (selectedTruck.expectedKml || 1) : 0;
 
-      // 3. Calcular Remanescente
-      // Se for o primeiro registro e tiver initialFuel, usamos ele.
-      // Caso contrário, é o tanque anterior menos o consumido.
       let remaining = 0;
       if (index === 0 && entry.initialFuel !== undefined) {
         remaining = Number(entry.initialFuel);
@@ -1328,23 +1449,30 @@ export default function FleetManager() {
         remaining = Math.max(0, previousNewTank - consumido);
       }
 
-      // 4. Calcular Novo Tanque
       const newTank = remaining + entry.liters;
 
-      // Atualizar acumuladores para a próxima iteração
       previousNewTank = newTank;
       previousMileage = entry.newMileage;
 
       return {
         ...entry,
-        // Usamos o dist calculado aqui para exibição se quiser ser estritamente consistente com o tanque,
-        // ou usamos entry.distanceTraveled do DB se preferir. 
-        // Vamos expor o recalculado para debug/consistência.
         calculatedDistance: dist,
         calculatedRemaining: remaining,
-        calculatedNewTank: newTank
+        calculatedNewTank: newTank,
+        isInActiveSection: true
       };
     });
+
+    // Registros inativos (antes da seção) - apenas para exibição
+    const inactiveHistory = allHistory
+      .filter(e => selectedTruck.sectionStartDate && e.date < selectedTruck.sectionStartDate)
+      .map(entry => ({
+        ...entry,
+        calculatedDistance: 0,
+        calculatedRemaining: 0,
+        calculatedNewTank: 0,
+        isInActiveSection: false
+      }));
 
     // Inverter para mostrar do mais novo para o mais antigo
     const calculatedHistory = [...calculatedHistoryRaw].reverse();
@@ -1352,7 +1480,32 @@ export default function FleetManager() {
     const h = calculatedHistory; // Alias para manter compatibilidade com contadores se houver
     return (<div className="space-y-8 animate-in slide-in-from-right">
       <style>{globalStyles}</style>
-      <div className="flex justify-between items-center"><div className="flex items-center gap-4"><button onClick={() => setView('trucks')} className="p-2 border rounded-xl hover:bg-white"><ChevronLeft /></button><div><h2 className="text-2xl font-bold flex items-center gap-2">{selectedTruck.plate} {selectedTruck.vehicleType && <span className="text-sm font-normal bg-slate-200 text-slate-600 px-2 py-0.5 rounded-lg">{selectedTruck.vehicleType}</span>} <span className="text-sm font-normal text-slate-400">| {selectedTruck.model}</span></h2><p className="text-sm text-slate-500">Motorista: <span className="font-medium text-slate-700">{selectedTruck.driver || 'Não informado'}</span> • Histórico de abastecimentos e performance.</p></div></div><Button variant="success" onClick={() => { setEditingEntry(null); setIsEntryModalOpen(true); }}><Fuel size={18} /> Novo Registro</Button></div>
+      <div className="flex justify-between items-center">
+        <div className="flex items-center gap-4">
+          <button onClick={() => setView('trucks')} className="p-2 border rounded-xl hover:bg-white"><ChevronLeft /></button>
+          <div>
+            <h2 className="text-2xl font-bold flex items-center gap-2">
+              {selectedTruck.plate}
+              {selectedTruck.vehicleType && <span className="text-sm font-normal bg-slate-200 text-slate-600 px-2 py-0.5 rounded-lg">{selectedTruck.vehicleType}</span>}
+              <span className="text-sm font-normal text-slate-400">| {selectedTruck.model}</span>
+              {selectedTruck.sectionStartDate && (
+                <span className="text-xs font-medium bg-amber-100 text-amber-700 px-2 py-1 rounded-lg border border-amber-200">
+                  📅 Seção desde {formatDateBR(selectedTruck.sectionStartDate)}
+                </span>
+              )}
+            </h2>
+            <p className="text-sm text-slate-500">Motorista: <span className="font-medium text-slate-700">{selectedTruck.driver || 'Não informado'}</span> • Histórico de abastecimentos e performance.</p>
+          </div>
+        </div>
+        <div className="flex gap-2">
+          <Button variant="secondary" onClick={() => setIsSectionModalOpen(true)}>
+            <Calendar size={18} /> {selectedTruck.sectionStartDate ? 'Editar Seção' : 'Nova Seção'}
+          </Button>
+          <Button variant="success" onClick={() => { setEditingEntry(null); setIsEntryModalOpen(true); }}>
+            <Fuel size={18} /> Novo Registro
+          </Button>
+        </div>
+      </div>
       <div className="grid grid-cols-6 gap-4">
         {/* Calcular valores necessários para os cards */}
         {(() => {
@@ -1800,6 +1953,12 @@ export default function FleetManager() {
         imageUrl2={previewImage?.url2}
         title={previewImage?.title}
         title2={previewImage?.title2}
+      />
+      <SectionBreakModal
+        isOpen={isSectionModalOpen}
+        onClose={() => setIsSectionModalOpen(false)}
+        onSave={handleSectionBreak}
+        truck={selectedTruck}
       />
     </div>
   );
