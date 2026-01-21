@@ -31,7 +31,11 @@ import {
   Copy,
   Check,
   ExternalLink,
-  AlertTriangle
+  AlertTriangle,
+  Eye,
+  EyeOff,
+  LogOut,
+  Shield
 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import {
@@ -680,6 +684,12 @@ const EfficiencyChart = ({ data, period, onPeriodChange }) => {
 
 // --- Componente Principal ---
 
+// Credenciais do administrador (alterar após primeiro acesso)
+const ADMIN_CREDENTIALS = {
+  username: 'admin',
+  password: 'admin123'
+};
+
 export default function FleetManager() {
   const [user, setUser] = useState(null);
   const [view, setView] = useState('dashboard');
@@ -694,6 +704,44 @@ export default function FleetManager() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [isSavingEntry, setIsSavingEntry] = useState(false);
   const [previewImage, setPreviewImage] = useState(null);
+
+  // Estado de autenticação do admin
+  const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(false);
+  const [adminUsername, setAdminUsername] = useState('');
+  const [adminPassword, setAdminPassword] = useState('');
+  const [showAdminPassword, setShowAdminPassword] = useState(false);
+  const [adminLoginError, setAdminLoginError] = useState('');
+  const [isAdminLoading, setIsAdminLoading] = useState(true);
+
+  // Verificar login salvo do admin
+  useEffect(() => {
+    const savedAdmin = localStorage.getItem('adminSession');
+    if (savedAdmin === 'authenticated') {
+      setIsAdminLoggedIn(true);
+    }
+    setIsAdminLoading(false);
+  }, []);
+
+  // Login do admin
+  const handleAdminLogin = (e) => {
+    e.preventDefault();
+    setAdminLoginError('');
+
+    if (adminUsername === ADMIN_CREDENTIALS.username && adminPassword === ADMIN_CREDENTIALS.password) {
+      setIsAdminLoggedIn(true);
+      localStorage.setItem('adminSession', 'authenticated');
+    } else {
+      setAdminLoginError('Usuário ou senha incorretos');
+    }
+  };
+
+  // Logout do admin
+  const handleAdminLogout = () => {
+    localStorage.removeItem('adminSession');
+    setIsAdminLoggedIn(false);
+    setAdminUsername('');
+    setAdminPassword('');
+  };
 
   useEffect(() => {
     const scripts = ['https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js', 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js', 'https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.25/jspdf.plugin.autotable.min.js'];
@@ -1506,9 +1554,114 @@ export default function FleetManager() {
 
   if (!user) return <div className="min-h-screen flex items-center justify-center bg-slate-50"><Truck className="animate-bounce text-indigo-600" size={48} /><p className="ml-4 font-bold text-indigo-900 tracking-widest uppercase text-xs">Carregando Sistema...</p></div>;
 
+  // Tela de loading do admin
+  if (isAdminLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+        <Loader2 className="animate-spin text-indigo-600" size={48} />
+      </div>
+    );
+  }
+
+  // Tela de Login do Admin
+  if (!isAdminLoggedIn) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-indigo-900 to-slate-900 flex items-center justify-center p-4">
+        <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-8">
+          <div className="text-center mb-8">
+            <div className="w-16 h-16 bg-indigo-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
+              <Shield size={32} className="text-indigo-600" />
+            </div>
+            <h1 className="text-2xl font-bold text-slate-800">Painel de Gestão</h1>
+            <p className="text-sm text-slate-500 mt-1">Acesso restrito a administradores</p>
+          </div>
+
+          <form onSubmit={handleAdminLogin}>
+            <div className="mb-4">
+              <label className="block text-sm font-semibold text-slate-700 mb-2">Usuário</label>
+              <input
+                type="text"
+                value={adminUsername}
+                onChange={(e) => setAdminUsername(e.target.value)}
+                placeholder="Digite seu usuário"
+                required
+                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none"
+              />
+            </div>
+
+            <div className="mb-6">
+              <label className="block text-sm font-semibold text-slate-700 mb-2">Senha</label>
+              <div className="relative">
+                <input
+                  type={showAdminPassword ? "text" : "password"}
+                  value={adminPassword}
+                  onChange={(e) => setAdminPassword(e.target.value)}
+                  placeholder="Digite sua senha"
+                  required
+                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none pr-12"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowAdminPassword(!showAdminPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                >
+                  {showAdminPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                </button>
+              </div>
+            </div>
+
+            {adminLoginError && (
+              <div className="mb-4 p-3 bg-rose-50 border border-rose-200 text-rose-600 rounded-xl text-sm flex items-center gap-2">
+                <AlertCircle size={16} />
+                {adminLoginError}
+              </div>
+            )}
+
+            <button
+              type="submit"
+              className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 rounded-xl transition-colors flex items-center justify-center gap-2"
+            >
+              Entrar
+            </button>
+          </form>
+
+          <div className="mt-6 text-center">
+            <a href="/" className="text-sm text-slate-400 hover:text-indigo-600 transition-colors">
+              ← Voltar para a página inicial
+            </a>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-slate-50/50 font-sans text-slate-900 pb-10">
-      <nav className="bg-white border-b sticky top-0 z-40 backdrop-blur-md bg-white/80"><div className="max-w-7xl mx-auto px-4 flex items-center justify-between h-20"><div className="flex items-center gap-3 cursor-pointer" onClick={() => setView('dashboard')}><div className="bg-indigo-600 p-2 rounded-xl text-white shadow-lg"><Truck size={24} /></div><div><span className="font-black text-xl tracking-tight block">Gestão de Combustível Tim</span><span className="text-[10px] uppercase font-bold text-indigo-500 tracking-widest">Enterprise v3.0</span></div></div><div className="flex space-x-2"><button onClick={() => setView('dashboard')} className={`px-4 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all ${view === 'dashboard' ? 'bg-indigo-50 text-indigo-600 shadow-inner' : 'text-slate-400'}`}>Painel</button><button onClick={() => setView('trucks')} className={`px-4 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all ${view.includes('truck') ? 'bg-indigo-50 text-indigo-600 shadow-inner' : 'text-slate-400'}`}>Frota</button><button onClick={() => setView('data-management')} className={`px-4 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all ${view === 'data-management' ? 'bg-indigo-50 text-indigo-600 shadow-inner' : 'text-slate-400'}`}>Dados</button></div></div></nav>
+      <nav className="bg-white border-b sticky top-0 z-40 backdrop-blur-md bg-white/80">
+        <div className="max-w-7xl mx-auto px-4 flex items-center justify-between h-20">
+          <div className="flex items-center gap-3 cursor-pointer" onClick={() => setView('dashboard')}>
+            <div className="bg-indigo-600 p-2 rounded-xl text-white shadow-lg"><Truck size={24} /></div>
+            <div>
+              <span className="font-black text-xl tracking-tight block">Gestão de Combustível Tim</span>
+              <span className="text-[10px] uppercase font-bold text-indigo-500 tracking-widest">Enterprise v3.0</span>
+            </div>
+          </div>
+          <div className="flex items-center gap-4">
+            <div className="flex space-x-2">
+              <button onClick={() => setView('dashboard')} className={`px-4 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all ${view === 'dashboard' ? 'bg-indigo-50 text-indigo-600 shadow-inner' : 'text-slate-400'}`}>Painel</button>
+              <button onClick={() => setView('trucks')} className={`px-4 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all ${view.includes('truck') ? 'bg-indigo-50 text-indigo-600 shadow-inner' : 'text-slate-400'}`}>Frota</button>
+              <button onClick={() => setView('data-management')} className={`px-4 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all ${view === 'data-management' ? 'bg-indigo-50 text-indigo-600 shadow-inner' : 'text-slate-400'}`}>Dados</button>
+            </div>
+            <button
+              onClick={handleAdminLogout}
+              className="p-2.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-all"
+              title="Sair do sistema"
+            >
+              <LogOut size={20} />
+            </button>
+          </div>
+        </div>
+      </nav>
       <main className="max-w-7xl mx-auto px-4 py-10">
         {view === 'dashboard' && renderDashboard()}{view === 'trucks' && renderTrucksList()}{view === 'truck-detail' && renderTruckDetail()}{view === 'data-management' && renderDataManagement()}
       </main>
