@@ -655,127 +655,154 @@ const ImagePreviewModal = ({ isOpen, onClose, imageUrl, imageUrl2, title, title2
   );
 };
 
-// Modal para Quebra de Seção
-const SectionBreakModal = ({ isOpen, onClose, onSave, truck }) => {
-  const [selectedDate, setSelectedDate] = useState('');
-  const [selectedTime, setSelectedTime] = useState('00:00');
-  const [confirmClear, setConfirmClear] = useState(false);
+// Modal de Gerenciamento de Seções
+const SectionManagementModal = ({ isOpen, onClose, onSave, truck }) => {
+  const [sections, setSections] = useState([]);
+  const [editingId, setEditingId] = useState(null);
+  const [dateInput, setDateInput] = useState('');
+  const [timeInput, setTimeInput] = useState('00:00');
 
   useEffect(() => {
     if (isOpen && truck) {
-      if (truck.sectionStartDate) {
-        const [date, time] = truck.sectionStartDate.split('T');
-        setSelectedDate(date || '');
-        setSelectedTime(time || '00:00');
+      // Migração/Inicialização: Se existir sections, usa. Se não, usa sectionStartDate legado se existir.
+      if (truck.sections && Array.isArray(truck.sections)) {
+        setSections([...truck.sections].sort((a, b) => new Date(b.date) - new Date(a.date)));
+      } else if (truck.sectionStartDate) {
+        setSections([{ id: Date.now().toString(), date: truck.sectionStartDate }]);
       } else {
-        setSelectedDate('');
-        setSelectedTime('00:00');
+        setSections([]);
       }
-      setConfirmClear(false);
+      resetForm();
     }
   }, [isOpen, truck]);
 
-  if (!isOpen || !truck) return null;
+  const resetForm = () => {
+    setEditingId(null);
+    setDateInput('');
+    setTimeInput('00:00');
+  };
 
-  const handleSave = () => {
-    const fullDateTime = `${selectedDate}T${selectedTime}`;
-    onSave(truck.id, fullDateTime);
+  const handleAddOrUpdate = () => {
+    if (!dateInput) return;
+    const fullDateTime = `${dateInput}T${timeInput}`;
+
+    let newSections = [...sections];
+
+    if (editingId) {
+      // Editar existente
+      newSections = newSections.map(s => s.id === editingId ? { ...s, date: fullDateTime } : s);
+    } else {
+      // Adicionar novo
+      newSections.push({ id: Date.now().toString(), date: fullDateTime });
+    }
+
+    // Ordenar decrescente (mais recente primeiro)
+    newSections.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+    setSections(newSections);
+    resetForm();
+  };
+
+  const handleEdit = (section) => {
+    const [d, t] = section.date.split('T');
+    setEditingId(section.id);
+    setDateInput(d);
+    setTimeInput(t || '00:00');
+  };
+
+  const handleDelete = (id) => {
+    if (confirm('Tem certeza que deseja remover esta seção?')) {
+      const newSections = sections.filter(s => s.id !== id);
+      setSections(newSections);
+      if (editingId === id) resetForm();
+    }
+  };
+
+  const handleSaveToTruck = () => {
+    onSave(truck.id, sections);
     onClose();
   };
 
-  const handleClear = () => {
-    if (confirmClear) {
-      onSave(truck.id, null);
-      onClose();
-    } else {
-      setConfirmClear(true);
-    }
-  };
+  if (!isOpen || !truck) return null;
 
   return (
     <ModalBackdrop onClose={onClose}>
       <div className="p-8 border-b border-slate-100 bg-amber-50/30 flex justify-between items-center flex-shrink-0">
         <div>
-          <h2 className="text-2xl font-bold text-slate-800">Iniciar Nova Seção</h2>
+          <h2 className="text-2xl font-bold text-slate-800">Gerenciar Seções</h2>
           <p className="text-sm text-slate-500 mt-1">
-            Definir data de corte para cálculos de {truck.plate}
+            Defina pontos de corte no histórico de {truck.plate}
           </p>
         </div>
         <div className="p-2 rounded-full bg-amber-100 text-amber-600">
           <Calendar size={24} />
         </div>
       </div>
-      <div className="p-8">
-        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6">
+      <div className="p-8 flex flex-col h-full overflow-hidden">
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6 flex-shrink-0">
           <div className="flex items-start gap-3">
             <AlertTriangle className="text-amber-600 flex-shrink-0 mt-0.5" size={20} />
             <div className="text-sm text-amber-800">
-              <p className="font-bold mb-1">O que acontece ao definir uma data de seção?</p>
-              <ul className="list-disc list-inside space-y-1 text-amber-700">
-                <li>Registros <strong>anteriores</strong> à data continuam visíveis no histórico</li>
-                <li>Registros anteriores <strong>não afetam</strong> os cálculos de tanque e eficiência</li>
-                <li>O primeiro registro <strong>após</strong> a data será tratado como registro inicial</li>
+              <p className="font-bold mb-1">Como funcionam as seções?</p>
+              <ul className="list-disc list-inside space-y-1 text-amber-700 text-xs">
+                <li>Cada seção inicia uma nova contagem de tanque e métricas.</li>
+                <li>O painel principal usa apenas a seção mais recente.</li>
+                <li>Registros anteriores a uma seção ficam visíveis mas não afetam a contagem daquela seção.</li>
               </ul>
             </div>
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-4 mb-6">
-          <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-2">
-              Data de Início
-            </label>
-            <input
-              type="date"
-              value={selectedDate}
-              onChange={(e) => setSelectedDate(e.target.value)}
-              className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 outline-none"
-            />
+        {/* Formulário */}
+        <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 mb-6 flex-shrink-0">
+          <p className="text-sm font-bold text-slate-700 mb-3">{editingId ? 'Editar Seção' : 'Adicionar Nova Seção'}</p>
+          <div className="grid grid-cols-2 gap-4 mb-3">
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 mb-1">Data</label>
+              <input type="date" value={dateInput} onChange={(e) => setDateInput(e.target.value)} className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-amber-500/20 outline-none" />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 mb-1">Horário</label>
+              <input type="time" value={timeInput} onChange={(e) => setTimeInput(e.target.value)} className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-amber-500/20 outline-none" />
+            </div>
           </div>
-          <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-2">
-              Horário
-            </label>
-            <input
-              type="time"
-              value={selectedTime}
-              onChange={(e) => setSelectedTime(e.target.value)}
-              className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 outline-none"
-            />
+          <div className="flex gap-2">
+            {editingId && <Button variant="ghost" onClick={resetForm} className="flex-1 py-1.5 text-xs">Cancelar Edição</Button>}
+            <Button variant="secondary" onClick={handleAddOrUpdate} disabled={!dateInput} className="flex-1 py-1.5 text-xs bg-slate-200 hover:bg-slate-300 text-slate-700">
+              {editingId ? 'Atualizar Seção' : 'Adicionar à Lista'}
+            </Button>
           </div>
         </div>
-        <p className="text-xs text-slate-500 mb-6">
-          Registros a partir deste exato momento serão considerados nos cálculos.
-        </p>
 
-        {truck.sectionStartDate && (
-          <div className="mb-6 p-4 bg-slate-50 rounded-xl border border-slate-200">
-            <p className="text-sm text-slate-600">
-              <strong>Seção atual:</strong> Iniciada em {formatDateBR(truck.sectionStartDate.split('T')[0])} às {truck.sectionStartDate.split('T')[1]}
-            </p>
-            <button
-              type="button"
-              onClick={handleClear}
-              className={`mt-3 text-sm font-medium ${confirmClear ? 'text-rose-600' : 'text-slate-500 hover:text-rose-600'} transition-colors`}
-            >
-              {confirmClear ? '⚠️ Clique novamente para confirmar remoção' : 'Remover seção (usar todo histórico)'}
-            </button>
-          </div>
-        )}
+        {/* Lista de Seções */}
+        <div className="flex-1 overflow-y-auto mb-6 pr-2">
+          <p className="text-sm font-bold text-slate-700 mb-2">Seções Definidas ({sections.length})</p>
+          {sections.length === 0 ? (
+            <div className="text-center py-8 border-2 border-dashed border-slate-200 rounded-xl text-slate-400 text-sm">Nenhuma seção definida. Todo o histórico será usado.</div>
+          ) : (
+            <div className="space-y-2">
+              {sections.map(s => (
+                <div key={s.id} className={`flex justify-between items-center p-3 rounded-xl border ${editingId === s.id ? 'bg-amber-50 border-amber-300 ring-1 ring-amber-300' : 'bg-white border-slate-200'}`}>
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-amber-100/50 text-amber-600 rounded-lg"><Calendar size={16} /></div>
+                    <div>
+                      <p className="text-sm font-bold text-slate-700">{formatDateBR(s.date.split('T')[0])}</p>
+                      <p className="text-xs text-slate-400">às {s.date.split('T')[1]}</p>
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={() => handleEdit(s)} className="p-2 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"><Pencil size={16} /></button>
+                    <button onClick={() => handleDelete(s.id)} className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"><Trash2 size={16} /></button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
 
-        <div className="flex gap-4">
-          <Button type="button" variant="ghost" onClick={onClose} className="flex-1">
-            Cancelar
-          </Button>
-          <Button
-            type="button"
-            variant="primary"
-            onClick={handleSave}
-            className="flex-1 bg-amber-600 hover:bg-amber-700 shadow-amber-200"
-            disabled={!selectedDate}
-          >
-            Definir Nova Seção
-          </Button>
+        <div className="flex gap-4 flex-shrink-0">
+          <Button variant="ghost" onClick={onClose} className="flex-1">Cancelar</Button>
+          <Button variant="primary" onClick={handleSaveToTruck} className="flex-1 bg-amber-600 hover:bg-amber-700 shadow-amber-200">Salvar Alterações</Button>
         </div>
       </div>
     </ModalBackdrop>
@@ -968,23 +995,24 @@ export default function FleetManager() {
   };
 
   // Função para definir quebra de seção
-  const handleSectionBreak = async (truckId, sectionStartDate) => {
+  const handleSectionBreak = async (truckId, sectionsData) => {
     if (!user) return;
     try {
       await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'trucks', truckId), {
-        sectionStartDate: sectionStartDate
+        sections: sectionsData,
+        sectionStartDate: sectionsData.length > 0 ? sectionsData[0].date : null // Manter compatibilidade com lógica antiga se necessário, ou apenas usar sections
       });
       // Atualizar o selectedTruck local se for o mesmo
       if (selectedTruck && selectedTruck.id === truckId) {
-        setSelectedTruck({ ...selectedTruck, sectionStartDate });
+        setSelectedTruck({ ...selectedTruck, sections: sectionsData, sectionStartDate: sectionsData.length > 0 ? sectionsData[0].date : null });
       }
     } catch (err) {
-      console.error('Erro ao definir seção:', err);
-      alert("Erro ao definir seção. Tente novamente.");
+      console.error('Erro ao definir seções:', err);
+      alert("Erro ao definir seções. Tente novamente.");
     }
   };
 
-  // Função para salvar abastecimento (com fotos)
+
   const handleSaveEntry = async (d, files = {}) => {
     if (!user) return;
     setIsSavingEntry(true);
@@ -1268,8 +1296,18 @@ export default function FleetManager() {
 
             // Registros ativos (após sectionStartDate) para cálculos
             const activeEntries = allTruckEntries.filter(e => {
-              if (!truck.sectionStartDate) return true;
-              const [sDate, sTime] = truck.sectionStartDate.split('T');
+              let latestSectionDate = null;
+              if (truck.sections && truck.sections.length > 0) {
+                // Assumindo que sections está ordenado, mas garantindo:
+                const sortedSections = [...truck.sections].sort((a, b) => new Date(b.date) - new Date(a.date));
+                latestSectionDate = sortedSections[0].date;
+              } else {
+                latestSectionDate = truck.sectionStartDate;
+              }
+
+              if (!latestSectionDate) return true;
+
+              const [sDate, sTime] = latestSectionDate.split('T');
               const entryDateTime = `${e.date}T${e.time || '00:00'}`;
               const sectionDateTime = `${sDate}T${sTime || '00:00'}`;
               return entryDateTime >= sectionDateTime;
@@ -1440,40 +1478,89 @@ export default function FleetManager() {
       .filter(e => e.truckId === selectedTruck?.id)
       .sort((a, b) => new Date(a.date) - new Date(a.date) || a.newMileage - b.newMileage);
 
-    // Registros ativos (após sectionStartDate) para cálculos
-    const rawHistory = allHistory.filter(e => {
-      if (!selectedTruck.sectionStartDate) return true;
-      const [sDate, sTime] = selectedTruck.sectionStartDate.split('T');
-      const entryDateTime = `${e.date}T${e.time || '00:00'}`;
-      const sectionDateTime = `${sDate}T${sTime || '00:00'}`;
-      return entryDateTime >= sectionDateTime;
-    });
+    // Histórico completo ordenado cronologicamente (Antigo -> Novo) para cálculos sequenciais
+    const rawHistory = [...allHistory].reverse();
 
-    // Calcular histórico de tanque apenas com registros ativos
+    // Calcular histórico de tanque sequencialmente (respeitando seções)
     let previousNewTank = 0;
     let previousMileage = selectedTruck.initialMileage || 0;
 
-    // Se tem seção ativa, resetar valores iniciais baseado no primeiro registro ativo
-    if (selectedTruck.sectionStartDate && rawHistory.length > 0) {
-      const firstActiveEntry = rawHistory[0];
-      if (firstActiveEntry.initialFuel !== undefined) {
-        previousNewTank = 0; // Será definido no primeiro loop
-      }
-    }
-
     const calculatedHistoryRaw = rawHistory.map((entry, index) => {
-      let dist = 0;
+      // Identificar a seção deste registro
+      let currentSection = null;
+      // Encontrar a seção mais recente que engloba este registro
+      let sortedSections = [];
+      if (selectedTruck.sections && Array.isArray(selectedTruck.sections)) {
+        sortedSections = [...selectedTruck.sections].sort((a, b) => new Date(a.date) - new Date(b.date));
+      } else if (selectedTruck.sectionStartDate) {
+        sortedSections = [{ id: 'legacy', date: selectedTruck.sectionStartDate }];
+      }
 
+      for (let i = sortedSections.length - 1; i >= 0; i--) {
+        const sec = sortedSections[i];
+        const [sDate, sTime] = sec.date.split('T');
+        const entryDateTime = `${entry.date}T${entry.time || '00:00'}`;
+        const sectionDateTime = `${sDate}T${sTime || '00:00'}`;
+
+        if (entryDateTime >= sectionDateTime) {
+          currentSection = sec;
+          break; // Encontrou a mais recente aplicável
+        }
+      }
+
+      const currentSectionId = currentSection ? currentSection.id : null;
+      // Precisamos identificar se este registro INICIA uma seção (é o mais antigo dentro dela)
+      // Como estamos iterando do mais antigo para o novo (rawHistory está sorted?), espere.
+      // rawHistory em 1502 vem de 'allHistory' (1503 -> sorted A-B (Antigo-Novo)?)
+      // Linha 1505: .sort((a, b) => new Date(a.date) - new Date(a.date) || a.newMileage - b.newMileage);
+      // Sim, A-B é Ascendente (Antigo -> Novo).
+      // Então o PRIMEIRO registro que encontramos que pertence à Seção X é o INÍCIO dela.
+
+      const isStartOfSection = currentSectionId && (!window.lastProcessedSectionId || window.lastProcessedSectionId !== currentSectionId);
+      // Nota: window.lastProcessedSectionId é hacky. Melhor usar variável externa ao map.
+      // O map não garante ordem sequencial pura em todos os contextos, mas aqui sim.
+      // Mas não podemos usar variavel externa em map puro sem efeito colateral.
+      // Vamos usar reduce ou loop for. Mas map foi usado.
+      // Vamos assumir que map roda em ordem.
+
+      // Retornar isso para ser processado num segundo passo?
+      // Melhor refatorar para reduce ou for loop fora, mas para minimizar diff, vamos usar variáveis de escopo superior da função.
+
+      // previousNewTank e previousMileage já existem fora.
+      // Vamos adicionar lastSectionId fora.
+
+      let isSectionStart = false;
+      if (currentSectionId !== lastSectionId) {
+        isSectionStart = true;
+        if (currentSectionId) {
+          previousNewTank = 0;
+          // previousMileage não deve zerar, continua do valor anterior do hodômetro para calcular distância percorrida real
+          // A MENOS que seja o primeiro registro ABSOLUTO da seção e queiramos ignorar o GAP anterior.
+          // Se dist for calculado normalmente: entry.newMileage - previousMileage.
+          // Se previousMileage veio do registro anterior (fora da seção), a distância é válida.
+          // Só o consumo deve zerar.
+        }
+      }
+
+      let dist = 0;
       if (index === 0) {
         dist = Math.max(0, entry.newMileage - previousMileage);
       } else {
+        // Se é início de seção, a distância é válida (rodou até chegar no posto para iniciar a seção).
         dist = Math.max(0, entry.newMileage - previousMileage);
       }
 
       const consumido = dist > 0 ? dist / (selectedTruck.expectedKml || 1) : 0;
 
       let remaining = 0;
-      if (index === 0 && entry.initialFuel !== undefined) {
+      // Se é o PRIMEIRO registro da seção, usamos o initialFuel dele se houver, ou assumimos tanque cheio?
+      // Ou assumimos 0?
+      if (isSectionStart && entry.initialFuel !== undefined) {
+        remaining = Number(entry.initialFuel);
+      } else if (isSectionStart) {
+        // Inicio de seção sem initialFuel definido -> Reseta o tanque lógico para 0 (novo ciclo)
+        remaining = 0;
+      } else if (index === 0 && entry.initialFuel !== undefined) {
         remaining = Number(entry.initialFuel);
       } else {
         remaining = Math.max(0, previousNewTank - consumido);
@@ -1483,40 +1570,20 @@ export default function FleetManager() {
 
       previousNewTank = newTank;
       previousMileage = entry.newMileage;
+      lastSectionId = currentSectionId;
 
       return {
         ...entry,
         calculatedDistance: dist,
         calculatedRemaining: remaining,
         calculatedNewTank: newTank,
-        isInActiveSection: true
+        isInActiveSection: true, // Legacy support (all visible)
+        currentSection: currentSection,
+        isSectionStart: isSectionStart
       };
     });
 
-    // Registros inativos (antes da seção) - apenas para exibição
-    const inactiveHistory = allHistory
-      .filter(e => {
-        if (!selectedTruck.sectionStartDate) return false;
-        const [sDate, sTime] = selectedTruck.sectionStartDate.split('T');
-        const entryDateTime = `${e.date}T${e.time || '00:00'}`;
-        const sectionDateTime = `${sDate}T${sTime || '00:00'}`;
-        return entryDateTime < sectionDateTime;
-      })
-      .map(entry => ({
-        ...entry,
-        calculatedDistance: 0,
-        calculatedRemaining: 0,
-        calculatedNewTank: 0,
-        isInActiveSection: false
-      }));
-
-    // Inverter ativos e concatenar com inativos (também invertidos para manter ordem cronológica reversa)
-    const activeHistory = [...calculatedHistoryRaw].reverse();
-    const inactiveHistoryReversed = [...inactiveHistory].reverse();
-
-    // Lista final combinada para o render
-    const fullHistoryList = [...activeHistory, ...inactiveHistoryReversed];
-    const calculatedHistory = fullHistoryList;
+    const calculatedHistory = [...calculatedHistoryRaw].reverse();
 
     const h = calculatedHistory; // Alias para manter compatibilidade com contadores se houver
     return (<div className="space-y-8 animate-in slide-in-from-right">
@@ -1678,23 +1745,8 @@ export default function FleetManager() {
         <th className="px-6 py-2 text-blue-600 text-center">Novo Tanque</th>
         <th className="px-6 py-2 text-center">Ações</th>
       </tr></thead><tbody>{calculatedHistory.map((e, idx) => {
-        // Encontrar o ponto de quebra para inserir a barra
-        const isFirstInactive = selectedTruck.sectionStartDate && !e.isInActiveSection && (idx === 0 || calculatedHistory[idx - 1].isInActiveSection);
-
         return (
           <React.Fragment key={e.id}>
-            {isFirstInactive && (
-              <tr className="bg-amber-50">
-                <td colSpan="9" className="px-6 py-3">
-                  <div className="flex items-center justify-center gap-2 text-amber-700 font-bold text-xs uppercase tracking-widest">
-                    <div className="h-px bg-amber-200 flex-1"></div>
-                    <Calendar size={14} />
-                    Nova Seção Iniciada Aqui ({formatDateBR(selectedTruck.sectionStartDate.split('T')[0])} {selectedTruck.sectionStartDate.split('T')[1]})
-                    <div className="h-px bg-amber-200 flex-1"></div>
-                  </div>
-                </td>
-              </tr>
-            )}
             <tr className={`hover:bg-slate-50 ${!e.isInActiveSection ? 'opacity-60 bg-slate-50/30' : ''}`}>
               <td className="px-6 py-2 font-medium flex items-center gap-2">
                 {/* Badges: M = Motorista, E = Editado pelo Gestor, G = Gestor */}
@@ -1746,6 +1798,18 @@ export default function FleetManager() {
                 <button onClick={() => handleDeleteEntry(e.id, e.date)} className="p-1.5 hover:bg-white rounded-lg shadow-sm border border-transparent hover:border-slate-200 transition-all text-rose-600" title="Excluir"><Trash2 size={14} /></button>
               </td>
             </tr>
+            {e.isSectionStart && e.currentSection && (
+              <tr className="bg-amber-50">
+                <td colSpan="9" className="px-6 py-3">
+                  <div className="flex items-center justify-center gap-2 text-amber-700 font-bold text-xs uppercase tracking-widest">
+                    <div className="h-px bg-amber-200 flex-1"></div>
+                    <Calendar size={14} />
+                    Nova Seção Iniciada Aqui ({formatDateBR(e.currentSection.date.split('T')[0])} {e.currentSection.date.split('T')[1]})
+                    <div className="h-px bg-amber-200 flex-1"></div>
+                  </div>
+                </td>
+              </tr>
+            )}
             {idx < calculatedHistory.length - 1 && (
               <tr className="bg-slate-50/20">
                 <td className="px-6 border-b border-slate-100"></td>
