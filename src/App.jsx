@@ -385,19 +385,39 @@ const EntryModal = ({ isOpen, onClose, onSave, truck, allTrucks = [], editingEnt
 
   const activeTruck = truck || allTrucks.find(t => t.id === localTruckId);
 
-  // Determinar se este é o primeiro registro (baseado no histórico real)
+  // Determinar se este é o primeiro registro de uma seção (necessita input inicial)
   const isFirst = useMemo(() => {
     if (!activeTruck) return false;
+    if (!formData.date || !formData.time) return false;
+
+    const fullEntryDateStr = `${formData.date}T${formData.time}`;
     const truckEntries = entries.filter(e => e.truckId === activeTruck.id);
 
-    if (!editingEntry) {
-      return truckEntries.length === 0;
-    } else {
-      if (truckEntries.length === 0) return true;
-      const sorted = [...truckEntries].sort((a, b) => new Date(a.date) - new Date(b.date));
-      return sorted[0]?.id === editingEntry.id;
-    }
-  }, [activeTruck, editingEntry, entries]);
+    // 1. Encontrar a seção a qual este registro pertence
+    const sections = activeTruck.sections || [];
+    // Ordenar seções da mais recente para a mais antiga
+    const sortedSections = [...sections].sort((a, b) => new Date(b.date) - new Date(a.date));
+
+    // A seção ativa é a mais recente que começou ANTES ou IGUAL a data do registro
+    const activeSection = sortedSections.find(s => s.date <= fullEntryDateStr);
+    const sectionStartDate = activeSection ? activeSection.date : (activeTruck.sectionStartDate || null);
+
+    // 2. Verificar se existem registros ANTERIORES dentro desta mesma seção
+    const priorEntries = truckEntries.filter(e => {
+      if (editingEntry && e.id === editingEntry.id) return false; // Ignorar a si mesmo na edição
+
+      // Deve ser estritamente anterior ao registro atual
+      const isBeforeCurrent = e.date < fullEntryDateStr;
+
+      // E deve ser posterior (ou igual) ao início da seção
+      const isAfterSectionStart = sectionStartDate ? e.date >= sectionStartDate : true;
+
+      return isBeforeCurrent && isAfterSectionStart;
+    });
+
+    // Se não houver registros anteriores nesta seção, é o primeiro!
+    return priorEntries.length === 0;
+  }, [activeTruck, editingEntry, entries, formData.date, formData.time]);
 
   useEffect(() => {
     if (isOpen) {
