@@ -42,7 +42,10 @@ import {
   getAuth,
   signInAnonymously,
   onAuthStateChanged,
-  signInWithCustomToken
+  signInWithCustomToken,
+  signInWithEmailAndPassword,
+  sendPasswordResetEmail,
+  signOut
 } from 'firebase/auth';
 import {
   getFirestore,
@@ -684,12 +687,6 @@ const EfficiencyChart = ({ data, period, onPeriodChange }) => {
 
 // --- Componente Principal ---
 
-// Credenciais do administrador (alterar após primeiro acesso)
-const ADMIN_CREDENTIALS = {
-  username: 'admin',
-  password: 'admin123'
-};
-
 export default function FleetManager() {
   const [user, setUser] = useState(null);
   const [view, setView] = useState('dashboard');
@@ -705,42 +702,90 @@ export default function FleetManager() {
   const [isSavingEntry, setIsSavingEntry] = useState(false);
   const [previewImage, setPreviewImage] = useState(null);
 
-  // Estado de autenticação do admin
-  const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(false);
-  const [adminUsername, setAdminUsername] = useState('');
+  // Estado de autenticação do admin (Firebase Auth)
+  const [adminUser, setAdminUser] = useState(null);
+  const [adminEmail, setAdminEmail] = useState('');
   const [adminPassword, setAdminPassword] = useState('');
   const [showAdminPassword, setShowAdminPassword] = useState(false);
   const [adminLoginError, setAdminLoginError] = useState('');
   const [isAdminLoading, setIsAdminLoading] = useState(true);
+  const [showPasswordReset, setShowPasswordReset] = useState(false);
+  const [resetEmailSent, setResetEmailSent] = useState(false);
 
-  // Verificar login salvo do admin
+  // Monitorar estado de autenticação do admin
   useEffect(() => {
-    const savedAdmin = localStorage.getItem('adminSession');
-    if (savedAdmin === 'authenticated') {
-      setIsAdminLoggedIn(true);
-    }
-    setIsAdminLoading(false);
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      // Usuário logado com email (não anônimo) = admin
+      if (currentUser && !currentUser.isAnonymous && currentUser.email) {
+        setAdminUser(currentUser);
+      } else {
+        setAdminUser(null);
+      }
+      setIsAdminLoading(false);
+    });
+    return () => unsubscribe();
   }, []);
 
-  // Login do admin
-  const handleAdminLogin = (e) => {
+  // Login do admin com Firebase Auth
+  const handleAdminLogin = async (e) => {
     e.preventDefault();
     setAdminLoginError('');
+    setIsAdminLoading(true);
 
-    if (adminUsername === ADMIN_CREDENTIALS.username && adminPassword === ADMIN_CREDENTIALS.password) {
-      setIsAdminLoggedIn(true);
-      localStorage.setItem('adminSession', 'authenticated');
-    } else {
-      setAdminLoginError('Usuário ou senha incorretos');
+    try {
+      await signInWithEmailAndPassword(auth, adminEmail, adminPassword);
+      // onAuthStateChanged will handle setting adminUser
+    } catch (error) {
+      console.error('Erro no login:', error);
+      if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
+        setAdminLoginError('Email ou senha incorretos');
+      } else if (error.code === 'auth/invalid-email') {
+        setAdminLoginError('Email inválido');
+      } else if (error.code === 'auth/too-many-requests') {
+        setAdminLoginError('Muitas tentativas. Tente novamente mais tarde.');
+      } else {
+        setAdminLoginError('Erro ao conectar. Tente novamente.');
+      }
     }
+    setIsAdminLoading(false);
   };
 
   // Logout do admin
-  const handleAdminLogout = () => {
-    localStorage.removeItem('adminSession');
-    setIsAdminLoggedIn(false);
-    setAdminUsername('');
-    setAdminPassword('');
+  const handleAdminLogout = async () => {
+    try {
+      await signOut(auth);
+      setAdminEmail('');
+      setAdminPassword('');
+      // Reautenticar anonimamente para continuar acessando Firestore
+      await signInAnonymously(auth);
+    } catch (error) {
+      console.error('Erro no logout:', error);
+    }
+  };
+
+  // Recuperação de senha
+  const handlePasswordReset = async (e) => {
+    e.preventDefault();
+    setAdminLoginError('');
+
+    if (!adminEmail) {
+      setAdminLoginError('Digite seu email para recuperar a senha');
+      return;
+    }
+
+    try {
+      await sendPasswordResetEmail(auth, adminEmail);
+      setResetEmailSent(true);
+    } catch (error) {
+      console.error('Erro ao enviar email:', error);
+      if (error.code === 'auth/user-not-found') {
+        setAdminLoginError('Email não cadastrado');
+      } else if (error.code === 'auth/invalid-email') {
+        setAdminLoginError('Email inválido');
+      } else {
+        setAdminLoginError('Erro ao enviar email. Tente novamente.');
+      }
+    }
   };
 
   useEffect(() => {
@@ -1564,7 +1609,7 @@ export default function FleetManager() {
   }
 
   // Tela de Login do Admin
-  if (!isAdminLoggedIn) {
+  if (!adminUser) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-indigo-900 to-slate-900 flex items-center justify-center p-4">
         <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-8">
@@ -1573,57 +1618,129 @@ export default function FleetManager() {
               <Shield size={32} className="text-indigo-600" />
             </div>
             <h1 className="text-2xl font-bold text-slate-800">Painel de Gestão</h1>
-            <p className="text-sm text-slate-500 mt-1">Acesso restrito a administradores</p>
+            <p className="text-sm text-slate-500 mt-1">
+              {showPasswordReset ? 'Recuperar senha' : 'Acesso restrito a administradores'}
+            </p>
           </div>
 
-          <form onSubmit={handleAdminLogin}>
-            <div className="mb-4">
-              <label className="block text-sm font-semibold text-slate-700 mb-2">Usuário</label>
-              <input
-                type="text"
-                value={adminUsername}
-                onChange={(e) => setAdminUsername(e.target.value)}
-                placeholder="Digite seu usuário"
-                required
-                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none"
-              />
+          {/* Mensagem de sucesso ao enviar email */}
+          {resetEmailSent ? (
+            <div className="text-center">
+              <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <CheckCircle2 size={32} className="text-emerald-600" />
+              </div>
+              <h2 className="text-lg font-bold text-slate-800 mb-2">Email Enviado!</h2>
+              <p className="text-sm text-slate-500 mb-6">
+                Verifique sua caixa de entrada e siga as instruções para redefinir sua senha.
+              </p>
+              <button
+                onClick={() => { setResetEmailSent(false); setShowPasswordReset(false); setAdminLoginError(''); }}
+                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 rounded-xl transition-colors"
+              >
+                Voltar ao Login
+              </button>
             </div>
-
-            <div className="mb-6">
-              <label className="block text-sm font-semibold text-slate-700 mb-2">Senha</label>
-              <div className="relative">
+          ) : showPasswordReset ? (
+            /* Formulário de recuperação de senha */
+            <form onSubmit={handlePasswordReset}>
+              <div className="mb-4">
+                <label className="block text-sm font-semibold text-slate-700 mb-2">Email</label>
                 <input
-                  type={showAdminPassword ? "text" : "password"}
-                  value={adminPassword}
-                  onChange={(e) => setAdminPassword(e.target.value)}
-                  placeholder="Digite sua senha"
+                  type="email"
+                  value={adminEmail}
+                  onChange={(e) => setAdminEmail(e.target.value)}
+                  placeholder="Digite seu email cadastrado"
                   required
-                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none pr-12"
+                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none"
                 />
+              </div>
+
+              {adminLoginError && (
+                <div className="mb-4 p-3 bg-rose-50 border border-rose-200 text-rose-600 rounded-xl text-sm flex items-center gap-2">
+                  <AlertCircle size={16} />
+                  {adminLoginError}
+                </div>
+              )}
+
+              <button
+                type="submit"
+                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 rounded-xl transition-colors flex items-center justify-center gap-2"
+              >
+                Enviar Link de Recuperação
+              </button>
+
+              <div className="mt-4 text-center">
                 <button
                   type="button"
-                  onClick={() => setShowAdminPassword(!showAdminPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                  onClick={() => { setShowPasswordReset(false); setAdminLoginError(''); }}
+                  className="text-sm text-slate-400 hover:text-indigo-600 transition-colors"
                 >
-                  {showAdminPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                  ← Voltar ao login
                 </button>
               </div>
-            </div>
-
-            {adminLoginError && (
-              <div className="mb-4 p-3 bg-rose-50 border border-rose-200 text-rose-600 rounded-xl text-sm flex items-center gap-2">
-                <AlertCircle size={16} />
-                {adminLoginError}
+            </form>
+          ) : (
+            /* Formulário de login */
+            <form onSubmit={handleAdminLogin}>
+              <div className="mb-4">
+                <label className="block text-sm font-semibold text-slate-700 mb-2">Email</label>
+                <input
+                  type="email"
+                  value={adminEmail}
+                  onChange={(e) => setAdminEmail(e.target.value)}
+                  placeholder="Digite seu email"
+                  required
+                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none"
+                />
               </div>
-            )}
 
-            <button
-              type="submit"
-              className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 rounded-xl transition-colors flex items-center justify-center gap-2"
-            >
-              Entrar
-            </button>
-          </form>
+              <div className="mb-4">
+                <label className="block text-sm font-semibold text-slate-700 mb-2">Senha</label>
+                <div className="relative">
+                  <input
+                    type={showAdminPassword ? "text" : "password"}
+                    value={adminPassword}
+                    onChange={(e) => setAdminPassword(e.target.value)}
+                    placeholder="Digite sua senha"
+                    required
+                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none pr-12"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowAdminPassword(!showAdminPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                  >
+                    {showAdminPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                  </button>
+                </div>
+              </div>
+
+              <div className="mb-6 text-right">
+                <button
+                  type="button"
+                  onClick={() => { setShowPasswordReset(true); setAdminLoginError(''); }}
+                  className="text-sm text-indigo-600 hover:text-indigo-800 transition-colors"
+                >
+                  Esqueci minha senha
+                </button>
+              </div>
+
+              {adminLoginError && (
+                <div className="mb-4 p-3 bg-rose-50 border border-rose-200 text-rose-600 rounded-xl text-sm flex items-center gap-2">
+                  <AlertCircle size={16} />
+                  {adminLoginError}
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={isAdminLoading}
+                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 rounded-xl transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                {isAdminLoading ? <Loader2 size={20} className="animate-spin" /> : 'Entrar'}
+              </button>
+            </form>
+          )}
 
           <div className="mt-6 text-center">
             <a href="/" className="text-sm text-slate-400 hover:text-indigo-600 transition-colors">
