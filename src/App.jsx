@@ -1291,7 +1291,7 @@ export default function FleetManager() {
                 suggestionDisplay = `${suggestion.toFixed(2)} L`;
 
                 // Calcular preço do combustível a partir do último registro
-                const lastEntry = truckEntries[0];
+                const lastEntry = allTruckEntries[0];
                 if (lastEntry && lastEntry.liters > 0) {
                   const fuelPrice = lastEntry.totalCost / lastEntry.liters;
                   const cost = suggestion * fuelPrice;
