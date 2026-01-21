@@ -35,7 +35,10 @@ import {
   Eye,
   EyeOff,
   LogOut,
-  Shield
+  Shield,
+  CalendarRange,
+  PlusCircle,
+  Edit2
 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import {
@@ -868,91 +871,72 @@ const SectionManagementModal = ({ isOpen, onClose, onSave, truck }) => {
               </div>
             ) : (
               <div className="space-y-2">
-                {sections
-                  .filter(s => s && s.date) // Ensure valid objects
-                  .sort((a, b) => {
-                    const dateA = new Date(a.date);
-                    const dateB = new Date(b.date);
-                    if (isNaN(dateA.getTime())) return 1;
-                    if (isNaN(dateB.getTime())) return -1;
-                    return dateB - dateA;
-                  })
-                  .map(section => {
-                    let formattedDate = 'Data Inválida';
-                    try {
-                      formattedDate = new Date(section.date).toLocaleString('pt-BR');
-                      if (formattedDate === 'Invalid Date') throw new Error('Invalid Date');
-                    } catch (e) {
-                      // Fallback safe formatting
-                      formattedDate = section.date ? section.date.replace('T', ' ') : '???';
-                    }
+                {sections.sort((a, b) => new Date(b.date) - new Date(a.date)).map(section => (
+                  <div key={section.id} className="group flex items-center justify-between p-4 bg-white border border-slate-200 rounded-xl hover:border-indigo-300 transition-all shadow-sm hover:shadow-md">
 
-                    return (
-                      <div key={section.id} className="group flex items-center justify-between p-4 bg-white border border-slate-200 rounded-xl hover:border-indigo-300 transition-all shadow-sm hover:shadow-md">
-
-                        {/* Conteúdo da Linha */}
-                        <div>
-                          <div className="flex items-center gap-2 font-mono text-sm font-bold text-slate-700">
-                            <Calendar size={14} className="text-indigo-500" />
-                            {formattedDate}
-                          </div>
-                          {section.note && (
-                            <div className="text-xs text-slate-500 mt-0.5 ml-6 italic">
-                              "{section.note}"
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Botões de Ação */}
-                        <div className="flex items-center gap-1 opacity-100 sm:opacity-60 sm:group-hover:opacity-100 transition-opacity">
-
-                          {deletingId === section.id ? (
-                            <div className="flex items-center bg-rose-50 border border-rose-200 rounded-lg p-1 animate-in fade-in slide-in-from-right-5 duration-200">
-                              <span className="text-[10px] font-bold text-rose-700 uppercase mr-2 ml-1">Confirmar?</span>
-                              <button
-                                type="button"
-                                onClick={(e) => handleConfirmDelete(e, section.id)}
-                                className="p-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-md mr-1 transition-colors"
-                                title="Sim, excluir"
-                              >
-                                <Check size={14} />
-                              </button>
-                              <button
-                                type="button"
-                                onClick={handleCancelDelete}
-                                className="p-1.5 bg-slate-200 hover:bg-slate-300 text-slate-600 rounded-md transition-colors"
-                                title="Cancelar"
-                              >
-                                <X size={14} />
-                              </button>
-                            </div>
-                          ) : (
-                            <>
-                              <button
-                                type="button"
-                                onClick={(e) => handleEdit(e, section)}
-                                className="p-2 hover:bg-indigo-50 text-slate-400 hover:text-indigo-600 rounded-lg transition-colors"
-                                title="Editar data"
-                              >
-                                <Edit2 size={16} />
-                              </button>
-                              <button
-                                type="button"
-                                onClick={(e) => handleRequestDelete(e, section.id)}
-                                className="p-2 hover:bg-rose-50 text-slate-400 hover:text-rose-600 rounded-lg transition-colors"
-                                title="Excluir seção"
-                              >
-                                <Trash2 size={16} />
-                              </button>
-                            </>
-                          )}
-                        </div>
+                    {/* Conteúdo da Linha */}
+                    <div>
+                      <div className="flex items-center gap-2 font-mono text-sm font-bold text-slate-700">
+                        <Calendar size={14} className="text-indigo-500" />
+                        {new Date(section.date).toLocaleString('pt-BR')}
                       </div>
-                    );
-                  })}
+                      {section.note && (
+                        <div className="text-xs text-slate-500 mt-0.5 ml-6 italic">
+                          "{section.note}"
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Botões de Ação */}
+                    <div className="flex items-center gap-1 opacity-100 sm:opacity-60 sm:group-hover:opacity-100 transition-opacity">
+
+                      {deletingId === section.id ? (
+                        <div className="flex items-center bg-rose-50 border border-rose-200 rounded-lg p-1 animate-in fade-in slide-in-from-right-5 duration-200">
+                          <span className="text-[10px] font-bold text-rose-700 uppercase mr-2 ml-1">Confirmar?</span>
+                          <button
+                            type="button"
+                            onClick={(e) => handleConfirmDelete(e, section.id)}
+                            className="p-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-md mr-1 transition-colors"
+                            title="Sim, excluir"
+                          >
+                            <Check size={14} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleCancelDelete}
+                            className="p-1.5 bg-slate-200 hover:bg-slate-300 text-slate-600 rounded-md transition-colors"
+                            title="Cancelar"
+                          >
+                            <X size={14} />
+                          </button>
+                        </div>
+                      ) : (
+                        <>
+                          <button
+                            type="button"
+                            onClick={(e) => handleEdit(e, section)}
+                            className="p-2 hover:bg-indigo-50 text-slate-400 hover:text-indigo-600 rounded-lg transition-colors"
+                            title="Editar data"
+                          >
+                            <Edit2 size={16} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => handleRequestDelete(e, section.id)}
+                            className="p-2 hover:bg-rose-50 text-slate-400 hover:text-rose-600 rounded-lg transition-colors"
+                            title="Excluir seção"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
           </div>
+
         </div>
 
         {/* Footer Fixo */}
@@ -1464,35 +1448,20 @@ export default function FleetManager() {
             // Registros ativos (após sectionStartDate) para cálculos
             const activeEntries = allTruckEntries.filter(e => {
               let latestSectionDate = null;
-              if (truck.sections && Array.isArray(truck.sections) && truck.sections.length > 0) {
-                const sortedSections = truck.sections
-                  .filter(s => s && s.date)
-                  .sort((a, b) => new Date(b.date) - new Date(a.date));
-
-                if (sortedSections.length > 0) {
-                  latestSectionDate = sortedSections[0].date;
-                }
-              }
-
-              if (!latestSectionDate) {
+              if (truck.sections && truck.sections.length > 0) {
+                // Assumindo que sections está ordenado, mas garantindo:
+                const sortedSections = [...truck.sections].sort((a, b) => new Date(b.date) - new Date(a.date));
+                latestSectionDate = sortedSections[0].date;
+              } else {
                 latestSectionDate = truck.sectionStartDate;
               }
 
               if (!latestSectionDate) return true;
 
-              try {
-                const parts = latestSectionDate.split('T');
-                if (parts.length < 1) return true;
-                const sDate = parts[0];
-                const sTime = parts[1] || '00:00';
-
-                const entryDateTime = `${e.date}T${e.time || '00:00'}`;
-                const sectionDateTime = `${sDate}T${sTime}`;
-                return entryDateTime >= sectionDateTime;
-              } catch (err) {
-                console.warn('Error parsing section date in list:', latestSectionDate);
-                return true;
-              }
+              const [sDate, sTime] = latestSectionDate.split('T');
+              const entryDateTime = `${e.date}T${e.time || '00:00'}`;
+              const sectionDateTime = `${sDate}T${sTime || '00:00'}`;
+              return entryDateTime >= sectionDateTime;
             });
 
             let suggestionDisplay = null;
@@ -1676,28 +1645,14 @@ export default function FleetManager() {
       // Encontrar a seção mais recente que engloba este registro
       let sortedSections = [];
       if (selectedTruck.sections && Array.isArray(selectedTruck.sections)) {
-        // Filter out sections without date to prevent crashes
-        sortedSections = selectedTruck.sections
-          .filter(s => s && s.date)
-          .sort((a, b) => new Date(a.date) - new Date(b.date));
+        sortedSections = [...selectedTruck.sections].sort((a, b) => new Date(a.date) - new Date(b.date));
       } else if (selectedTruck.sectionStartDate) {
         sortedSections = [{ id: 'legacy', date: selectedTruck.sectionStartDate }];
       }
 
       for (let i = sortedSections.length - 1; i >= 0; i--) {
         const sec = sortedSections[i];
-        if (!sec.date) continue; // Safety check
-
-        let sDate, sTime;
-        try {
-          const parts = sec.date.split('T');
-          sDate = parts[0];
-          sTime = parts[1];
-        } catch (e) {
-          console.warn('Invalid section date format:', sec.date);
-          continue;
-        }
-
+        const [sDate, sTime] = sec.date.split('T');
         const entryDateTime = `${entry.date}T${entry.time || '00:00'}`;
         const sectionDateTime = `${sDate}T${sTime || '00:00'}`;
 
@@ -1710,16 +1665,18 @@ export default function FleetManager() {
       const currentSectionId = currentSection ? currentSection.id : null;
       // Identificar se mudou de seção (início de um novo bloco lógico)
       const isStartOfSection = currentSectionId && currentSectionId !== lastSectionId;
+      // Vamos adicionar lastSectionId fora.
 
       let isSectionStart = false;
-      // Also check if we just switched from NO section (null) to SOME section, effectively a start relative to nothing
       if (currentSectionId !== lastSectionId) {
         isSectionStart = true;
         if (currentSectionId) {
           previousNewTank = 0;
-          // Quando muda de seção, previousMileage teoricamente "continua" para calcular distância
-          // A não ser que seja o primeiro registro da seção que deve RESETAR tudo?
-          // Lógica atual: Seção apenas ZERA o consumo acumulado e tanque lógico.
+          // previousMileage não deve zerar, continua do valor anterior do hodômetro para calcular distância percorrida real
+          // A MENOS que seja o primeiro registro ABSOLUTO da seção e queiramos ignorar o GAP anterior.
+          // Se dist for calculado normalmente: entry.newMileage - previousMileage.
+          // Se previousMileage veio do registro anterior (fora da seção), a distância é válida.
+          // Só o consumo deve zerar.
         }
       }
 
@@ -1727,12 +1684,15 @@ export default function FleetManager() {
       if (index === 0) {
         dist = Math.max(0, entry.newMileage - previousMileage);
       } else {
+        // Se é início de seção, a distância é válida (rodou até chegar no posto para iniciar a seção).
         dist = Math.max(0, entry.newMileage - previousMileage);
       }
 
       const consumido = dist > 0 ? dist / (selectedTruck.expectedKml || 1) : 0;
 
       let remaining = 0;
+      // Se é o PRIMEIRO registro da seção, usamos o initialFuel dele se houver, ou assumimos tanque cheio?
+      // Ou assumimos 0?
       if (isSectionStart && entry.initialFuel !== undefined) {
         remaining = Number(entry.initialFuel);
       } else if (isSectionStart) {
@@ -1755,7 +1715,7 @@ export default function FleetManager() {
         calculatedDistance: dist,
         calculatedRemaining: remaining,
         calculatedNewTank: newTank,
-        isInActiveSection: true,
+        isInActiveSection: true, // Legacy support (all visible)
         currentSection: currentSection,
         isSectionStart: isSectionStart
       };
