@@ -666,7 +666,12 @@ const SectionManagementModal = ({ isOpen, onClose, onSave, truck }) => {
     if (isOpen && truck) {
       // Migração/Inicialização: Se existir sections, usa. Se não, usa sectionStartDate legado se existir.
       if (truck.sections && Array.isArray(truck.sections)) {
-        setSections([...truck.sections].sort((a, b) => new Date(b.date) - new Date(a.date)));
+        // Garantir que todas as seções tenham ID para exclusão correta
+        const sectionsWithIds = truck.sections.map(s => ({
+          ...s,
+          id: s.id || Math.random().toString(36).substr(2, 9)
+        }));
+        setSections([...sectionsWithIds].sort((a, b) => new Date(b.date) - new Date(a.date)));
       } else if (truck.sectionStartDate) {
         setSections([{ id: Date.now().toString(), date: truck.sectionStartDate }]);
       } else {
@@ -674,7 +679,7 @@ const SectionManagementModal = ({ isOpen, onClose, onSave, truck }) => {
       }
       resetForm();
     }
-  }, [isOpen, truck]);
+  }, [isOpen, truck?.id]);
 
   const resetForm = () => {
     setEditingId(null);
