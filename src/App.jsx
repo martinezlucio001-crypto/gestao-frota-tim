@@ -1473,6 +1473,7 @@ export default function FleetManager() {
   );
 
   const renderTruckDetail = () => {
+    if (!selectedTruck) return null;
     // Todos os registros (para exibição completa)
     const allHistory = entries
       .filter(e => e.truckId === selectedTruck?.id)
@@ -1484,6 +1485,7 @@ export default function FleetManager() {
     // Calcular histórico de tanque sequencialmente (respeitando seções)
     let previousNewTank = 0;
     let previousMileage = selectedTruck.initialMileage || 0;
+    let lastSectionId = null;
 
     const calculatedHistoryRaw = rawHistory.map((entry, index) => {
       // Identificar a seção deste registro
@@ -1509,24 +1511,8 @@ export default function FleetManager() {
       }
 
       const currentSectionId = currentSection ? currentSection.id : null;
-      // Precisamos identificar se este registro INICIA uma seção (é o mais antigo dentro dela)
-      // Como estamos iterando do mais antigo para o novo (rawHistory está sorted?), espere.
-      // rawHistory em 1502 vem de 'allHistory' (1503 -> sorted A-B (Antigo-Novo)?)
-      // Linha 1505: .sort((a, b) => new Date(a.date) - new Date(a.date) || a.newMileage - b.newMileage);
-      // Sim, A-B é Ascendente (Antigo -> Novo).
-      // Então o PRIMEIRO registro que encontramos que pertence à Seção X é o INÍCIO dela.
-
-      const isStartOfSection = currentSectionId && (!window.lastProcessedSectionId || window.lastProcessedSectionId !== currentSectionId);
-      // Nota: window.lastProcessedSectionId é hacky. Melhor usar variável externa ao map.
-      // O map não garante ordem sequencial pura em todos os contextos, mas aqui sim.
-      // Mas não podemos usar variavel externa em map puro sem efeito colateral.
-      // Vamos usar reduce ou loop for. Mas map foi usado.
-      // Vamos assumir que map roda em ordem.
-
-      // Retornar isso para ser processado num segundo passo?
-      // Melhor refatorar para reduce ou for loop fora, mas para minimizar diff, vamos usar variáveis de escopo superior da função.
-
-      // previousNewTank e previousMileage já existem fora.
+      // Identificar se mudou de seção (início de um novo bloco lógico)
+      const isStartOfSection = currentSectionId && currentSectionId !== lastSectionId;
       // Vamos adicionar lastSectionId fora.
 
       let isSectionStart = false;
