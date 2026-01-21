@@ -2076,7 +2076,7 @@ export default function FleetManager() {
         title={previewImage?.title}
         title2={previewImage?.title2}
       />
-      <SectionBreakModal
+      <SectionManagementModal
         isOpen={isSectionModalOpen}
         onClose={() => setIsSectionModalOpen(false)}
         onSave={handleSectionBreak}
