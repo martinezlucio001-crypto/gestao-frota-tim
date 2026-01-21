@@ -661,74 +661,111 @@ const SectionManagementModal = ({ isOpen, onClose, onSave, truck }) => {
   const [editingId, setEditingId] = useState(null);
   const [dateInput, setDateInput] = useState('');
   const [timeInput, setTimeInput] = useState('00:00');
+  const [newSectionDate, setNewSectionDate] = useState('');
+  const [newSectionNote, setNewSectionNote] = useState('');
+  const [deletingId, setDeletingId] = useState(null);
 
+  // Carregar seções iniciais
   useEffect(() => {
-    if (isOpen && truck) {
-      // Migração/Inicialização: Se existir sections, usa. Se não, usa sectionStartDate legado se existir.
-      if (truck.sections && Array.isArray(truck.sections)) {
-        // Garantir que todas as seções tenham ID para exclusão correta
-        const sectionsWithIds = truck.sections.map(s => ({
-          ...s,
-          id: s.id || Math.random().toString(36).substr(2, 9)
-        }));
-        setSections([...sectionsWithIds].sort((a, b) => new Date(b.date) - new Date(a.date)));
-      } else if (truck.sectionStartDate) {
-        setSections([{ id: Date.now().toString(), date: truck.sectionStartDate }]);
-      } else {
-        setSections([]);
-      }
-      resetForm();
+    if (!isOpen || !truck) return;
+
+    console.log('SectionManagementModal: Loading sections for truck', truck.id);
+    const existingSections = truck.sections || [];
+
+    // Garantir que a data inicial legada vire uma seção se não houver duplicata
+    let initialSections = [...existingSections];
+    if (truck.sectionStartDate && !existingSections.some(s => s.date === truck.sectionStartDate)) {
+      initialSections.unshift({
+        id: 'legacy-start-' + truck.id, // ID consistente
+        date: truck.sectionStartDate,
+        type: 'created',
+        note: 'Data Inicial (Legado)'
+      });
     }
+
+    // Garantir IDs únicos para tudo
+    const sectionsWithIds = initialSections.map((s, i) => ({
+      ...s,
+      id: s.id || `section-${Date.now()}-${i}`
+    }));
+
+    setSections(sectionsWithIds);
   }, [isOpen, truck?.id]);
 
   const resetForm = () => {
     setEditingId(null);
-    setDateInput('');
-    setTimeInput('00:00');
+    setNewSectionDate('');
+    setNewSectionNote('');
+    setDeletingId(null);
   };
 
-  const handleAddOrUpdate = () => {
-    if (!dateInput) return;
-    const fullDateTime = `${dateInput}T${timeInput}`;
-
-    let newSections = [...sections];
-
-    if (editingId) {
-      // Editar existente
-      newSections = newSections.map(s => s.id === editingId ? { ...s, date: fullDateTime } : s);
-    } else {
-      // Adicionar novo
-      newSections.push({ id: Date.now().toString(), date: fullDateTime });
+  const handleMainAction = () => {
+    if (!newSectionDate) {
+      alert('A data de início da seção é obrigatória.');
+      return;
     }
 
-    // Ordenar decrescente (mais recente primeiro)
-    newSections.sort((a, b) => new Date(b.date) - new Date(a.date));
+    const newSection = {
+      id: editingId || `section-${Date.now()}`,
+      date: newSectionDate,
+      note: newSectionNote,
+    };
 
-    setSections(newSections);
+    setSections(prevSections => {
+      let updatedSections;
+      if (editingId) {
+        updatedSections = prevSections.map(s => s.id === editingId ? newSection : s);
+      } else {
+        updatedSections = [...prevSections, newSection];
+      }
+      // Sort by date descending
+      return updatedSections.sort((a, b) => new Date(b.date) - new Date(a.date));
+    });
+
+    resetForm();
+  };
+
+  const cancelEditing = () => {
     resetForm();
   };
 
   const handleEdit = (e, section) => {
     e.preventDefault();
     e.stopPropagation();
-    const [d, t] = section.date.split('T');
     setEditingId(section.id);
-    setDateInput(d);
-    setTimeInput(t || '00:00');
+    setNewSectionDate(section.date);
+    setNewSectionNote(section.note || '');
+    setDeletingId(null); // Fecha confirmação de delete se abrir edição
   };
 
-  const handleDelete = (e, id) => {
+  const handleRequestDelete = (e, id) => {
     e.preventDefault();
     e.stopPropagation();
-    if (window.confirm('Tem certeza que deseja remover esta seção?')) {
-      const newSections = sections.filter(s => s.id !== id);
-      setSections(newSections);
-      if (editingId === id) resetForm();
-    }
+    setDeletingId(id);
+    setEditingId(null); // Fecha edição se abrir delete
+  };
+
+  const handleConfirmDelete = (e, id) => {
+    e.preventDefault();
+    e.stopPropagation();
+    console.log('SectionManagementModal: Deleting section', id);
+    setSections(prev => prev.filter(s => s.id !== id));
+    setDeletingId(null);
+  };
+
+  const handleCancelDelete = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDeletingId(null);
   };
 
   const handleSaveToTruck = () => {
-    onSave(truck.id, sections);
+    // Validar seções sem data
+    if (sections.some(s => !s.date)) {
+      alert('Todas as seções precisam de uma data válida.');
+      return;
+    }
+    onSave(truck.id, sections); // Pass truck.id and sections
     onClose();
   };
 
@@ -736,83 +773,185 @@ const SectionManagementModal = ({ isOpen, onClose, onSave, truck }) => {
 
   return (
     <ModalBackdrop onClose={onClose}>
-      <div className="p-8 border-b border-slate-100 bg-amber-50/30 flex justify-between items-center flex-shrink-0">
-        <div>
-          <h2 className="text-2xl font-bold text-slate-800">Gerenciar Seções</h2>
-          <p className="text-sm text-slate-500 mt-1">
-            Defina pontos de corte no histórico de {truck.plate}
-          </p>
-        </div>
-        <div className="p-2 rounded-full bg-amber-100 text-amber-600">
-          <Calendar size={24} />
-        </div>
-      </div>
-      <div className="p-8 flex flex-col flex-1 min-h-0 overflow-y-auto">
-        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6 flex-shrink-0">
-          <div className="flex items-start gap-3">
-            <AlertTriangle className="text-amber-600 flex-shrink-0 mt-0.5" size={20} />
-            <div className="text-sm text-amber-800">
-              <p className="font-bold mb-1">Como funcionam as seções?</p>
-              <ul className="list-disc list-inside space-y-1 text-amber-700 text-xs">
-                <li>Cada seção inicia uma nova contagem de tanque e métricas.</li>
-                <li>O painel principal usa apenas a seção mais recente.</li>
-                <li>Registros anteriores a uma seção ficam visíveis mas não afetam a contagem daquela seção.</li>
-              </ul>
-            </div>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg flex flex-col max-h-[90vh] overflow-hidden" onClick={e => e.stopPropagation()}>
+
+        {/* Header Fixo */}
+        <div className="px-8 py-6 border-b border-indigo-100 flex items-center justify-between bg-white shrink-0">
+          <div>
+            <h2 className="text-2xl font-black text-slate-800 flex items-center gap-2">
+              <CalendarRange className="text-indigo-600" />
+              Seções do Histórico
+            </h2>
+            <p className="text-sm text-slate-500 mt-1">Gerencie os pontos de corte de média</p>
           </div>
+          <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-full transition-colors">
+            <X size={24} className="text-slate-400" />
+          </button>
         </div>
 
-        {/* Formulário */}
-        <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 mb-6 flex-shrink-0">
-          <p className="text-sm font-bold text-slate-700 mb-3">{editingId ? 'Editar Seção' : 'Adicionar Nova Seção'}</p>
-          <div className="grid grid-cols-2 gap-4 mb-3">
-            <div>
-              <label className="block text-xs font-semibold text-slate-500 mb-1">Data</label>
-              <input type="date" value={dateInput} onChange={(e) => setDateInput(e.target.value)} className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-amber-500/20 outline-none" />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-slate-500 mb-1">Horário</label>
-              <input type="time" value={timeInput} onChange={(e) => setTimeInput(e.target.value)} className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-amber-500/20 outline-none" />
-            </div>
-          </div>
-          <div className="flex gap-2">
-            {editingId && <Button variant="ghost" onClick={resetForm} className="flex-1 py-1.5 text-xs">Cancelar Edição</Button>}
-            <Button variant="secondary" onClick={handleAddOrUpdate} disabled={!dateInput} className="flex-1 py-1.5 text-xs bg-slate-200 hover:bg-slate-300 text-slate-700">
-              {editingId ? 'Atualizar Seção' : 'Adicionar à Lista'}
-            </Button>
-          </div>
-        </div>
+        {/* Corpo Rolável */}
+        <div className="p-8 flex flex-col flex-1 min-h-0 overflow-y-auto">
 
-        {/* Lista de Seções */}
-        <div className="mb-6 pr-2">
-          <p className="text-sm font-bold text-slate-700 mb-2">Seções Definidas ({sections.length})</p>
-          {sections.length === 0 ? (
-            <div className="text-center py-8 border-2 border-dashed border-slate-200 rounded-xl text-slate-400 text-sm">Nenhuma seção definida. Todo o histórico será usado.</div>
-          ) : (
-            <div className="space-y-2">
-              {sections.map(s => (
-                <div key={s.id} className={`flex justify-between items-center p-3 rounded-xl border ${editingId === s.id ? 'bg-amber-50 border-amber-300 ring-1 ring-amber-300' : 'bg-white border-slate-200'}`}>
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 bg-amber-100/50 text-amber-600 rounded-lg"><Calendar size={16} /></div>
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6">
+            <div className="flex gap-3">
+              <AlertTriangle className="text-amber-600 shrink-0" size={20} />
+              <div className="text-sm text-amber-800">
+                <p className="font-bold mb-1">Como funciona?</p>
+                <p>Criar uma nova seção zera os contadores de média e consumo a partir daquela data. O histórico anterior é preservado, mas separado.</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-4 mb-8">
+            <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
+              <PlusCircle size={16} />
+              {editingId ? 'Editar Seção' : 'Nova Seção'}
+            </h3>
+            <div className="flex gap-3 p-4 bg-slate-50 rounded-xl border border-slate-200">
+              <div className="flex-1 space-y-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Data de Início</label>
+                  <input
+                    type="datetime-local"
+                    value={newSectionDate}
+                    onChange={(e) => setNewSectionDate(e.target.value)}
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Observação (Opcional)</label>
+                  <input
+                    type="text"
+                    value={newSectionNote}
+                    onChange={(e) => setNewSectionNote(e.target.value)}
+                    placeholder="Ex: Troca de Motorista"
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                  />
+                </div>
+              </div>
+              <div className="flex flex-col justify-end">
+                {editingId ? (
+                  <div className="flex flex-col gap-2">
+                    <button
+                      onClick={handleMainAction}
+                      className="bg-indigo-600 hover:bg-indigo-700 text-white p-3 rounded-lg transition-colors flex items-center justify-center"
+                      title="Salvar Edição"
+                    >
+                      <Save size={20} />
+                    </button>
+                    <button
+                      onClick={cancelEditing}
+                      className="bg-slate-200 hover:bg-slate-300 text-slate-600 p-3 rounded-lg transition-colors flex items-center justify-center"
+                      title="Cancelar Edição"
+                    >
+                      <X size={20} />
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={handleMainAction}
+                    className="bg-indigo-600 hover:bg-indigo-700 text-white p-3 rounded-lg h-[88px] transition-colors flex items-center justify-center shadow-lg shadow-indigo-200"
+                    title="Adicionar à Lista"
+                  >
+                    <PlusCircle size={24} />
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider">Seções Ativas ({sections.length})</h3>
+            {sections.length === 0 ? (
+              <div className="text-center py-8 text-slate-400 border-2 border-dashed border-slate-200 rounded-xl">
+                Nenhuma seção definida
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {sections.sort((a, b) => new Date(b.date) - new Date(a.date)).map(section => (
+                  <div key={section.id} className="group flex items-center justify-between p-4 bg-white border border-slate-200 rounded-xl hover:border-indigo-300 transition-all shadow-sm hover:shadow-md">
+
+                    {/* Conteúdo da Linha */}
                     <div>
-                      <p className="text-sm font-bold text-slate-700">{formatDateBR(s.date.split('T')[0])}</p>
-                      <p className="text-xs text-slate-400">às {s.date.split('T')[1]}</p>
+                      <div className="flex items-center gap-2 font-mono text-sm font-bold text-slate-700">
+                        <Calendar size={14} className="text-indigo-500" />
+                        {new Date(section.date).toLocaleString('pt-BR')}
+                      </div>
+                      {section.note && (
+                        <div className="text-xs text-slate-500 mt-0.5 ml-6 italic">
+                          "{section.note}"
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Botões de Ação */}
+                    <div className="flex items-center gap-1 opacity-100 sm:opacity-60 sm:group-hover:opacity-100 transition-opacity">
+
+                      {deletingId === section.id ? (
+                        <div className="flex items-center bg-rose-50 border border-rose-200 rounded-lg p-1 animate-in fade-in slide-in-from-right-5 duration-200">
+                          <span className="text-[10px] font-bold text-rose-700 uppercase mr-2 ml-1">Confirmar?</span>
+                          <button
+                            type="button"
+                            onClick={(e) => handleConfirmDelete(e, section.id)}
+                            className="p-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-md mr-1 transition-colors"
+                            title="Sim, excluir"
+                          >
+                            <Check size={14} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleCancelDelete}
+                            className="p-1.5 bg-slate-200 hover:bg-slate-300 text-slate-600 rounded-md transition-colors"
+                            title="Cancelar"
+                          >
+                            <X size={14} />
+                          </button>
+                        </div>
+                      ) : (
+                        <>
+                          <button
+                            type="button"
+                            onClick={(e) => handleEdit(e, section)}
+                            className="p-2 hover:bg-indigo-50 text-slate-400 hover:text-indigo-600 rounded-lg transition-colors"
+                            title="Editar data"
+                          >
+                            <Edit2 size={16} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => handleRequestDelete(e, section.id)}
+                            className="p-2 hover:bg-rose-50 text-slate-400 hover:text-rose-600 rounded-lg transition-colors"
+                            title="Excluir seção"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </>
+                      )}
                     </div>
                   </div>
-                  <div className="flex gap-2">
-                    <button type="button" onClick={(e) => handleEdit(e, s)} className="p-2 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"><Pencil size={16} /></button>
-                    <button type="button" onClick={(e) => handleDelete(e, s.id)} className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"><Trash2 size={16} /></button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+                ))}
+              </div>
+            )}
+          </div>
+
         </div>
 
-      </div>
-      <div className="p-8 border-t border-slate-100 bg-slate-50 flex gap-4 flex-shrink-0">
-        <Button variant="ghost" onClick={onClose} className="flex-1">Cancelar</Button>
-        <Button variant="primary" onClick={handleSaveToTruck} className="flex-1 bg-amber-600 hover:bg-amber-700 shadow-amber-200">Salvar Alterações</Button>
+        {/* Footer Fixo */}
+        <div className="p-6 border-t border-slate-100 bg-slate-50 shrink-0 flex justify-end gap-3 rounded-b-2xl">
+          <button
+            onClick={onClose}
+            className="px-6 py-2.5 text-slate-600 font-bold hover:bg-slate-200 rounded-xl transition-colors"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={handleSaveToTruck}
+            className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-lg shadow-indigo-200 transition-all transform active:scale-95"
+          >
+            Salvar Alterações
+          </button>
+        </div>
+
       </div>
     </ModalBackdrop>
   );
