@@ -1445,20 +1445,35 @@ export default function FleetManager() {
             // Registros ativos (após sectionStartDate) para cálculos
             const activeEntries = allTruckEntries.filter(e => {
               let latestSectionDate = null;
-              if (truck.sections && truck.sections.length > 0) {
-                // Assumindo que sections está ordenado, mas garantindo:
-                const sortedSections = [...truck.sections].sort((a, b) => new Date(b.date) - new Date(a.date));
-                latestSectionDate = sortedSections[0].date;
-              } else {
+              if (truck.sections && Array.isArray(truck.sections) && truck.sections.length > 0) {
+                const sortedSections = truck.sections
+                  .filter(s => s && s.date)
+                  .sort((a, b) => new Date(b.date) - new Date(a.date));
+
+                if (sortedSections.length > 0) {
+                  latestSectionDate = sortedSections[0].date;
+                }
+              }
+
+              if (!latestSectionDate) {
                 latestSectionDate = truck.sectionStartDate;
               }
 
               if (!latestSectionDate) return true;
 
-              const [sDate, sTime] = latestSectionDate.split('T');
-              const entryDateTime = `${e.date}T${e.time || '00:00'}`;
-              const sectionDateTime = `${sDate}T${sTime || '00:00'}`;
-              return entryDateTime >= sectionDateTime;
+              try {
+                const parts = latestSectionDate.split('T');
+                if (parts.length < 1) return true;
+                const sDate = parts[0];
+                const sTime = parts[1] || '00:00';
+
+                const entryDateTime = `${e.date}T${e.time || '00:00'}`;
+                const sectionDateTime = `${sDate}T${sTime}`;
+                return entryDateTime >= sectionDateTime;
+              } catch (err) {
+                console.warn('Error parsing section date in list:', latestSectionDate);
+                return true;
+              }
             });
 
             let suggestionDisplay = null;
@@ -1642,14 +1657,28 @@ export default function FleetManager() {
       // Encontrar a seção mais recente que engloba este registro
       let sortedSections = [];
       if (selectedTruck.sections && Array.isArray(selectedTruck.sections)) {
-        sortedSections = [...selectedTruck.sections].sort((a, b) => new Date(a.date) - new Date(b.date));
+        // Filter out sections without date to prevent crashes
+        sortedSections = selectedTruck.sections
+          .filter(s => s && s.date)
+          .sort((a, b) => new Date(a.date) - new Date(b.date));
       } else if (selectedTruck.sectionStartDate) {
         sortedSections = [{ id: 'legacy', date: selectedTruck.sectionStartDate }];
       }
 
       for (let i = sortedSections.length - 1; i >= 0; i--) {
         const sec = sortedSections[i];
-        const [sDate, sTime] = sec.date.split('T');
+        if (!sec.date) continue; // Safety check
+
+        let sDate, sTime;
+        try {
+          const parts = sec.date.split('T');
+          sDate = parts[0];
+          sTime = parts[1];
+        } catch (e) {
+          console.warn('Invalid section date format:', sec.date);
+          continue;
+        }
+
         const entryDateTime = `${entry.date}T${entry.time || '00:00'}`;
         const sectionDateTime = `${sDate}T${sTime || '00:00'}`;
 
@@ -1662,18 +1691,16 @@ export default function FleetManager() {
       const currentSectionId = currentSection ? currentSection.id : null;
       // Identificar se mudou de seção (início de um novo bloco lógico)
       const isStartOfSection = currentSectionId && currentSectionId !== lastSectionId;
-      // Vamos adicionar lastSectionId fora.
 
       let isSectionStart = false;
+      // Also check if we just switched from NO section (null) to SOME section, effectively a start relative to nothing
       if (currentSectionId !== lastSectionId) {
         isSectionStart = true;
         if (currentSectionId) {
           previousNewTank = 0;
-          // previousMileage não deve zerar, continua do valor anterior do hodômetro para calcular distância percorrida real
-          // A MENOS que seja o primeiro registro ABSOLUTO da seção e queiramos ignorar o GAP anterior.
-          // Se dist for calculado normalmente: entry.newMileage - previousMileage.
-          // Se previousMileage veio do registro anterior (fora da seção), a distância é válida.
-          // Só o consumo deve zerar.
+          // Quando muda de seção, previousMileage teoricamente "continua" para calcular distância
+          // A não ser que seja o primeiro registro da seção que deve RESETAR tudo?
+          // Lógica atual: Seção apenas ZERA o consumo acumulado e tanque lógico.
         }
       }
 
@@ -1681,15 +1708,12 @@ export default function FleetManager() {
       if (index === 0) {
         dist = Math.max(0, entry.newMileage - previousMileage);
       } else {
-        // Se é início de seção, a distância é válida (rodou até chegar no posto para iniciar a seção).
         dist = Math.max(0, entry.newMileage - previousMileage);
       }
 
       const consumido = dist > 0 ? dist / (selectedTruck.expectedKml || 1) : 0;
 
       let remaining = 0;
-      // Se é o PRIMEIRO registro da seção, usamos o initialFuel dele se houver, ou assumimos tanque cheio?
-      // Ou assumimos 0?
       if (isSectionStart && entry.initialFuel !== undefined) {
         remaining = Number(entry.initialFuel);
       } else if (isSectionStart) {
@@ -1712,7 +1736,7 @@ export default function FleetManager() {
         calculatedDistance: dist,
         calculatedRemaining: remaining,
         calculatedNewTank: newTank,
-        isInActiveSection: true, // Legacy support (all visible)
+        isInActiveSection: true,
         currentSection: currentSection,
         isSectionStart: isSectionStart
       };
