@@ -800,10 +800,10 @@ const SectionManagementModal = ({ isOpen, onClose, onSave, truck }) => {
           )}
         </div>
 
-        <div className="flex gap-4 flex-shrink-0">
-          <Button variant="ghost" onClick={onClose} className="flex-1">Cancelar</Button>
-          <Button variant="primary" onClick={handleSaveToTruck} className="flex-1 bg-amber-600 hover:bg-amber-700 shadow-amber-200">Salvar Alterações</Button>
-        </div>
+      </div>
+      <div className="p-8 border-t border-slate-100 bg-slate-50 flex gap-4 flex-shrink-0">
+        <Button variant="ghost" onClick={onClose} className="flex-1">Cancelar</Button>
+        <Button variant="primary" onClick={handleSaveToTruck} className="flex-1 bg-amber-600 hover:bg-amber-700 shadow-amber-200">Salvar Alterações</Button>
       </div>
     </ModalBackdrop>
   );
