@@ -1726,6 +1726,41 @@ export default function FleetManager() {
 
       const newTank = remaining + entry.liters;
 
+      let prospectiveCostPerKm = 0;
+      let realizedCostPerKm = 0;
+      let costPerKmDisplay = 0;
+      let isProspective = false;
+
+      // Cálculo do Custo/Km
+      if (isSectionStart || index === 0) {
+        // Lógica Prospectiva (Primeiro Registro da Seção/Histórico)
+        // Fórmula: (Preço/Litro * NovoTanque) / Distância até o próximo abastecimento
+        // "Quanto custaria rodar o próximo trecho só com este tanque cheio?"
+
+        const nextEntry = rawHistory[index + 1];
+        if (nextEntry) {
+          // Verificar se o próximo registro pertence à MESMA seção (ou se não houve quebra)
+          // Se houver quebra logo depois, o cálculo pode ser inválido, mas assumimos continuidade.
+          const distToNext = nextEntry.newMileage - entry.newMileage;
+
+          if (distToNext > 0 && entry.liters > 0) {
+            const pricePerLiter = entry.totalCost / entry.liters;
+            const tankValue = newTank * pricePerLiter;
+            prospectiveCostPerKm = tankValue / distToNext;
+            costPerKmDisplay = prospectiveCostPerKm;
+            isProspective = true;
+          }
+        }
+      } else {
+        // Lógica Realizada (Registros Normais)
+        // Fórmula: Custo do Abastecimento Atual / Distância Percorrida desde o anterior
+        // "Quanto custou rodar o trecho anterior?"
+        if (dist > 0) {
+          realizedCostPerKm = entry.totalCost / dist;
+          costPerKmDisplay = realizedCostPerKm;
+        }
+      }
+
       previousNewTank = newTank;
       previousMileage = entry.newMileage;
       lastSectionId = currentSectionId;
@@ -1737,7 +1772,9 @@ export default function FleetManager() {
         calculatedNewTank: newTank,
         isInActiveSection: true, // Legacy support (all visible)
         currentSection: currentSection,
-        isSectionStart: isSectionStart
+        isSectionStart: isSectionStart,
+        costPerKm: costPerKmDisplay,
+        isProspective: isProspective
       };
     });
 
@@ -1922,8 +1959,19 @@ export default function FleetManager() {
               <td className="px-6 py-2 text-slate-500 text-center">{e.time || '-'}</td>
               <td className="px-6 py-2 font-bold text-slate-800 text-center">R$ {e.totalCost.toFixed(2)}</td>
               <td className="px-6 py-2 font-bold text-center">{e.liters.toFixed(2)} L</td>
-              <td className="px-6 py-2 text-center"></td>
-              <td className="px-6 py-2 text-center"></td>
+              <td className="px-6 py-2 text-center font-medium text-slate-600">
+                {e.calculatedDistance > 0 ? `${e.calculatedDistance.toFixed(0)} km` : '-'}
+              </td>
+              <td className="px-6 py-2 text-center font-bold text-slate-700">
+                {e.costPerKm > 0 ? (
+                  <div className="flex flex-col items-center">
+                    <span>R$ {e.costPerKm.toFixed(2)}</span>
+                    {e.isProspective && (
+                      <span className="text-[9px] text-indigo-500 uppercase tracking-wider bg-indigo-50 px-1 rounded">Projetado</span>
+                    )}
+                  </div>
+                ) : '-'}
+              </td>
               <td className="px-6 py-2 text-emerald-600 font-medium text-center">
                 {e.calculatedRemaining !== null ? (
                   <span className="flex items-center justify-center gap-1">
