@@ -315,7 +315,7 @@ const DriverPortal = () => {
                         <div className="w-16 h-16 bg-indigo-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
                             <Fuel size={32} className="text-indigo-600" />
                         </div>
-                        <h1 className="text-2xl font-bold text-slate-800">Portal do Motorista</h1>
+                        <h1 className="text-2xl font-bold text-slate-800">Portal do Motorista TIM</h1>
                         <p className="text-sm text-slate-500 mt-1">Registre seus abastecimentos</p>
                     </div>
 
