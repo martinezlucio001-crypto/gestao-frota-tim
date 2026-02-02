@@ -2576,7 +2576,12 @@ export default function FleetManager() {
     // Todos os registros (para exibição completa)
     const allHistory = entries
       .filter(e => e.truckId === selectedTruck?.id)
-      .sort((a, b) => new Date(a.date) - new Date(a.date) || a.newMileage - b.newMileage);
+      .sort((a, b) => {
+        // Combinar data e hora para ordenação cronológica correta
+        const dateTimeA = new Date(`${a.date.split('T')[0]}T${a.time || '00:00'}`);
+        const dateTimeB = new Date(`${b.date.split('T')[0]}T${b.time || '00:00'}`);
+        return dateTimeA - dateTimeB || a.newMileage - b.newMileage;
+      });
 
     // Histórico completo ordenado cronologicamente (Antigo -> Novo) para cálculos sequenciais
     // AVISO: NÃO INVERTER AQUI. O cálculo precisa ser cronológico. Inverter apenas no final para exibição.
