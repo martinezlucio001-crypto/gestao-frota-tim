@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Fuel, Camera, Check, Loader2, LogOut, History, AlertCircle, Eye, EyeOff, Plus, RefreshCw, ChevronLeft, User, Truck, Calendar, CheckCircle2, Wrench, AlertTriangle } from 'lucide-react';
+import { Fuel, Camera, Check, Loader2, LogOut, History, AlertCircle, Eye, EyeOff, Plus, RefreshCw, ChevronLeft, User, Truck, Calendar, CheckCircle2, Wrench, AlertTriangle, Image } from 'lucide-react';
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getFirestore, collection, query, where, getDocs, addDoc } from 'firebase/firestore';
+import heic2any from 'heic2any';
 
 // Firebase config (MESMO do App.jsx)
 const firebaseConfig = {
@@ -29,6 +30,7 @@ const formatDateBR = (dateString) => {
 // Componente de captura de câmera com marca d'água e botão refazer
 const CameraCapture = ({ onCapture, label, plate }) => {
     const inputRef = useRef(null);
+    const galleryInputRef = useRef(null);
     const [preview, setPreview] = useState(null);
     const [processing, setProcessing] = useState(false);
 
@@ -38,93 +40,139 @@ const CameraCapture = ({ onCapture, label, plate }) => {
 
         setProcessing(true);
 
-        // Usar FileReader para melhor compatibilidade (especialmente com HEIC do iPhone)
-        const reader = new FileReader();
+        try {
+            let fileToProcess = file;
 
-        reader.onload = (event) => {
-            const img = new Image();
+            // Verificar se é HEIC/HEIF (comum em iPhones)
+            const isHeic = file.type === 'image/heic' ||
+                file.type === 'image/heif' ||
+                file.name.toLowerCase().endsWith('.heic') ||
+                file.name.toLowerCase().endsWith('.heif');
 
-            img.onload = () => {
+            if (isHeic) {
+                console.log('Convertendo HEIC para JPEG...');
                 try {
-                    const canvas = document.createElement('canvas');
-                    const maxWidth = 1200;
-                    const scale = Math.min(1, maxWidth / img.width);
-                    canvas.width = img.width * scale;
-                    canvas.height = img.height * scale;
+                    // Converter HEIC para JPEG
+                    const convertedBlob = await heic2any({
+                        blob: file,
+                        toType: 'image/jpeg',
+                        quality: 0.8
+                    });
 
-                    const ctx = canvas.getContext('2d');
-                    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-
-                    // Marca d'água simples: DD/MM/AAAA; HH:MM, [placa]
-                    const now = new Date();
-                    const dateStr = now.toLocaleDateString('pt-BR'); // DD/MM/AAAA
-                    const timeStr = now.toLocaleTimeString('pt-BR').slice(0, 5); // HH:MM
-
-                    // Fonte menor (mais legível sem atrapalhar a imagem)
-                    const fontSize = Math.max(32, Math.floor(canvas.width / 18));
-
-                    // Texto simples: data; hora, placa
-                    const watermarkText = `${dateStr}; ${timeStr}, ${plate}`;
-
-                    // Posição no canto inferior
-                    const textY = canvas.height - fontSize * 0.8;
-
-                    // Desenhar texto com contorno para legibilidade
-                    ctx.font = `bold ${fontSize}px Arial`;
-                    ctx.textAlign = 'center';
-                    ctx.textBaseline = 'middle';
-
-                    // Contorno preto
-                    ctx.strokeStyle = 'rgba(0, 0, 0, 0.9)';
-                    ctx.lineWidth = fontSize / 6;
-                    ctx.lineJoin = 'round';
-                    ctx.strokeText(watermarkText, canvas.width / 2, textY);
-
-                    // Texto branco
-                    ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
-                    ctx.fillText(watermarkText, canvas.width / 2, textY);
-
-                    // Converter para base64
-                    const base64 = canvas.toDataURL('image/jpeg', 0.7);
-                    setPreview(base64);
-                    onCapture(base64);
+                    // heic2any pode retornar array ou blob único
+                    fileToProcess = Array.isArray(convertedBlob) ? convertedBlob[0] : convertedBlob;
+                    console.log('Conversão HEIC concluída com sucesso');
+                } catch (heicError) {
+                    console.error('Erro ao converter HEIC:', heicError);
                     setProcessing(false);
-                } catch (canvasError) {
-                    console.error("Erro no canvas:", canvasError);
-                    setProcessing(false);
-                    alert("Erro ao processar imagem. Tente com outra foto.");
+                    alert('Erro ao processar imagem HEIC. Por favor, tire uma nova foto diretamente pela câmera ou use uma imagem JPG/PNG.');
+                    return;
                 }
+            }
+
+            // Usar FileReader para processar a imagem
+            const reader = new FileReader();
+
+            reader.onload = (event) => {
+                const img = new Image();
+
+                img.onload = () => {
+                    try {
+                        const canvas = document.createElement('canvas');
+                        const maxWidth = 1200;
+                        const scale = Math.min(1, maxWidth / img.width);
+                        canvas.width = img.width * scale;
+                        canvas.height = img.height * scale;
+
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+                        // Marca d'água simples: DD/MM/AAAA; HH:MM, [placa]
+                        const now = new Date();
+                        const dateStr = now.toLocaleDateString('pt-BR'); // DD/MM/AAAA
+                        const timeStr = now.toLocaleTimeString('pt-BR').slice(0, 5); // HH:MM
+
+                        // Fonte menor (mais legível sem atrapalhar a imagem)
+                        const fontSize = Math.max(32, Math.floor(canvas.width / 18));
+
+                        // Texto simples: data; hora, placa
+                        const watermarkText = `${dateStr}; ${timeStr}, ${plate}`;
+
+                        // Posição no canto inferior
+                        const textY = canvas.height - fontSize * 0.8;
+
+                        // Desenhar texto com contorno para legibilidade
+                        ctx.font = `bold ${fontSize}px Arial`;
+                        ctx.textAlign = 'center';
+                        ctx.textBaseline = 'middle';
+
+                        // Contorno preto
+                        ctx.strokeStyle = 'rgba(0, 0, 0, 0.9)';
+                        ctx.lineWidth = fontSize / 6;
+                        ctx.lineJoin = 'round';
+                        ctx.strokeText(watermarkText, canvas.width / 2, textY);
+
+                        // Texto branco
+                        ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+                        ctx.fillText(watermarkText, canvas.width / 2, textY);
+
+                        // Converter para base64
+                        const base64 = canvas.toDataURL('image/jpeg', 0.7);
+                        setPreview(base64);
+                        onCapture(base64);
+                        setProcessing(false);
+                    } catch (canvasError) {
+                        console.error("Erro no canvas:", canvasError);
+                        setProcessing(false);
+                        alert("Erro ao processar imagem. Tente com outra foto.");
+                    }
+                };
+
+                img.onerror = () => {
+                    console.error("Erro ao carregar imagem - formato não suportado");
+                    setProcessing(false);
+                    alert("Formato de imagem não suportado. Por favor, tire uma nova foto diretamente pela câmera ou use uma imagem JPG/PNG.");
+                };
+
+                img.src = event.target.result;
             };
 
-            img.onerror = () => {
-                console.error("Erro ao carregar imagem - formato não suportado");
+            reader.onerror = () => {
+                console.error("Erro ao ler arquivo");
                 setProcessing(false);
-                alert("Formato de imagem não suportado. Por favor, tire uma nova foto diretamente pela câmera ou use uma imagem JPG/PNG.");
+                alert("Erro ao ler o arquivo. Tente novamente.");
             };
 
-            img.src = event.target.result;
-        };
-
-        reader.onerror = () => {
-            console.error("Erro ao ler arquivo");
+            reader.readAsDataURL(fileToProcess);
+        } catch (error) {
+            console.error("Erro geral ao processar imagem:", error);
             setProcessing(false);
-            alert("Erro ao ler o arquivo. Tente novamente.");
-        };
-
-        reader.readAsDataURL(file);
+            alert("Erro ao processar imagem. Tente novamente ou use outra foto.");
+        }
     };
 
     const handleReset = () => {
         setPreview(null);
         onCapture(null);
         if (inputRef.current) inputRef.current.value = '';
+        if (galleryInputRef.current) galleryInputRef.current.value = '';
     };
 
     return (
         <div className="mb-4">
             <label className="block text-sm font-semibold text-slate-700 mb-2">{label}</label>
+            {/* Input para câmera */}
             <input
                 ref={inputRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                onChange={handleCapture}
+                className="hidden"
+            />
+            {/* Input para galeria */}
+            <input
+                ref={galleryInputRef}
                 type="file"
                 accept="image/*"
                 onChange={handleCapture}
@@ -146,21 +194,40 @@ const CameraCapture = ({ onCapture, label, plate }) => {
                     </button>
                 </div>
             ) : (
-                <button
-                    type="button"
-                    onClick={() => inputRef.current?.click()}
-                    disabled={processing}
-                    className="w-full h-40 border-2 border-dashed border-indigo-300 rounded-xl flex flex-col items-center justify-center gap-2 text-indigo-600 bg-indigo-50/50 hover:bg-indigo-100 transition-colors"
-                >
-                    {processing ? (
-                        <Loader2 size={32} className="animate-spin" />
-                    ) : (
-                        <>
-                            <Camera size={32} />
-                            <span className="text-sm font-medium">Tirar Foto</span>
-                        </>
-                    )}
-                </button>
+                <div className="flex gap-3">
+                    {/* Botão Câmera */}
+                    <button
+                        type="button"
+                        onClick={() => inputRef.current?.click()}
+                        disabled={processing}
+                        className="flex-1 h-32 border-2 border-dashed border-indigo-300 rounded-xl flex flex-col items-center justify-center gap-2 text-indigo-600 bg-indigo-50/50 hover:bg-indigo-100 transition-colors"
+                    >
+                        {processing ? (
+                            <Loader2 size={28} className="animate-spin" />
+                        ) : (
+                            <>
+                                <Camera size={28} />
+                                <span className="text-xs font-medium">Câmera</span>
+                            </>
+                        )}
+                    </button>
+                    {/* Botão Galeria */}
+                    <button
+                        type="button"
+                        onClick={() => galleryInputRef.current?.click()}
+                        disabled={processing}
+                        className="flex-1 h-32 border-2 border-dashed border-purple-300 rounded-xl flex flex-col items-center justify-center gap-2 text-purple-600 bg-purple-50/50 hover:bg-purple-100 transition-colors"
+                    >
+                        {processing ? (
+                            <Loader2 size={28} className="animate-spin" />
+                        ) : (
+                            <>
+                                <Image size={28} />
+                                <span className="text-xs font-medium">Galeria</span>
+                            </>
+                        )}
+                    </button>
+                </div>
             )}
         </div>
     );
