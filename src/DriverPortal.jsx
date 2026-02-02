@@ -38,7 +38,20 @@ const CameraCapture = ({ onCapture, label, plate }) => {
         const file = e.target.files[0];
         if (!file) return;
 
+        console.log('Iniciando processamento de imagem:', file.name, file.type, file.size);
         setProcessing(true);
+
+        // Timeout de segurança - 30 segundos máximo
+        const timeoutId = setTimeout(() => {
+            console.error('Timeout ao processar imagem');
+            setProcessing(false);
+            alert('Tempo esgotado ao processar imagem. Tente novamente.');
+        }, 30000);
+
+        const cleanup = () => {
+            clearTimeout(timeoutId);
+            setProcessing(false);
+        };
 
         try {
             let fileToProcess = file;
@@ -50,104 +63,89 @@ const CameraCapture = ({ onCapture, label, plate }) => {
                 file.name.toLowerCase().endsWith('.heif');
 
             if (isHeic) {
-                console.log('Convertendo HEIC para JPEG...');
+                console.log('Arquivo HEIC detectado, convertendo...');
                 try {
-                    // Converter HEIC para JPEG
                     const convertedBlob = await heic2any({
                         blob: file,
                         toType: 'image/jpeg',
                         quality: 0.8
                     });
-
-                    // heic2any pode retornar array ou blob único
                     fileToProcess = Array.isArray(convertedBlob) ? convertedBlob[0] : convertedBlob;
-                    console.log('Conversão HEIC concluída com sucesso');
+                    console.log('Conversão HEIC concluída');
                 } catch (heicError) {
                     console.error('Erro ao converter HEIC:', heicError);
-                    setProcessing(false);
+                    cleanup();
                     alert('Erro ao processar imagem HEIC. Por favor, tire uma nova foto diretamente pela câmera ou use uma imagem JPG/PNG.');
                     return;
                 }
             }
 
-            // Usar FileReader para processar a imagem
-            const reader = new FileReader();
+            // Processar imagem
+            const processImage = (imageFile) => {
+                return new Promise((resolve, reject) => {
+                    const reader = new FileReader();
 
-            reader.onload = (event) => {
-                const img = new Image();
+                    reader.onload = (event) => {
+                        const img = new window.Image();
 
-                img.onload = () => {
-                    try {
-                        const canvas = document.createElement('canvas');
-                        const maxWidth = 1200;
-                        const scale = Math.min(1, maxWidth / img.width);
-                        canvas.width = img.width * scale;
-                        canvas.height = img.height * scale;
+                        img.onload = () => {
+                            try {
+                                const canvas = document.createElement('canvas');
+                                const maxWidth = 1200;
+                                const scale = Math.min(1, maxWidth / img.width);
+                                canvas.width = img.width * scale;
+                                canvas.height = img.height * scale;
 
-                        const ctx = canvas.getContext('2d');
-                        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                                const ctx = canvas.getContext('2d');
+                                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
 
-                        // Marca d'água simples: DD/MM/AAAA; HH:MM, [placa]
-                        const now = new Date();
-                        const dateStr = now.toLocaleDateString('pt-BR'); // DD/MM/AAAA
-                        const timeStr = now.toLocaleTimeString('pt-BR').slice(0, 5); // HH:MM
+                                // Marca d'água
+                                const now = new Date();
+                                const dateStr = now.toLocaleDateString('pt-BR');
+                                const timeStr = now.toLocaleTimeString('pt-BR').slice(0, 5);
+                                const fontSize = Math.max(32, Math.floor(canvas.width / 18));
+                                const watermarkText = `${dateStr}; ${timeStr}, ${plate}`;
+                                const textY = canvas.height - fontSize * 0.8;
 
-                        // Fonte menor (mais legível sem atrapalhar a imagem)
-                        const fontSize = Math.max(32, Math.floor(canvas.width / 18));
+                                ctx.font = `bold ${fontSize}px Arial`;
+                                ctx.textAlign = 'center';
+                                ctx.textBaseline = 'middle';
+                                ctx.strokeStyle = 'rgba(0, 0, 0, 0.9)';
+                                ctx.lineWidth = fontSize / 6;
+                                ctx.lineJoin = 'round';
+                                ctx.strokeText(watermarkText, canvas.width / 2, textY);
+                                ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+                                ctx.fillText(watermarkText, canvas.width / 2, textY);
 
-                        // Texto simples: data; hora, placa
-                        const watermarkText = `${dateStr}; ${timeStr}, ${plate}`;
+                                const base64 = canvas.toDataURL('image/jpeg', 0.7);
+                                resolve(base64);
+                            } catch (err) {
+                                reject(err);
+                            }
+                        };
 
-                        // Posição no canto inferior
-                        const textY = canvas.height - fontSize * 0.8;
+                        img.onerror = () => reject(new Error('Formato de imagem não suportado'));
+                        img.src = event.target.result;
+                    };
 
-                        // Desenhar texto com contorno para legibilidade
-                        ctx.font = `bold ${fontSize}px Arial`;
-                        ctx.textAlign = 'center';
-                        ctx.textBaseline = 'middle';
-
-                        // Contorno preto
-                        ctx.strokeStyle = 'rgba(0, 0, 0, 0.9)';
-                        ctx.lineWidth = fontSize / 6;
-                        ctx.lineJoin = 'round';
-                        ctx.strokeText(watermarkText, canvas.width / 2, textY);
-
-                        // Texto branco
-                        ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
-                        ctx.fillText(watermarkText, canvas.width / 2, textY);
-
-                        // Converter para base64
-                        const base64 = canvas.toDataURL('image/jpeg', 0.7);
-                        setPreview(base64);
-                        onCapture(base64);
-                        setProcessing(false);
-                    } catch (canvasError) {
-                        console.error("Erro no canvas:", canvasError);
-                        setProcessing(false);
-                        alert("Erro ao processar imagem. Tente com outra foto.");
-                    }
-                };
-
-                img.onerror = () => {
-                    console.error("Erro ao carregar imagem - formato não suportado");
-                    setProcessing(false);
-                    alert("Formato de imagem não suportado. Por favor, tire uma nova foto diretamente pela câmera ou use uma imagem JPG/PNG.");
-                };
-
-                img.src = event.target.result;
+                    reader.onerror = () => reject(new Error('Erro ao ler arquivo'));
+                    reader.readAsDataURL(imageFile);
+                });
             };
 
-            reader.onerror = () => {
-                console.error("Erro ao ler arquivo");
-                setProcessing(false);
-                alert("Erro ao ler o arquivo. Tente novamente.");
-            };
+            console.log('Iniciando processamento do canvas...');
+            const base64 = await processImage(fileToProcess);
+            console.log('Imagem processada com sucesso');
 
-            reader.readAsDataURL(fileToProcess);
-        } catch (error) {
-            console.error("Erro geral ao processar imagem:", error);
+            clearTimeout(timeoutId);
+            setPreview(base64);
+            onCapture(base64);
             setProcessing(false);
-            alert("Erro ao processar imagem. Tente novamente ou use outra foto.");
+
+        } catch (error) {
+            console.error('Erro ao processar imagem:', error);
+            cleanup();
+            alert(error.message || 'Erro ao processar imagem. Tente novamente.');
         }
     };
 
