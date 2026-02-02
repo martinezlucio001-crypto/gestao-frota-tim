@@ -80,56 +80,87 @@ const CameraCapture = ({ onCapture, label, plate }) => {
                 }
             }
 
-            // Processar imagem
+            // Processar imagem - tenta FileReader primeiro, depois createObjectURL como fallback
             const processImage = (imageFile) => {
                 return new Promise((resolve, reject) => {
-                    const reader = new FileReader();
-
-                    reader.onload = (event) => {
-                        const img = new window.Image();
-
-                        img.onload = () => {
-                            try {
-                                const canvas = document.createElement('canvas');
-                                const maxWidth = 1200;
-                                const scale = Math.min(1, maxWidth / img.width);
-                                canvas.width = img.width * scale;
-                                canvas.height = img.height * scale;
-
-                                const ctx = canvas.getContext('2d');
-                                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-
-                                // Marca d'água
-                                const now = new Date();
-                                const dateStr = now.toLocaleDateString('pt-BR');
-                                const timeStr = now.toLocaleTimeString('pt-BR').slice(0, 5);
-                                const fontSize = Math.max(32, Math.floor(canvas.width / 18));
-                                const watermarkText = `${dateStr}; ${timeStr}, ${plate}`;
-                                const textY = canvas.height - fontSize * 0.8;
-
-                                ctx.font = `bold ${fontSize}px Arial`;
-                                ctx.textAlign = 'center';
-                                ctx.textBaseline = 'middle';
-                                ctx.strokeStyle = 'rgba(0, 0, 0, 0.9)';
-                                ctx.lineWidth = fontSize / 6;
-                                ctx.lineJoin = 'round';
-                                ctx.strokeText(watermarkText, canvas.width / 2, textY);
-                                ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
-                                ctx.fillText(watermarkText, canvas.width / 2, textY);
-
-                                const base64 = canvas.toDataURL('image/jpeg', 0.7);
-                                resolve(base64);
-                            } catch (err) {
-                                reject(err);
-                            }
-                        };
-
-                        img.onerror = () => reject(new Error('Formato de imagem não suportado'));
-                        img.src = event.target.result;
+                    const loadImageFromSrc = (src) => {
+                        return new Promise((imgResolve, imgReject) => {
+                            const img = new window.Image();
+                            img.onload = () => imgResolve(img);
+                            img.onerror = () => imgReject(new Error('Formato de imagem não suportado'));
+                            img.src = src;
+                        });
                     };
 
-                    reader.onerror = () => reject(new Error('Erro ao ler arquivo'));
-                    reader.readAsDataURL(imageFile);
+                    const applyWatermarkAndConvert = (img) => {
+                        const canvas = document.createElement('canvas');
+                        const maxWidth = 1200;
+                        const scale = Math.min(1, maxWidth / img.width);
+                        canvas.width = img.width * scale;
+                        canvas.height = img.height * scale;
+
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+                        // Marca d'água
+                        const now = new Date();
+                        const dateStr = now.toLocaleDateString('pt-BR');
+                        const timeStr = now.toLocaleTimeString('pt-BR').slice(0, 5);
+                        const fontSize = Math.max(32, Math.floor(canvas.width / 18));
+                        const watermarkText = `${dateStr}; ${timeStr}, ${plate}`;
+                        const textY = canvas.height - fontSize * 0.8;
+
+                        ctx.font = `bold ${fontSize}px Arial`;
+                        ctx.textAlign = 'center';
+                        ctx.textBaseline = 'middle';
+                        ctx.strokeStyle = 'rgba(0, 0, 0, 0.9)';
+                        ctx.lineWidth = fontSize / 6;
+                        ctx.lineJoin = 'round';
+                        ctx.strokeText(watermarkText, canvas.width / 2, textY);
+                        ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+                        ctx.fillText(watermarkText, canvas.width / 2, textY);
+
+                        return canvas.toDataURL('image/jpeg', 0.7);
+                    };
+
+                    // Método 1: FileReader (mais compatível)
+                    const tryFileReader = () => {
+                        return new Promise((frResolve, frReject) => {
+                            const reader = new FileReader();
+                            reader.onload = (event) => frResolve(event.target.result);
+                            reader.onerror = (e) => frReject(new Error('FileReader falhou: ' + (e.target?.error?.message || 'erro desconhecido')));
+                            reader.readAsDataURL(imageFile);
+                        });
+                    };
+
+                    // Método 2: createObjectURL (fallback)
+                    const tryObjectURL = () => {
+                        return URL.createObjectURL(imageFile);
+                    };
+
+                    // Tentar FileReader primeiro
+                    tryFileReader()
+                        .then(dataUrl => loadImageFromSrc(dataUrl))
+                        .then(img => {
+                            const result = applyWatermarkAndConvert(img);
+                            resolve(result);
+                        })
+                        .catch(fileReaderError => {
+                            console.warn('FileReader falhou, tentando createObjectURL...', fileReaderError);
+
+                            // Fallback para createObjectURL
+                            const objectUrl = tryObjectURL();
+                            loadImageFromSrc(objectUrl)
+                                .then(img => {
+                                    URL.revokeObjectURL(objectUrl); // Limpar memória
+                                    const result = applyWatermarkAndConvert(img);
+                                    resolve(result);
+                                })
+                                .catch(err => {
+                                    URL.revokeObjectURL(objectUrl);
+                                    reject(new Error('Não foi possível processar esta imagem. Tente outra.'));
+                                });
+                        });
                 });
             };
 
