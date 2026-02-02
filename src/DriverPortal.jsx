@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Fuel, Camera, Check, Loader2, LogOut, History, AlertCircle, Eye, EyeOff, Plus, RefreshCw, ChevronLeft, User, Truck, Calendar, CheckCircle2 } from 'lucide-react';
+import { Fuel, Camera, Check, Loader2, LogOut, History, AlertCircle, Eye, EyeOff, Plus, RefreshCw, ChevronLeft, User, Truck, Calendar, CheckCircle2, Wrench, AlertTriangle } from 'lucide-react';
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getFirestore, collection, query, where, getDocs, addDoc } from 'firebase/firestore';
 
@@ -38,54 +38,66 @@ const CameraCapture = ({ onCapture, label, plate }) => {
 
         setProcessing(true);
 
-        const img = new Image();
-        img.onload = () => {
-            const canvas = document.createElement('canvas');
-            const maxWidth = 1200;
-            const scale = Math.min(1, maxWidth / img.width);
-            canvas.width = img.width * scale;
-            canvas.height = img.height * scale;
+        try {
+            const img = new Image();
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                const maxWidth = 1200;
+                const scale = Math.min(1, maxWidth / img.width);
+                canvas.width = img.width * scale;
+                canvas.height = img.height * scale;
 
-            const ctx = canvas.getContext('2d');
-            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
 
-            // Marca d'água simples: DD/MM/AAAA; HH:MM, [placa]
-            const now = new Date();
-            const dateStr = now.toLocaleDateString('pt-BR'); // DD/MM/AAAA
-            const timeStr = now.toLocaleTimeString('pt-BR').slice(0, 5); // HH:MM
+                // Marca d'água simples: DD/MM/AAAA; HH:MM, [placa]
+                const now = new Date();
+                const dateStr = now.toLocaleDateString('pt-BR'); // DD/MM/AAAA
+                const timeStr = now.toLocaleTimeString('pt-BR').slice(0, 5); // HH:MM
 
-            // Fonte menor (mais legível sem atrapalhar a imagem)
-            const fontSize = Math.max(32, Math.floor(canvas.width / 18));
+                // Fonte menor (mais legível sem atrapalhar a imagem)
+                const fontSize = Math.max(32, Math.floor(canvas.width / 18));
 
-            // Texto simples: data; hora, placa
-            const watermarkText = `${dateStr}; ${timeStr}, ${plate}`;
+                // Texto simples: data; hora, placa
+                const watermarkText = `${dateStr}; ${timeStr}, ${plate}`;
 
-            // Posição no canto inferior
-            const textY = canvas.height - fontSize * 0.8;
+                // Posição no canto inferior
+                const textY = canvas.height - fontSize * 0.8;
 
-            // Desenhar texto com contorno para legibilidade
-            ctx.font = `bold ${fontSize}px Arial`;
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
+                // Desenhar texto com contorno para legibilidade
+                ctx.font = `bold ${fontSize}px Arial`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
 
-            // Contorno preto
-            ctx.strokeStyle = 'rgba(0, 0, 0, 0.9)';
-            ctx.lineWidth = fontSize / 6;
-            ctx.lineJoin = 'round';
-            ctx.strokeText(watermarkText, canvas.width / 2, textY);
+                // Contorno preto
+                ctx.strokeStyle = 'rgba(0, 0, 0, 0.9)';
+                ctx.lineWidth = fontSize / 6;
+                ctx.lineJoin = 'round';
+                ctx.strokeText(watermarkText, canvas.width / 2, textY);
 
-            // Texto branco
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
-            ctx.fillText(watermarkText, canvas.width / 2, textY);
+                // Texto branco
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+                ctx.fillText(watermarkText, canvas.width / 2, textY);
 
-            // Converter para base64
-            const base64 = canvas.toDataURL('image/jpeg', 0.7);
-            setPreview(base64);
-            onCapture(base64);
+                // Converter para base64
+                const base64 = canvas.toDataURL('image/jpeg', 0.7);
+                setPreview(base64);
+                onCapture(base64);
+                setProcessing(false);
+            };
+
+            img.onerror = () => {
+                console.error("Erro ao carregar imagem");
+                alert("Erro ao processar imagem. Tente novamente ou use outra foto.");
+                setProcessing(false);
+            };
+
+            img.src = URL.createObjectURL(file);
+        } catch (error) {
+            console.error("Erro no processamento:", error);
             setProcessing(false);
-        };
-
-        img.src = URL.createObjectURL(file);
+            alert("Erro ao processar arquivo.");
+        }
     };
 
     const handleReset = () => {
@@ -101,7 +113,6 @@ const CameraCapture = ({ onCapture, label, plate }) => {
                 ref={inputRef}
                 type="file"
                 accept="image/*"
-                capture="environment"
                 onChange={handleCapture}
                 className="hidden"
             />
@@ -155,6 +166,21 @@ const DriverPortal = () => {
     const [recentEntries, setRecentEntries] = useState([]);
     const [currentPage, setCurrentPage] = useState('home'); // 'home', 'newEntry', 'history', 'success'
     const [showWelcome, setShowWelcome] = useState(false);
+    const [showConfirmationModal, setShowConfirmationModal] = useState(false);
+
+    // Estado de manutenção
+    const [maintenanceAlerts, setMaintenanceAlerts] = useState([]);
+    const [showMaintenanceAlert, setShowMaintenanceAlert] = useState(false);
+    const [maintenanceServices, setMaintenanceServices] = useState([]);
+    const [maintenanceRecords, setMaintenanceRecords] = useState([]);
+    const [maintenanceFormData, setMaintenanceFormData] = useState({
+        date: '',
+        serviceId: '',
+        customServiceName: '',
+        mileage: '',
+        cost: ''
+    });
+    const [showMileageWarning, setShowMileageWarning] = useState(false);
 
     const [formData, setFormData] = useState({
         liters: '',
@@ -166,6 +192,10 @@ const DriverPortal = () => {
     const [odometerAfterPhoto, setOdometerAfterPhoto] = useState(null);
     const [receiptPhoto, setReceiptPhoto] = useState(null);
 
+    useEffect(() => {
+        document.title = "Portal do Motorista TIM";
+    }, []);
+
     // Verificar login salvo
     useEffect(() => {
         const savedTruck = localStorage.getItem('driverTruck');
@@ -174,6 +204,8 @@ const DriverPortal = () => {
             setTruck(truckData);
             setIsLoggedIn(true);
             loadRecentEntries(truckData.id);
+            // Verificar manutenções pendentes em background (pequeno delay)
+            setTimeout(() => checkMaintenanceAlerts(truckData.id), 1500);
         }
         setIsLoading(false);
     }, []);
@@ -193,6 +225,143 @@ const DriverPortal = () => {
         } catch (error) {
             console.error('Erro ao carregar histórico:', error);
         }
+    };
+
+    // Verificar manutenções pendentes
+    const checkMaintenanceAlerts = async (truckId) => {
+        try {
+            // Buscar serviços
+            const servicesSnap = await getDocs(collection(db, 'artifacts', appId, 'public', 'data', 'maintenanceServices'));
+            const services = servicesSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+            // Buscar registros de manutenção deste veículo
+            const recordsSnap = await getDocs(collection(db, 'artifacts', appId, 'public', 'data', 'maintenanceRecords'));
+            const records = recordsSnap.docs.map(d => ({ id: d.id, ...d.data() })).filter(r => r.truckId === truckId);
+
+            // Buscar abastecimentos para saber km atual
+            const entriesSnap = await getDocs(query(
+                collection(db, 'artifacts', appId, 'public', 'data', 'entries'),
+                where('truckId', '==', truckId)
+            ));
+            const entries = entriesSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+            const currentMileage = entries.length > 0 ? Math.max(...entries.map(e => e.newMileage || 0)) : 0;
+
+            const alerts = [];
+            const today = new Date();
+
+            services.forEach(service => {
+                // Verificar se este veículo está apto ao serviço
+                if (!service.applicableTrucks?.includes(truckId)) return;
+
+                // Último registro deste serviço para este veículo
+                const serviceRecords = records.filter(r => r.serviceId === service.id);
+                const lastRecord = serviceRecords.sort((a, b) => new Date(b.date) - new Date(a.date))[0];
+
+                let isDue = false;
+                let dueInfo = '';
+
+                if (!lastRecord) {
+                    isDue = true;
+                    dueInfo = 'Nunca realizado';
+                } else if (service.periodicityType === 'km') {
+                    const nextDueKm = lastRecord.mileage + service.periodicityValue;
+                    if (currentMileage >= nextDueKm) {
+                        isDue = true;
+                        dueInfo = `Última: ${lastRecord.mileage.toLocaleString()} km`;
+                    }
+                } else if (service.periodicityType === 'days') {
+                    const lastDate = new Date(lastRecord.date);
+                    const nextDueDate = new Date(lastDate);
+                    nextDueDate.setDate(nextDueDate.getDate() + service.periodicityValue);
+                    if (today >= nextDueDate) {
+                        isDue = true;
+                        dueInfo = `Última: ${formatDateBR(lastRecord.date)}`;
+                    }
+                }
+
+                if (isDue) {
+                    alerts.push({
+                        id: `${service.id}-${truckId}`,
+                        serviceId: service.id,
+                        serviceName: service.name,
+                        dueInfo
+                    });
+                }
+            });
+
+            setMaintenanceAlerts(alerts);
+            if (alerts.length > 0) {
+                setShowMaintenanceAlert(true);
+            }
+        } catch (error) {
+            console.error('Erro ao verificar manutenções:', error);
+        }
+    };
+
+    // Carregar dados de manutenção
+    const loadMaintenanceData = async (truckId) => {
+        try {
+            // Buscar serviços
+            const servicesSnap = await getDocs(collection(db, 'artifacts', appId, 'public', 'data', 'maintenanceServices'));
+            const services = servicesSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+            setMaintenanceServices(services.filter(s => s.applicableTrucks?.includes(truckId)));
+
+            // Buscar registros de manutenção deste veículo
+            const recordsSnap = await getDocs(collection(db, 'artifacts', appId, 'public', 'data', 'maintenanceRecords'));
+            const records = recordsSnap.docs.map(d => ({ id: d.id, ...d.data() })).filter(r => r.truckId === truckId);
+            records.sort((a, b) => new Date(b.date) - new Date(a.date));
+            setMaintenanceRecords(records);
+        } catch (error) {
+            console.error('Erro ao carregar dados de manutenção:', error);
+        }
+    };
+
+    // Salvar registro de manutenção
+    const handleSaveMaintenanceRecord = async () => {
+        if (!truck) return;
+        setIsSaving(true);
+
+        try {
+            const serviceName = maintenanceFormData.serviceId === 'outro'
+                ? maintenanceFormData.customServiceName
+                : maintenanceServices.find(s => s.id === maintenanceFormData.serviceId)?.name || '';
+
+            await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'maintenanceRecords'), {
+                truckId: truck.id,
+                date: maintenanceFormData.date,
+                serviceId: maintenanceFormData.serviceId === 'outro' ? null : maintenanceFormData.serviceId,
+                serviceName: serviceName,
+                mileage: Number(maintenanceFormData.mileage),
+                cost: Number(maintenanceFormData.cost) || 0,
+                createdAt: new Date().toISOString(),
+                addedBy: 'driver',
+                driverName: truck.driver
+            });
+
+            setMaintenanceFormData({
+                date: '',
+                serviceId: '',
+                customServiceName: '',
+                mileage: '',
+                cost: ''
+            });
+            setShowMileageWarning(false);
+            setCurrentPage('maintenanceSuccess');
+        } catch (error) {
+            console.error('Erro ao salvar manutenção:', error);
+            alert('Erro ao salvar manutenção. Tente novamente.');
+        }
+
+        setIsSaving(false);
+    };
+
+    // Calcular última km de manutenção conhecida
+    const getLastMaintenanceMileage = () => {
+        const allMileages = [
+            ...recentEntries.map(e => e.newMileage || 0),
+            ...maintenanceRecords.map(r => r.mileage || 0)
+        ];
+        return allMileages.length > 0 ? Math.max(...allMileages) : 0;
     };
 
     // Login
@@ -228,6 +397,7 @@ const DriverPortal = () => {
             setIsLoggedIn(true);
             localStorage.setItem('driverTruck', JSON.stringify(truckData));
             loadRecentEntries(truckData.id);
+            checkMaintenanceAlerts(truckData.id);
 
             // Mostrar mensagem de boas-vindas
             setShowWelcome(true);
@@ -250,15 +420,28 @@ const DriverPortal = () => {
         setCurrentPage('home');
     };
 
-    // Salvar abastecimento
+    // Verificação inicial antes de salvar
     const handleSubmit = async (e) => {
         e.preventDefault();
 
-        if (!odometerBeforePhoto || !odometerAfterPhoto || !receiptPhoto) {
-            alert('Tire as três fotos antes de enviar!');
+        // 1. Recibo é obrigatório
+        if (!receiptPhoto) {
+            alert('A foto do RECIBO é obrigatória para o registro!');
             return;
         }
 
+        // 2. Se faltar alguma foto do odômetro, pede confirmação
+        if (!odometerBeforePhoto || !odometerAfterPhoto) {
+            setShowConfirmationModal(true);
+            return;
+        }
+
+        // 3. Se tudo estiver ok, salva direto
+        confirmSave();
+    };
+
+    const confirmSave = async () => {
+        setShowConfirmationModal(false);
         setIsSaving(true);
         setSaveSuccess(false);
 
@@ -271,8 +454,8 @@ const DriverPortal = () => {
                 liters: Number(formData.liters),
                 totalCost: Number(formData.totalCost),
                 newMileage: Number(formData.newMileage),
-                odometerBeforePhoto: odometerBeforePhoto,
-                odometerAfterPhoto: odometerAfterPhoto,
+                odometerBeforePhoto: odometerBeforePhoto || null,
+                odometerAfterPhoto: odometerAfterPhoto || null,
                 receiptPhoto: receiptPhoto,
                 registeredBy: 'driver',
                 createdAt: now.toISOString()
@@ -386,6 +569,43 @@ const DriverPortal = () => {
                 </div>
             )}
 
+            {/* Modal de Alerta de Manutenção */}
+            {showMaintenanceAlert && maintenanceAlerts.length > 0 && (
+                <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in">
+                    <div className="bg-white rounded-3xl p-6 max-w-sm w-full shadow-2xl max-h-[85vh] flex flex-col">
+                        <div className="flex items-center gap-3 mb-4">
+                            <div className="w-12 h-12 bg-amber-100 rounded-2xl flex items-center justify-center flex-shrink-0">
+                                <Wrench className="text-amber-600" size={24} />
+                            </div>
+                            <div>
+                                <h3 className="text-xl font-bold text-slate-800">Manutenção Pendente</h3>
+                                <p className="text-sm text-slate-500">{maintenanceAlerts.length} alerta(s)</p>
+                            </div>
+                        </div>
+
+                        <div className="space-y-2 mb-4 overflow-y-auto flex-1 max-h-[40vh] pr-1">
+                            {maintenanceAlerts.map(alert => (
+                                <div key={alert.id} className="bg-amber-50 p-3 rounded-xl border border-amber-100">
+                                    <p className="font-bold text-slate-800">{alert.serviceName}</p>
+                                    <p className="text-xs text-slate-500">{alert.dueInfo}</p>
+                                </div>
+                            ))}
+                        </div>
+
+                        <p className="text-sm text-slate-500 mb-4">
+                            Seu veículo possui manutenções pendentes. Procure o responsável pela frota para regularizar.
+                        </p>
+
+                        <button
+                            onClick={() => setShowMaintenanceAlert(false)}
+                            className="w-full py-3 bg-slate-100 text-slate-700 font-bold rounded-xl hover:bg-slate-200 transition-colors"
+                        >
+                            Entendi
+                        </button>
+                    </div>
+                </div>
+            )}
+
             {/* Header */}
             <div className="bg-indigo-600 text-white p-4 flex justify-between items-center sticky top-0 z-10">
                 {currentPage !== 'home' && currentPage !== 'success' ? (
@@ -428,16 +648,18 @@ const DriverPortal = () => {
                 {/* Página Home */}
                 {currentPage === 'home' && (
                     <div className="space-y-4">
+                        {/* Abastecimento */}
+                        <p className="text-xs font-bold text-slate-400 uppercase tracking-wider px-1">Combustível</p>
                         <button
                             onClick={() => setCurrentPage('newEntry')}
-                            className="w-full bg-indigo-600 hover:bg-indigo-700 text-white p-6 rounded-2xl flex items-center gap-4 transition-colors shadow-lg"
+                            className="w-full bg-indigo-600 hover:bg-indigo-700 text-white p-5 rounded-2xl flex items-center gap-4 transition-colors shadow-lg"
                         >
-                            <div className="w-14 h-14 bg-white/20 rounded-xl flex items-center justify-center">
-                                <Plus size={28} />
+                            <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center">
+                                <Fuel size={24} />
                             </div>
                             <div className="text-left">
-                                <p className="text-lg font-bold">Novo Registro</p>
-                                <p className="text-indigo-200 text-sm">Registrar abastecimento</p>
+                                <p className="text-lg font-bold">Registrar Abastecimento</p>
+                                <p className="text-indigo-200 text-sm">Novo registro de combustível</p>
                             </div>
                         </button>
 
@@ -446,14 +668,55 @@ const DriverPortal = () => {
                                 loadRecentEntries(truck.id);
                                 setCurrentPage('history');
                             }}
-                            className="w-full bg-white hover:bg-slate-50 text-slate-800 p-6 rounded-2xl flex items-center gap-4 transition-colors shadow-sm border border-slate-100"
+                            className="w-full bg-white hover:bg-slate-50 text-slate-800 p-5 rounded-2xl flex items-center gap-4 transition-colors shadow-sm border border-slate-100"
                         >
-                            <div className="w-14 h-14 bg-indigo-100 rounded-xl flex items-center justify-center">
-                                <History size={28} className="text-indigo-600" />
+                            <div className="w-12 h-12 bg-indigo-100 rounded-xl flex items-center justify-center">
+                                <History size={24} className="text-indigo-600" />
                             </div>
                             <div className="text-left">
-                                <p className="text-lg font-bold">Histórico de Registros</p>
-                                <p className="text-slate-500 text-sm">Ver abastecimentos anteriores</p>
+                                <p className="text-lg font-bold">Histórico de Abastecimentos</p>
+                                <p className="text-slate-500 text-sm">Ver registros anteriores</p>
+                            </div>
+                        </button>
+
+                        {/* Manutenção */}
+                        <p className="text-xs font-bold text-slate-400 uppercase tracking-wider px-1 pt-4">Manutenção</p>
+                        <button
+                            onClick={() => {
+                                loadMaintenanceData(truck.id);
+                                setMaintenanceFormData({
+                                    date: new Date().toISOString().split('T')[0],
+                                    serviceId: '',
+                                    customServiceName: '',
+                                    mileage: '',
+                                    cost: ''
+                                });
+                                setCurrentPage('newMaintenance');
+                            }}
+                            className="w-full bg-amber-500 hover:bg-amber-600 text-white p-5 rounded-2xl flex items-center gap-4 transition-colors shadow-lg"
+                        >
+                            <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center">
+                                <Wrench size={24} />
+                            </div>
+                            <div className="text-left">
+                                <p className="text-lg font-bold">Registrar Manutenção</p>
+                                <p className="text-amber-100 text-sm">Novo registro de serviço</p>
+                            </div>
+                        </button>
+
+                        <button
+                            onClick={() => {
+                                loadMaintenanceData(truck.id);
+                                setCurrentPage('maintenanceHistory');
+                            }}
+                            className="w-full bg-white hover:bg-slate-50 text-slate-800 p-5 rounded-2xl flex items-center gap-4 transition-colors shadow-sm border border-slate-100"
+                        >
+                            <div className="w-12 h-12 bg-amber-100 rounded-xl flex items-center justify-center">
+                                <History size={24} className="text-amber-600" />
+                            </div>
+                            <div className="text-left">
+                                <p className="text-lg font-bold">Histórico de Manutenções</p>
+                                <p className="text-slate-500 text-sm">Ver serviços realizados</p>
                             </div>
                         </button>
                     </div>
@@ -590,6 +853,225 @@ const DriverPortal = () => {
                                 ))}
                             </div>
                         )}
+                    </div>
+                )}
+
+                {/* Página Registrar Manutenção */}
+                {currentPage === 'newMaintenance' && (
+                    <div className="bg-white rounded-2xl shadow-sm p-6 relative">
+                        <h2 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
+                            <Wrench size={20} className="text-amber-600" />
+                            Nova Manutenção
+                        </h2>
+
+                        <div className="bg-slate-50 rounded-xl p-4 mb-6 space-y-2">
+                            <div className="flex items-center gap-2 text-sm">
+                                <Truck size={16} className="text-amber-600" />
+                                <span className="text-slate-600">Veículo:</span>
+                                <span className="font-medium text-slate-800">{truck.plate}</span>
+                            </div>
+                        </div>
+
+                        <form onSubmit={(e) => {
+                            e.preventDefault();
+                            const lastKm = getLastMaintenanceMileage();
+                            if (Number(maintenanceFormData.mileage) < lastKm) {
+                                setShowMileageWarning(true);
+                                return;
+                            }
+                            handleSaveMaintenanceRecord();
+                        }}>
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="block text-sm font-semibold text-slate-700 mb-2">Data</label>
+                                    <input
+                                        type="date"
+                                        value={maintenanceFormData.date}
+                                        onChange={(e) => setMaintenanceFormData({ ...maintenanceFormData, date: e.target.value })}
+                                        required
+                                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 outline-none"
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-semibold text-slate-700 mb-2">Tipo de Serviço</label>
+                                    <select
+                                        value={maintenanceFormData.serviceId}
+                                        onChange={(e) => setMaintenanceFormData({ ...maintenanceFormData, serviceId: e.target.value })}
+                                        required
+                                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 outline-none"
+                                    >
+                                        <option value="">Selecione...</option>
+                                        {maintenanceServices.map(s => (
+                                            <option key={s.id} value={s.id}>{s.name}</option>
+                                        ))}
+                                        <option value="outro">Outro (especificar)</option>
+                                    </select>
+                                </div>
+
+                                {maintenanceFormData.serviceId === 'outro' && (
+                                    <div>
+                                        <label className="block text-sm font-semibold text-slate-700 mb-2">Nome do Serviço</label>
+                                        <input
+                                            type="text"
+                                            value={maintenanceFormData.customServiceName}
+                                            onChange={(e) => setMaintenanceFormData({ ...maintenanceFormData, customServiceName: e.target.value })}
+                                            placeholder="Ex: Troca de correia"
+                                            required
+                                            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 outline-none"
+                                        />
+                                    </div>
+                                )}
+
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-sm font-semibold text-slate-700 mb-2">Km Atual</label>
+                                        <input
+                                            type="number"
+                                            value={maintenanceFormData.mileage}
+                                            onChange={(e) => setMaintenanceFormData({ ...maintenanceFormData, mileage: e.target.value })}
+                                            placeholder="Ex: 85000"
+                                            required
+                                            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 outline-none"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-semibold text-slate-700 mb-2">Valor (R$)</label>
+                                        <input
+                                            type="number"
+                                            step="0.01"
+                                            value={maintenanceFormData.cost}
+                                            onChange={(e) => setMaintenanceFormData({ ...maintenanceFormData, cost: e.target.value })}
+                                            placeholder="Ex: 350"
+                                            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 outline-none"
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+
+                            <button
+                                type="submit"
+                                disabled={isSaving}
+                                className="w-full mt-6 bg-amber-500 hover:bg-amber-600 text-white font-bold py-4 rounded-xl transition-colors flex items-center justify-center gap-2"
+                            >
+                                {isSaving ? <Loader2 className="animate-spin" size={20} /> : null}
+                                {isSaving ? 'Salvando...' : 'Registrar Manutenção'}
+                            </button>
+                        </form>
+
+                        {/* Modal de aviso de quilometragem */}
+                        {showMileageWarning && (
+                            <div className="absolute inset-0 bg-slate-900/80 backdrop-blur-sm z-10 flex items-center justify-center p-4 rounded-2xl">
+                                <div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-2xl">
+                                    <div className="flex items-center gap-3 mb-4">
+                                        <div className="w-10 h-10 bg-amber-100 rounded-xl flex items-center justify-center">
+                                            <AlertTriangle className="text-amber-600" size={20} />
+                                        </div>
+                                        <h3 className="text-lg font-bold text-slate-800">Km Inferior</h3>
+                                    </div>
+                                    <p className="text-sm text-slate-600 mb-4">
+                                        A Km informada é inferior à última registrada. Deseja continuar?
+                                    </p>
+                                    <div className="flex gap-3">
+                                        <button
+                                            onClick={() => setShowMileageWarning(false)}
+                                            className="flex-1 py-3 bg-amber-100 text-amber-700 font-bold rounded-xl hover:bg-amber-200 transition-colors"
+                                        >
+                                            Corrigir
+                                        </button>
+                                        <button
+                                            onClick={handleSaveMaintenanceRecord}
+                                            className="flex-1 py-3 bg-emerald-500 text-white font-bold rounded-xl hover:bg-emerald-600 transition-colors"
+                                        >
+                                            Continuar
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {/* Página Histórico de Manutenções */}
+                {currentPage === 'maintenanceHistory' && (
+                    <div className="space-y-3">
+                        <h2 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
+                            <Wrench size={20} className="text-amber-600" />
+                            Histórico de Manutenções
+                        </h2>
+                        {maintenanceRecords.length === 0 ? (
+                            <div className="bg-white rounded-2xl p-8 text-center">
+                                <div className="text-slate-300 mb-2">
+                                    <Wrench size={48} className="mx-auto" />
+                                </div>
+                                <p className="text-slate-500">Nenhuma manutenção registrada</p>
+                            </div>
+                        ) : (
+                            maintenanceRecords.map((record) => (
+                                <div key={record.id} className="bg-white rounded-2xl p-4 shadow-sm border border-slate-100">
+                                    <div className="flex justify-between items-start">
+                                        <div>
+                                            <p className="font-bold text-slate-800">{record.serviceName}</p>
+                                            <p className="text-sm text-slate-500">{formatDateBR(record.date)}</p>
+                                        </div>
+                                        <div className="text-right">
+                                            <p className="font-bold text-amber-600">{record.mileage?.toLocaleString()} km</p>
+                                            {record.cost > 0 && (
+                                                <p className="text-sm text-slate-500">R$ {record.cost?.toFixed(2)}</p>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                            ))
+                        )}
+                    </div>
+                )}
+
+                {/* Página Sucesso Manutenção */}
+                {currentPage === 'maintenanceSuccess' && (
+                    <div className="bg-white rounded-2xl shadow-sm p-8 text-center">
+                        <div className="w-20 h-20 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-6">
+                            <CheckCircle2 size={40} className="text-amber-600" />
+                        </div>
+                        <h2 className="text-2xl font-bold text-slate-800 mb-2">Manutenção Registrada!</h2>
+                        <p className="text-slate-500 mb-6">O registro foi salvo com sucesso.</p>
+                        <button
+                            onClick={() => setCurrentPage('home')}
+                            className="w-full bg-amber-500 hover:bg-amber-600 text-white font-bold py-4 rounded-xl transition-colors"
+                        >
+                            Voltar ao Início
+                        </button>
+                    </div>
+                )}
+
+                {/* Modal de Confirmação para Fotos Faltantes */}
+                {showConfirmationModal && (
+                    <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in">
+                        <div className="bg-white rounded-3xl p-6 max-w-sm w-full shadow-2xl">
+                            <div className="flex flex-col items-center text-center mb-6">
+                                <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center text-amber-600 mb-4">
+                                    <AlertCircle size={32} />
+                                </div>
+                                <h3 className="text-xl font-bold text-slate-800 mb-2">Fotos do Odômetro Faltando</h3>
+                                <p className="text-slate-600">
+                                    Você não adicionou todas as fotos do odômetro. Tem certeza que deseja enviar o registro apenas com o recibo?
+                                </p>
+                            </div>
+                            <div className="flex gap-3">
+                                <button
+                                    onClick={() => setShowConfirmationModal(false)}
+                                    className="flex-1 py-3 bg-slate-100 text-slate-700 font-bold rounded-xl hover:bg-slate-200 transition-colors"
+                                >
+                                    Voltar
+                                </button>
+                                <button
+                                    onClick={confirmSave}
+                                    className="flex-1 py-3 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 transition-colors"
+                                >
+                                    Sim, Enviar
+                                </button>
+                            </div>
+                        </div>
                     </div>
                 )}
             </div>

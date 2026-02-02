@@ -38,7 +38,10 @@ import {
   Shield,
   CalendarRange,
   PlusCircle,
-  Edit2
+  Edit2,
+  Info,
+  Wrench,
+  Settings
 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import {
@@ -678,6 +681,432 @@ const ImagePreviewModal = ({ isOpen, onClose, imageUrl, imageUrl2, title, title2
   );
 };
 
+// Modal de Detalhes do Registro (substitui os 4 botões de ação)
+const EntryDetailsModal = ({ isOpen, onClose, entry, truck, onSave, onDelete, isSaving, entries = [] }) => {
+  const [formData, setFormData] = useState({
+    date: '',
+    time: '',
+    totalCost: '',
+    liters: '',
+    newMileage: '',
+    note: '',
+    initialFuel: ''
+  });
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [previewingImage, setPreviewingImage] = useState(null); // 'odometer' | 'receipt' | null
+  const [newOdometerFile, setNewOdometerFile] = useState(null);
+  const [newReceiptFile, setNewReceiptFile] = useState(null);
+  const [removeOdometer, setRemoveOdometer] = useState(false);
+  const [removeReceipt, setRemoveReceipt] = useState(false);
+  const odometerInputRef = useRef(null);
+  const receiptInputRef = useRef(null);
+
+  // Determinar se este é o primeiro registro de uma seção (necessita input inicial)
+  const isFirst = useMemo(() => {
+    if (!truck || !entry) return false;
+
+    const fullEntryDateStr = entry.date;
+    const truckEntries = entries.filter(e => e.truckId === truck.id);
+
+    // 1. Encontrar a seção a qual este registro pertence
+    const sections = truck.sections || [];
+    const sortedSections = [...sections].sort((a, b) => new Date(b.date) - new Date(a.date));
+    const activeSection = sortedSections.find(s => s.date <= fullEntryDateStr);
+    const sectionStartDate = activeSection ? activeSection.date : (truck.sectionStartDate || null);
+
+    // 2. Verificar se existem registros ANTERIORES dentro desta mesma seção
+    const priorEntries = truckEntries.filter(e => {
+      if (e.id === entry.id) return false; // Ignorar a si mesmo
+      const isBeforeCurrent = e.date < fullEntryDateStr;
+      const isAfterSectionStart = sectionStartDate ? e.date >= sectionStartDate : true;
+      return isBeforeCurrent && isAfterSectionStart;
+    });
+
+    return priorEntries.length === 0;
+  }, [truck, entry, entries]);
+
+  useEffect(() => {
+    if (isOpen && entry) {
+      // Extrair apenas a parte da data (YYYY-MM-DD) removendo o horário se existir
+      const dateOnly = entry.date ? entry.date.split('T')[0] : '';
+      setFormData({
+        date: dateOnly,
+        time: entry.time || '',
+        totalCost: entry.totalCost || '',
+        liters: entry.liters || '',
+        newMileage: entry.newMileage || '',
+        note: entry.note || '',
+        initialFuel: entry.initialFuel !== undefined ? String(entry.initialFuel) : ''
+      });
+      setShowDeleteConfirm(false);
+      setPreviewingImage(null);
+      setNewOdometerFile(null);
+      setNewReceiptFile(null);
+      setRemoveOdometer(false);
+      setRemoveReceipt(false);
+    }
+  }, [isOpen, entry]);
+
+  if (!isOpen || !entry) return null;
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+
+    // Combinar date e time no formato esperado
+    const combinedDate = formData.date && formData.time
+      ? `${formData.date}T${formData.time}`
+      : formData.date || entry.date;
+
+    const payload = {
+      id: entry.id,
+      truckId: entry.truckId,
+      date: combinedDate,
+      time: formData.time,
+      totalCost: Number(formData.totalCost),
+      liters: Number(formData.liters),
+      costPerLiter: Number(formData.liters) > 0 ? Number(formData.totalCost) / Number(formData.liters) : 0,
+      newMileage: Number(formData.newMileage),
+      note: formData.note || null,
+      // Manter campos existentes que não estão sendo editados e garantir que não sejam undefined
+      distanceTraveled: entry.distanceTraveled || 0,
+      initialFuel: isFirst ? Number(formData.initialFuel || 0) : (entry.initialFuel ?? null),
+      registeredBy: entry.registeredBy ?? null,
+      createdAt: entry.createdAt ?? null
+    };
+
+    // Gerenciar fotos (garantir null se undefined)
+    if (removeOdometer) {
+      payload.odometerUrl = null;
+      payload.odometerBeforePhoto = null;
+      payload.odometerAfterPhoto = null;
+    } else {
+      payload.odometerUrl = entry.odometerUrl || null;
+      payload.odometerBeforePhoto = entry.odometerBeforePhoto || null;
+      payload.odometerAfterPhoto = entry.odometerAfterPhoto || null;
+    }
+
+    if (removeReceipt) {
+      payload.receiptUrl = null;
+      payload.receiptPhoto = null;
+    } else {
+      payload.receiptUrl = entry.receiptUrl || null;
+      payload.receiptPhoto = entry.receiptPhoto || null;
+    }
+
+    onSave(payload, {
+      odometerFile: newOdometerFile,
+      receiptFile: newReceiptFile
+    });
+  };
+
+  const handleDelete = () => {
+    onDelete(entry.id, entry.date);
+    onClose();
+  };
+
+  const odometerPhoto = entry.odometerBeforePhoto || entry.odometerUrl;
+  const receiptPhoto = entry.receiptPhoto || entry.receiptUrl;
+  const hasOdometer = odometerPhoto && odometerPhoto !== 'imported' && !removeOdometer;
+  const hasReceipt = receiptPhoto && receiptPhoto !== 'imported' && !removeReceipt;
+
+  return (
+    <ModalBackdrop onClose={onClose}>
+      <div className="p-6 border-b border-slate-100 bg-indigo-50/30 flex justify-between items-center flex-shrink-0">
+        <div>
+          <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
+            <Info className="text-indigo-600" size={24} />
+            Detalhes do Registro
+          </h2>
+          <div className="flex items-center gap-2 mt-1 text-slate-500 text-sm">
+            <span className="font-semibold px-2 py-0.5 bg-white border border-slate-200 rounded text-slate-700">{truck?.plate}</span>
+            <span>{formatDateBR(entry.date)}</span>
+            {entry.time && <span>às {entry.time}</span>}
+          </div>
+        </div>
+        <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-full transition-colors">
+          <X size={24} className="text-slate-400" />
+        </button>
+      </div>
+
+      <form onSubmit={handleSubmit} className="p-6 overflow-y-auto max-h-[70vh]">
+        {/* Dados do Abastecimento */}
+        <div className="mb-6">
+          <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider mb-3 flex items-center gap-2">
+            <Fuel size={16} className="text-indigo-600" />
+            Dados do Abastecimento
+          </h3>
+          <div className="grid grid-cols-2 gap-4">
+            <Input label="Data" type="date" required value={formData.date} onChange={e => setFormData({ ...formData, date: e.target.value })} />
+            <Input label="Horário" type="time" required value={formData.time} onChange={e => setFormData({ ...formData, time: e.target.value })} />
+          </div>
+          <div className="grid grid-cols-3 gap-4">
+            <Input label="Valor Total (R$)" type="number" step="0.01" required value={formData.totalCost} onChange={e => setFormData({ ...formData, totalCost: e.target.value })} />
+            <Input label="Litros" type="number" step="0.1" required value={formData.liters} onChange={e => setFormData({ ...formData, liters: e.target.value })} />
+            <Input label="Km Atual" type="number" required value={formData.newMileage} onChange={e => setFormData({ ...formData, newMileage: e.target.value })} />
+          </div>
+        </div>
+
+        {/* Estado Inicial do Veículo - apenas para primeiro registro da seção */}
+        {isFirst && (
+          <div className="bg-amber-50 p-4 rounded-xl mb-6 border border-amber-100">
+            <p className="text-xs text-amber-600 font-bold uppercase tracking-wider mb-2">Estado Inicial do Veículo</p>
+            <Input
+              label="Combustível Inicial no Tanque (L)"
+              type="number"
+              placeholder="Ex: 50"
+              required
+              value={formData.initialFuel}
+              onChange={e => setFormData({ ...formData, initialFuel: e.target.value })}
+            />
+            <p className="text-[10px] text-amber-500 italic mt-1">Informe quanto combustível já havia no tanque antes deste abastecimento.</p>
+          </div>
+        )}
+
+        {/* Seção de Fotos */}
+        <div className="mb-6">
+          <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider mb-3 flex items-center gap-2">
+            <ImageIcon size={16} className="text-indigo-600" />
+            Fotos Anexadas
+          </h3>
+          <div className="grid grid-cols-2 gap-4">
+            {/* Fotos do Odômetro (Antes e Depois) */}
+            <div className="border border-slate-200 rounded-xl p-4 bg-slate-50">
+              <p className="text-xs font-bold text-slate-600 uppercase mb-2 flex items-center gap-1">
+                <Gauge size={14} /> Odômetro
+              </p>
+              <div className="space-y-3">
+                {/* Foto ANTES */}
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-2">
+                  <p className="text-[10px] font-bold text-amber-700 uppercase mb-1">📍 Antes do Abastecimento</p>
+                  {(entry.odometerBeforePhoto || entry.odometerUrl) && !removeOdometer ? (
+                    <div className="flex items-center gap-2">
+                      <img
+                        src={entry.odometerBeforePhoto || entry.odometerUrl}
+                        alt="Odômetro Antes"
+                        className="w-16 h-16 object-cover rounded cursor-pointer hover:opacity-80"
+                        onClick={() => setPreviewingImage('odometer-before')}
+                      />
+                      <div className="flex-1 flex gap-1">
+                        <button type="button" onClick={() => setPreviewingImage('odometer-before')} className="text-[10px] bg-indigo-100 text-indigo-700 px-2 py-1 rounded font-medium hover:bg-indigo-200">
+                          <Eye size={10} className="inline" /> Ver
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-[10px] text-slate-400 italic">Sem foto</p>
+                  )}
+                </div>
+
+                {/* Foto DEPOIS */}
+                <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-2">
+                  <p className="text-[10px] font-bold text-emerald-700 uppercase mb-1">✅ Depois do Abastecimento</p>
+                  {entry.odometerAfterPhoto && !removeOdometer ? (
+                    <div className="flex items-center gap-2">
+                      <img
+                        src={entry.odometerAfterPhoto}
+                        alt="Odômetro Depois"
+                        className="w-16 h-16 object-cover rounded cursor-pointer hover:opacity-80"
+                        onClick={() => setPreviewingImage('odometer-after')}
+                      />
+                      <div className="flex-1 flex gap-1">
+                        <button type="button" onClick={() => setPreviewingImage('odometer-after')} className="text-[10px] bg-indigo-100 text-indigo-700 px-2 py-1 rounded font-medium hover:bg-indigo-200">
+                          <Eye size={10} className="inline" /> Ver
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-[10px] text-slate-400 italic">Sem foto</p>
+                  )}
+                </div>
+
+                {/* Ações globais para odômetro */}
+                {hasOdometer && (
+                  <button type="button" onClick={() => setRemoveOdometer(true)} className="w-full text-xs bg-rose-100 text-rose-700 py-1.5 rounded-lg font-medium hover:bg-rose-200 transition-colors">
+                    <Trash2 size={12} className="inline mr-1" /> Remover Fotos do Odômetro
+                  </button>
+                )}
+                {removeOdometer && (
+                  <p className="text-xs text-rose-600 italic text-center">Fotos serão removidas ao salvar</p>
+                )}
+                {!hasOdometer && !removeOdometer && (
+                  <>
+                    <input
+                      ref={odometerInputRef}
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => setNewOdometerFile(e.target.files[0])}
+                    />
+                    {newOdometerFile ? (
+                      <div className="flex items-center gap-2 p-2 bg-emerald-50 border border-emerald-200 rounded-lg">
+                        <CheckCircle2 size={16} className="text-emerald-600" />
+                        <span className="text-xs text-emerald-700 flex-1 truncate">{newOdometerFile.name}</span>
+                        <button type="button" onClick={() => setNewOdometerFile(null)} className="text-rose-500 hover:text-rose-700">
+                          <X size={14} />
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => odometerInputRef.current?.click()}
+                        className="w-full py-3 border-2 border-dashed border-slate-300 rounded-lg text-slate-500 hover:bg-white hover:border-indigo-300 transition-colors text-xs"
+                      >
+                        <Plus size={16} className="mx-auto mb-1" />
+                        Adicionar Nova Foto
+                      </button>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
+
+            {/* Foto do Recibo */}
+            <div className="border border-slate-200 rounded-xl p-4 bg-slate-50">
+              <p className="text-xs font-bold text-slate-600 uppercase mb-2 flex items-center gap-1">
+                <FileText size={14} /> Recibo
+              </p>
+              {hasReceipt ? (
+                <div className="space-y-2">
+                  <img
+                    src={receiptPhoto}
+                    alt="Recibo"
+                    className="w-full h-32 object-cover rounded-lg cursor-pointer hover:opacity-80 transition-opacity"
+                    onClick={() => setPreviewingImage('receipt')}
+                  />
+                  <div className="flex gap-2">
+                    <button type="button" onClick={() => setPreviewingImage('receipt')} className="flex-1 text-xs bg-indigo-100 text-indigo-700 py-1.5 rounded-lg font-medium hover:bg-indigo-200 transition-colors">
+                      <Eye size={12} className="inline mr-1" /> Ver
+                    </button>
+                    <button type="button" onClick={() => setRemoveReceipt(true)} className="flex-1 text-xs bg-rose-100 text-rose-700 py-1.5 rounded-lg font-medium hover:bg-rose-200 transition-colors">
+                      <Trash2 size={12} className="inline mr-1" /> Remover
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {removeReceipt && (
+                    <p className="text-xs text-rose-600 italic">Foto será removida ao salvar</p>
+                  )}
+                  <input
+                    ref={receiptInputRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) => setNewReceiptFile(e.target.files[0])}
+                  />
+                  {newReceiptFile ? (
+                    <div className="flex items-center gap-2 p-2 bg-emerald-50 border border-emerald-200 rounded-lg">
+                      <CheckCircle2 size={16} className="text-emerald-600" />
+                      <span className="text-xs text-emerald-700 flex-1 truncate">{newReceiptFile.name}</span>
+                      <button type="button" onClick={() => setNewReceiptFile(null)} className="text-rose-500 hover:text-rose-700">
+                        <X size={14} />
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => receiptInputRef.current?.click()}
+                      className="w-full py-6 border-2 border-dashed border-slate-300 rounded-lg text-slate-500 hover:bg-white hover:border-indigo-300 transition-colors text-sm"
+                    >
+                      <Plus size={20} className="mx-auto mb-1" />
+                      Adicionar Foto
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Campo de Nota */}
+        <div className="mb-6">
+          <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider mb-3 flex items-center gap-2">
+            <FileText size={16} className="text-indigo-600" />
+            Observação / Nota
+          </h3>
+          <textarea
+            value={formData.note || ''}
+            onChange={(e) => setFormData({ ...formData, note: e.target.value })}
+            placeholder="Adicione uma observação sobre este registro (opcional)..."
+            className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all resize-none z-10 relative"
+            rows={3}
+          />
+        </div>
+
+        {/* Botões de Ação */}
+        <div className="flex gap-3 pt-4 border-t border-slate-100">
+          {!showDeleteConfirm ? (
+            <>
+              <button
+                type="button"
+                onClick={() => setShowDeleteConfirm(true)}
+                className="px-4 py-2.5 bg-rose-50 text-rose-600 font-bold rounded-xl hover:bg-rose-100 transition-colors flex items-center gap-2"
+              >
+                <Trash2 size={16} /> Excluir
+              </button>
+              <div className="flex-1" />
+              <Button type="button" variant="ghost" onClick={onClose}>Cancelar</Button>
+              <Button type="submit" variant="primary" disabled={isSaving}>
+                {isSaving ? <><Loader2 className="animate-spin" size={18} /> Salvando...</> : 'Salvar Alterações'}
+              </Button>
+            </>
+          ) : (
+            <div className="w-full bg-rose-50 border border-rose-200 rounded-xl p-4 animate-in fade-in">
+              <p className="text-rose-700 font-bold mb-3 flex items-center gap-2">
+                <AlertTriangle size={18} />
+                Confirmar exclusão do registro de {formatDateBR(entry.date)}?
+              </p>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowDeleteConfirm(false)}
+                  className="flex-1 px-4 py-2 bg-white text-slate-600 font-bold rounded-lg hover:bg-slate-100 transition-colors border border-slate-200"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDelete}
+                  className="flex-1 px-4 py-2 bg-rose-600 text-white font-bold rounded-lg hover:bg-rose-700 transition-colors"
+                >
+                  Sim, Excluir
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </form>
+
+      {/* Modal de Preview de Imagem (interno) */}
+      {previewingImage && (
+        <div className="fixed inset-0 bg-slate-900/95 backdrop-blur-lg flex items-center justify-center z-[110] p-4" onClick={() => setPreviewingImage(null)}>
+          <div className="relative max-w-3xl w-full" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-between items-center mb-4">
+              <p className="text-white font-bold text-lg">
+                {previewingImage === 'odometer-before' && 'Odômetro - Antes do Abastecimento'}
+                {previewingImage === 'odometer-after' && 'Odômetro - Depois do Abastecimento'}
+                {previewingImage === 'receipt' && 'Foto do Recibo'}
+              </p>
+              <button onClick={() => setPreviewingImage(null)} className="bg-rose-500/20 hover:bg-rose-500 text-rose-500 hover:text-white p-2 rounded-xl transition-all">
+                <X size={20} />
+              </button>
+            </div>
+            <img
+              src={
+                previewingImage === 'odometer-before' ? (entry.odometerBeforePhoto || entry.odometerUrl) :
+                  previewingImage === 'odometer-after' ? entry.odometerAfterPhoto :
+                    receiptPhoto
+              }
+              alt="Preview"
+              className="max-w-full max-h-[70vh] object-contain rounded-2xl mx-auto bg-white p-2"
+            />
+          </div>
+        </div>
+      )}
+    </ModalBackdrop>
+  );
+};
+
 // Modal de Gerenciamento de Seções
 const SectionManagementModal = ({ isOpen, onClose, onSave, truck }) => {
   const [sections, setSections] = useState([]);
@@ -980,6 +1409,367 @@ const SectionManagementModal = ({ isOpen, onClose, onSave, truck }) => {
   );
 };
 
+// Modal de Cadastro de Serviço de Manutenção
+const ServiceModal = ({ isOpen, onClose, onSave, editingService = null, trucks = [] }) => {
+  const [formData, setFormData] = useState({
+    name: '',
+    periodicityType: 'km',
+    periodicityValue: '',
+    applicableTrucks: []
+  });
+
+  useEffect(() => {
+    if (isOpen) {
+      if (editingService) {
+        setFormData({
+          name: editingService.name || '',
+          periodicityType: editingService.periodicityType || 'km',
+          periodicityValue: editingService.periodicityValue || '',
+          applicableTrucks: editingService.applicableTrucks || []
+        });
+      } else {
+        setFormData({
+          name: '',
+          periodicityType: 'km',
+          periodicityValue: '',
+          applicableTrucks: trucks.map(t => t.id) // Por padrão, todos
+        });
+      }
+    }
+  }, [isOpen, editingService, trucks]);
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    onSave({
+      id: editingService?.id,
+      name: formData.name,
+      periodicityType: formData.periodicityType,
+      periodicityValue: Number(formData.periodicityValue),
+      applicableTrucks: formData.applicableTrucks,
+      createdAt: editingService?.createdAt || new Date().toISOString()
+    });
+    onClose();
+  };
+
+  const toggleTruck = (truckId) => {
+    setFormData(prev => ({
+      ...prev,
+      applicableTrucks: prev.applicableTrucks.includes(truckId)
+        ? prev.applicableTrucks.filter(id => id !== truckId)
+        : [...prev.applicableTrucks, truckId]
+    }));
+  };
+
+  const toggleAll = () => {
+    if (formData.applicableTrucks.length === trucks.length) {
+      setFormData(prev => ({ ...prev, applicableTrucks: [] }));
+    } else {
+      setFormData(prev => ({ ...prev, applicableTrucks: trucks.map(t => t.id) }));
+    }
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <ModalBackdrop onClose={onClose}>
+      <div className="p-6 border-b border-slate-100 bg-indigo-50/30 flex justify-between items-center">
+        <div>
+          <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
+            <Settings className="text-indigo-600" size={24} />
+            {editingService ? 'Editar Serviço' : 'Cadastrar Serviço'}
+          </h2>
+          <p className="text-sm text-slate-500">Defina regras de manutenção periódica</p>
+        </div>
+        <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-full transition-colors">
+          <X size={24} className="text-slate-400" />
+        </button>
+      </div>
+
+      <form onSubmit={handleSubmit} className="p-6 space-y-6">
+        <Input
+          label="Nome do Serviço"
+          type="text"
+          placeholder="Ex: Troca de Óleo"
+          required
+          value={formData.name}
+          onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+        />
+
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Periodicidade</label>
+            <select
+              value={formData.periodicityType}
+              onChange={(e) => setFormData({ ...formData, periodicityType: e.target.value })}
+              className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none font-medium"
+            >
+              <option value="km">Por Quilometragem (Km)</option>
+              <option value="days">Por Tempo (Dias)</option>
+            </select>
+          </div>
+          <Input
+            label={formData.periodicityType === 'km' ? 'A cada (Km)' : 'A cada (Dias)'}
+            type="number"
+            placeholder={formData.periodicityType === 'km' ? 'Ex: 10000' : 'Ex: 90'}
+            required
+            value={formData.periodicityValue}
+            onChange={(e) => setFormData({ ...formData, periodicityValue: e.target.value })}
+          />
+        </div>
+
+        <div>
+          <div className="flex justify-between items-center mb-2">
+            <label className="text-xs font-bold text-slate-500 uppercase">Veículos Aptos</label>
+            <button type="button" onClick={toggleAll} className="text-xs text-indigo-600 font-bold hover:underline">
+              {formData.applicableTrucks.length === trucks.length ? 'Desmarcar Todos' : 'Marcar Todos'}
+            </button>
+          </div>
+          <div className="grid grid-cols-2 gap-2 max-h-40 overflow-y-auto border border-slate-200 rounded-xl p-3 bg-slate-50">
+            {trucks.map(truck => (
+              <label key={truck.id} className="flex items-center gap-2 cursor-pointer hover:bg-white p-2 rounded-lg">
+                <input
+                  type="checkbox"
+                  checked={formData.applicableTrucks.includes(truck.id)}
+                  onChange={() => toggleTruck(truck.id)}
+                  className="w-4 h-4 text-indigo-600 rounded"
+                />
+                <span className="text-sm font-medium text-slate-700">{truck.plate}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+
+        <div className="flex gap-4 pt-4 border-t border-slate-100">
+          <Button type="button" variant="ghost" onClick={onClose} className="flex-1">Cancelar</Button>
+          <Button type="submit" variant="primary" className="flex-1">
+            {editingService ? 'Atualizar Serviço' : 'Cadastrar Serviço'}
+          </Button>
+        </div>
+      </form>
+    </ModalBackdrop>
+  );
+};
+
+// Modal de Registro de Manutenção
+const MaintenanceRecordModal = ({ isOpen, onClose, onSave, trucks = [], services = [], entries = [], records = [], prefilled = null, isSaving = false }) => {
+  const [formData, setFormData] = useState({
+    truckId: '',
+    date: '',
+    serviceId: '',
+    customServiceName: '',
+    mileage: '',
+    cost: ''
+  });
+  const [showMileageWarning, setShowMileageWarning] = useState(false);
+
+  useEffect(() => {
+    if (isOpen) {
+      setShowMileageWarning(false);
+      if (prefilled) {
+        setFormData({
+          truckId: prefilled.truckId || '',
+          date: new Date().toISOString().split('T')[0],
+          serviceId: prefilled.serviceId || '',
+          customServiceName: '',
+          mileage: '',
+          cost: ''
+        });
+      } else {
+        setFormData({
+          truckId: trucks.length === 1 ? trucks[0].id : '',
+          date: new Date().toISOString().split('T')[0],
+          serviceId: '',
+          customServiceName: '',
+          mileage: '',
+          cost: ''
+        });
+      }
+    }
+  }, [isOpen, prefilled, trucks]);
+
+  const selectedTruck = trucks.find(t => t.id === formData.truckId);
+
+  // Calcular última km conhecida (maior entre abastecimentos e manutenções)
+  const getLastKnownMileage = () => {
+    if (!formData.truckId) return 0;
+    const truckEntries = entries.filter(e => e.truckId === formData.truckId);
+    const truckRecords = records.filter(r => r.truckId === formData.truckId);
+    const lastEntryKm = truckEntries.length > 0 ? Math.max(...truckEntries.map(e => e.newMileage || 0)) : 0;
+    const lastRecordKm = truckRecords.length > 0 ? Math.max(...truckRecords.map(r => r.mileage || 0)) : 0;
+    return Math.max(lastEntryKm, lastRecordKm);
+  };
+
+  const lastKnownMileage = getLastKnownMileage();
+
+  const doSave = () => {
+    const mileage = Number(formData.mileage);
+    const serviceName = formData.serviceId === 'outro'
+      ? formData.customServiceName
+      : services.find(s => s.id === formData.serviceId)?.name || '';
+
+    onSave({
+      truckId: formData.truckId,
+      date: formData.date,
+      serviceId: formData.serviceId === 'outro' ? null : formData.serviceId,
+      serviceName: serviceName,
+      mileage: mileage,
+      cost: Number(formData.cost),
+      createdAt: new Date().toISOString()
+    });
+    setShowMileageWarning(false);
+    onClose();
+  };
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+
+    const mileage = Number(formData.mileage);
+    if (mileage < lastKnownMileage) {
+      setShowMileageWarning(true);
+      return;
+    }
+
+    doSave();
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <ModalBackdrop onClose={onClose}>
+      <div className="p-6 border-b border-slate-100 bg-emerald-50/30 flex justify-between items-center">
+        <div>
+          <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
+            <Wrench className="text-emerald-600" size={24} />
+            Registro de Manutenção
+          </h2>
+          <p className="text-sm text-slate-500">Registre uma manutenção realizada</p>
+        </div>
+        <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-full transition-colors">
+          <X size={24} className="text-slate-400" />
+        </button>
+      </div>
+
+      <form onSubmit={handleSubmit} className="p-6 space-y-4">
+        <div>
+          <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Veículo</label>
+          <select
+            value={formData.truckId}
+            onChange={(e) => setFormData({ ...formData, truckId: e.target.value })}
+            required
+            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none font-medium"
+          >
+            <option value="">Selecione um veículo</option>
+            {trucks.map(truck => (
+              <option key={truck.id} value={truck.id}>{truck.plate} - {truck.driver}</option>
+            ))}
+          </select>
+        </div>
+
+        <Input
+          label="Data da Manutenção"
+          type="date"
+          required
+          value={formData.date}
+          onChange={(e) => setFormData({ ...formData, date: e.target.value })}
+        />
+
+        <div>
+          <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Tipo de Manutenção</label>
+          <select
+            value={formData.serviceId}
+            onChange={(e) => setFormData({ ...formData, serviceId: e.target.value })}
+            required
+            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none font-medium"
+          >
+            <option value="">Selecione o tipo</option>
+            {services.map(service => (
+              <option key={service.id} value={service.id}>{service.name}</option>
+            ))}
+            <option value="outro">Outro (especificar)</option>
+          </select>
+        </div>
+
+        {formData.serviceId === 'outro' && (
+          <Input
+            label="Especifique o Serviço"
+            type="text"
+            placeholder="Ex: Alinhamento e Balanceamento"
+            required
+            value={formData.customServiceName}
+            onChange={(e) => setFormData({ ...formData, customServiceName: e.target.value })}
+          />
+        )}
+
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <Input
+              label="Km no Ato"
+              type="number"
+              required
+              placeholder="Ex: 45000"
+              value={formData.mileage}
+              onChange={(e) => setFormData({ ...formData, mileage: e.target.value })}
+            />
+            {selectedTruck && lastKnownMileage > 0 && (
+              <p className="text-[10px] text-slate-500 mt-1">Última Km: {lastKnownMileage.toLocaleString()}</p>
+            )}
+          </div>
+          <Input
+            label="Valor (R$)"
+            type="number"
+            step="0.01"
+            required
+            placeholder="Ex: 350.00"
+            value={formData.cost}
+            onChange={(e) => setFormData({ ...formData, cost: e.target.value })}
+          />
+        </div>
+
+        <div className="flex gap-4 pt-4 border-t border-slate-100">
+          <Button type="button" variant="ghost" onClick={onClose} className="flex-1">Cancelar</Button>
+          <Button type="submit" variant="success" className="flex-1" disabled={isSaving}>
+            {isSaving ? <><Loader2 className="animate-spin" size={18} /> Salvando...</> : 'Registrar Manutenção'}
+          </Button>
+        </div>
+      </form>
+
+      {/* Modal de aviso de quilometragem */}
+      {showMileageWarning && (
+        <div className="absolute inset-0 bg-slate-900/80 backdrop-blur-sm z-10 flex items-center justify-center p-4 rounded-3xl">
+          <div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-2xl">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 bg-amber-100 rounded-xl flex items-center justify-center">
+                <AlertTriangle className="text-amber-600" size={20} />
+              </div>
+              <h3 className="text-lg font-bold text-slate-800">Quilometragem Inferior</h3>
+            </div>
+            <p className="text-sm text-slate-600 mb-4">
+              A quilometragem informada ({Number(formData.mileage).toLocaleString()} km) é <span className="font-bold text-amber-600">inferior</span> à última registrada ({lastKnownMileage.toLocaleString()} km).
+            </p>
+            <p className="text-xs text-slate-500 mb-6">
+              Isso pode ocorrer se você estiver cadastrando uma manutenção histórica. Deseja continuar mesmo assim?
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowMileageWarning(false)}
+                className="flex-1 py-3 bg-amber-100 text-amber-700 font-bold rounded-xl hover:bg-amber-200 transition-colors"
+              >
+                Corrigir
+              </button>
+              <button
+                onClick={doSave}
+                className="flex-1 py-3 bg-emerald-500 text-white font-bold rounded-xl hover:bg-emerald-600 transition-colors"
+              >
+                Continuar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </ModalBackdrop>
+  );
+};
+
 // --- Dashboard Charts ---
 
 const EfficiencyChart = ({ data, period, onPeriodChange }) => {
@@ -1027,6 +1817,18 @@ export default function FleetManager() {
   const [isSavingEntry, setIsSavingEntry] = useState(false);
   const [previewImage, setPreviewImage] = useState(null);
   const [isSectionModalOpen, setIsSectionModalOpen] = useState(false);
+  const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
+  const [detailsEntry, setDetailsEntry] = useState(null);
+
+  // Estado de Manutenção
+  const [maintenanceServices, setMaintenanceServices] = useState([]);
+  const [maintenanceRecords, setMaintenanceRecords] = useState([]);
+  const [isServiceModalOpen, setIsServiceModalOpen] = useState(false);
+  const [isMaintenanceRecordModalOpen, setIsMaintenanceRecordModalOpen] = useState(false);
+  const [editingService, setEditingService] = useState(null);
+  const [prefilledMaintenance, setPrefilledMaintenance] = useState(null);
+  const [selectedMaintenanceTruck, setSelectedMaintenanceTruck] = useState(null);
+
 
   // Estado de autenticação do admin (Firebase Auth)
   const [adminUser, setAdminUser] = useState(null);
@@ -1037,6 +1839,10 @@ export default function FleetManager() {
   const [isAdminLoading, setIsAdminLoading] = useState(true);
   const [showPasswordReset, setShowPasswordReset] = useState(false);
   const [resetEmailSent, setResetEmailSent] = useState(false);
+
+  useEffect(() => {
+    document.title = "Gestão de Frota TIM";
+  }, []);
 
   // Monitorar estado de autenticação do admin
   useEffect(() => {
@@ -1133,7 +1939,9 @@ export default function FleetManager() {
     if (!user) return;
     const unsubT = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'trucks'), (snap) => setTrucks(snap.docs.map(doc => ({ id: doc.id, ...doc.data() }))));
     const unsubE = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'entries'), (snap) => setEntries(snap.docs.map(doc => ({ id: doc.id, ...doc.data() }))));
-    return () => { unsubT(); unsubE(); };
+    const unsubMS = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'maintenanceServices'), (snap) => setMaintenanceServices(snap.docs.map(doc => ({ id: doc.id, ...doc.data() }))));
+    const unsubMR = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'maintenanceRecords'), (snap) => setMaintenanceRecords(snap.docs.map(doc => ({ id: doc.id, ...doc.data() }))));
+    return () => { unsubT(); unsubE(); unsubMS(); unsubMR(); };
   }, [user]);
 
   // Função para adicionar ou atualizar caminhão
@@ -1183,6 +1991,123 @@ export default function FleetManager() {
     }
   };
 
+  // Salvar serviço de manutenção
+  const handleSaveService = async (data) => {
+    if (!user) return;
+    try {
+      const { id, ...serviceData } = data; // Remove id do objeto
+      if (id) {
+        // Editar existente
+        await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'maintenanceServices', id), serviceData);
+      } else {
+        // Criar novo
+        await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'maintenanceServices'), serviceData);
+      }
+    } catch (err) {
+      console.error('Erro ao salvar serviço:', err);
+      alert("Erro ao salvar serviço. Tente novamente.");
+    }
+  };
+
+  // Deletar serviço de manutenção
+  const handleDeleteService = async (id, name) => {
+    if (!user) return;
+    if (!confirm(`Tem certeza que deseja excluir o serviço "${name}"? Os registros de manutenções já feitas não serão afetados.`)) return;
+    try {
+      await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'maintenanceServices', id));
+    } catch (err) {
+      console.error('Erro ao excluir serviço:', err);
+      alert("Erro ao excluir serviço.");
+    }
+  };
+
+  // Salvar registro de manutenção
+  const handleSaveMaintenanceRecord = async (data) => {
+    if (!user) return;
+    try {
+      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'maintenanceRecords'), data);
+    } catch (err) {
+      console.error('Erro ao salvar registro de manutenção:', err);
+      alert("Erro ao salvar registro de manutenção. Tente novamente.");
+    }
+  };
+
+  // Deletar registro de manutenção
+  const handleDeleteMaintenanceRecord = async (id) => {
+    if (!user) return;
+    if (!confirm('Tem certeza que deseja excluir este registro de manutenção?')) return;
+    try {
+      await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'maintenanceRecords', id));
+    } catch (err) {
+      console.error('Erro ao excluir registro:', err);
+      alert("Erro ao excluir registro.");
+    }
+  };
+
+  // Calcular alertas de manutenção
+  const maintenanceAlerts = useMemo(() => {
+    const alerts = [];
+    const today = new Date();
+
+    maintenanceServices.forEach(service => {
+      service.applicableTrucks.forEach(truckId => {
+        const truck = trucks.find(t => t.id === truckId);
+        if (!truck) return;
+
+        // Última km do veículo (maior entre abastecimentos)
+        const truckEntries = entries.filter(e => e.truckId === truckId);
+        const currentMileage = truckEntries.length > 0
+          ? Math.max(...truckEntries.map(e => e.newMileage || 0))
+          : (truck.currentMileage || 0);
+
+        // Último registro deste serviço para este veículo
+        const serviceRecords = maintenanceRecords.filter(
+          r => r.truckId === truckId && r.serviceId === service.id
+        );
+        const lastRecord = serviceRecords.sort((a, b) =>
+          new Date(b.date) - new Date(a.date)
+        )[0];
+
+        let isDue = false;
+        let dueInfo = '';
+
+        if (!lastRecord) {
+          // Nunca feito - alertar imediatamente
+          isDue = true;
+          dueInfo = 'Nunca realizado';
+        } else if (service.periodicityType === 'km') {
+          const nextDueKm = lastRecord.mileage + service.periodicityValue;
+          if (currentMileage >= nextDueKm) {
+            isDue = true;
+            dueInfo = `Última: ${lastRecord.mileage.toLocaleString()} km (Próxima: ${nextDueKm.toLocaleString()} km)`;
+          }
+        } else if (service.periodicityType === 'days') {
+          const lastDate = new Date(lastRecord.date);
+          const nextDueDate = new Date(lastDate);
+          nextDueDate.setDate(nextDueDate.getDate() + service.periodicityValue);
+          if (today >= nextDueDate) {
+            isDue = true;
+            dueInfo = `Última: ${formatDateBR(lastRecord.date)} (Venceu: ${formatDateBR(nextDueDate.toISOString().split('T')[0])})`;
+          }
+        }
+
+        if (isDue) {
+          alerts.push({
+            id: `${service.id}-${truckId}`,
+            truckId,
+            serviceId: service.id,
+            truck,
+            service,
+            dueInfo,
+            lastRecord
+          });
+        }
+      });
+    });
+
+    return alerts;
+  }, [maintenanceServices, maintenanceRecords, trucks, entries]);
+
 
   const handleSaveEntry = async (d, files = {}) => {
     if (!user) return;
@@ -1228,9 +2153,12 @@ export default function FleetManager() {
       const receiptBase64 = files.receiptFile ? await fileToBase64(files.receiptFile) : null;
       const odometerBase64 = files.odometerFile ? await fileToBase64(files.odometerFile) : null;
 
+      // Remover 'id' do payload pois não deve ser salvo como campo no Firestore
+      const { id: _id, ...dataWithoutId } = d;
+
       // Salva o registro atual (sempre com distância 0 ou pendente, pois só saberemos no próximo)
       const payloadToSave = {
-        ...d,
+        ...dataWithoutId,
         distanceTraveled: 0,
         receiptUrl: receiptBase64 || d.receiptUrl || null,
         odometerUrl: odometerBase64 || d.odometerUrl || null,
@@ -1959,19 +2887,8 @@ export default function FleetManager() {
               <td className="px-6 py-2 text-slate-500 text-center">{e.time || '-'}</td>
               <td className="px-6 py-2 font-bold text-slate-800 text-center">R$ {e.totalCost.toFixed(2)}</td>
               <td className="px-6 py-2 font-bold text-center">{e.liters.toFixed(2)} L</td>
-              <td className="px-6 py-2 text-center font-medium text-slate-600">
-                {e.calculatedDistance > 0 ? `${e.calculatedDistance.toFixed(0)} km` : '-'}
-              </td>
-              <td className="px-6 py-2 text-center font-bold text-slate-700">
-                {e.costPerKm > 0 ? (
-                  <div className="flex flex-col items-center">
-                    <span>R$ {e.costPerKm.toFixed(2)}</span>
-                    {e.isProspective && (
-                      <span className="text-[9px] text-indigo-500 uppercase tracking-wider bg-indigo-50 px-1 rounded">Projetado</span>
-                    )}
-                  </div>
-                ) : '-'}
-              </td>
+              <td className="px-6 py-2 text-center font-medium text-slate-600"></td>
+              <td className="px-6 py-2 text-center font-bold text-slate-700"></td>
               <td className="px-6 py-2 text-emerald-600 font-medium text-center">
                 {e.calculatedRemaining !== null ? (
                   <span className="flex items-center justify-center gap-1">
@@ -1988,20 +2905,14 @@ export default function FleetManager() {
                   </span>
                 ) : "-"}
               </td>
-              <td className="px-6 py-2 flex justify-center gap-2">
-                {(e.receiptUrl || e.receiptPhoto) && (e.receiptUrl !== 'imported' || e.receiptPhoto) && (
-                  <button onClick={() => setPreviewImage({ url: e.receiptUrl || e.receiptPhoto, url2: null, title: 'Recibo de Abastecimento', title2: null })} className="p-1.5 hover:bg-white rounded-lg shadow-sm border border-transparent hover:border-slate-200 transition-all text-emerald-600" title="Ver Recibo"><FileText size={14} /></button>
-                )}
-                {(e.odometerUrl || e.odometerBeforePhoto) && (e.odometerUrl !== 'imported' || e.odometerBeforePhoto) && (
-                  <button onClick={() => setPreviewImage({
-                    url: e.odometerBeforePhoto || e.odometerUrl,
-                    url2: e.odometerAfterPhoto || null,
-                    title: e.odometerBeforePhoto ? 'Antes do Abastecimento' : 'Foto do Odômetro',
-                    title2: e.odometerAfterPhoto ? 'Depois do Abastecimento' : null
-                  })} className="p-1.5 hover:bg-white rounded-lg shadow-sm border border-transparent hover:border-slate-200 transition-all text-blue-600" title="Ver Odômetro"><Gauge size={14} /></button>
-                )}
-                <button onClick={() => { setEditingEntry(e); setIsEntryModalOpen(true); }} className="p-1.5 hover:bg-white rounded-lg shadow-sm border border-transparent hover:border-slate-200 transition-all text-amber-600" title="Editar"><Pencil size={14} /></button>
-                <button onClick={() => handleDeleteEntry(e.id, e.date)} className="p-1.5 hover:bg-white rounded-lg shadow-sm border border-transparent hover:border-slate-200 transition-all text-rose-600" title="Excluir"><Trash2 size={14} /></button>
+              <td className="px-6 py-2 flex justify-center">
+                <button
+                  onClick={() => { setDetailsEntry(e); setIsDetailsModalOpen(true); }}
+                  className="p-2 hover:bg-indigo-50 rounded-lg border border-transparent hover:border-indigo-200 transition-all text-indigo-600"
+                  title="Ver Detalhes"
+                >
+                  <Info size={16} />
+                </button>
               </td>
             </tr>
             {e.isSectionStart && e.currentSection && (
@@ -2064,7 +2975,274 @@ export default function FleetManager() {
         imageUrl={previewImage?.url}
         title={previewImage?.title}
       />
+      <EntryDetailsModal
+        isOpen={isDetailsModalOpen}
+        onClose={() => { setIsDetailsModalOpen(false); setDetailsEntry(null); }}
+        entry={detailsEntry}
+        truck={selectedTruck}
+        entries={entries}
+        onSave={(payload, files) => {
+          handleSaveEntry(payload, files);
+          setIsDetailsModalOpen(false);
+          setDetailsEntry(null);
+        }}
+        onDelete={handleDeleteEntry}
+        isSaving={isSavingEntry}
+      />
     </div>);
+  };
+
+  // Página de Manutenção
+  const renderMaintenance = () => {
+    // Stats por caminhão
+    const getTruckMaintenanceStats = (truckId) => {
+      const truckRecords = maintenanceRecords.filter(r => r.truckId === truckId);
+      const totalCost = truckRecords.reduce((sum, r) => sum + (r.cost || 0), 0);
+      return { totalCost, recordCount: truckRecords.length };
+    };
+
+    // Km atual de cada caminhão
+    const getTruckCurrentMileage = (truckId) => {
+      const truckEntries = entries.filter(e => e.truckId === truckId);
+      return truckEntries.length > 0 ? Math.max(...truckEntries.map(e => e.newMileage || 0)) : 0;
+    };
+
+    return (
+      <div className="space-y-8 animate-in fade-in">
+        <div className="flex justify-between items-center">
+          <h1 className="text-3xl font-bold text-slate-800">Manutenção</h1>
+          <div className="flex gap-3">
+            <Button variant="secondary" onClick={() => setIsServiceModalOpen(true)}>
+              <Settings size={16} /> Cadastrar Serviço
+            </Button>
+            <Button variant="primary" onClick={() => { setPrefilledMaintenance(null); setIsMaintenanceRecordModalOpen(true); }}>
+              <Plus size={16} /> Registrar Manutenção
+            </Button>
+          </div>
+        </div>
+
+        {/* Seção de Alertas */}
+        <Card noPadding>
+          <div className="p-6 border-b border-slate-100">
+            <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+              <AlertTriangle className="text-amber-600" size={20} />
+              Manutenções Pendentes
+              {maintenanceAlerts.length > 0 && (
+                <span className="bg-amber-500 text-white text-xs font-bold px-2 py-0.5 rounded-full">
+                  {maintenanceAlerts.length}
+                </span>
+              )}
+            </h2>
+          </div>
+
+          {maintenanceAlerts.length === 0 ? (
+            <div className="p-8 text-center text-slate-400">
+              <CheckCircle2 size={48} className="mx-auto mb-3 text-emerald-400" />
+              <p className="font-medium">Nenhuma manutenção pendente!</p>
+              <p className="text-sm">Todos os veículos estão em dia.</p>
+            </div>
+          ) : (
+            <div className="divide-y divide-slate-100">
+              {maintenanceAlerts.map(alert => (
+                <div key={alert.id} className="p-4 flex items-center justify-between hover:bg-slate-50">
+                  <div>
+                    <p className="font-bold text-slate-800">
+                      {alert.truck.plate} <span className="text-slate-400 font-normal">({alert.truck.driver})</span> — {alert.service.name}
+                    </p>
+                    <p className="text-xs text-slate-500">{alert.dueInfo}</p>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => {
+                        setPrefilledMaintenance({ truckId: alert.truckId, serviceId: alert.serviceId });
+                        setIsMaintenanceRecordModalOpen(true);
+                      }}
+                      className="p-2 bg-emerald-100 text-emerald-600 rounded-lg hover:bg-emerald-200 transition-colors"
+                      title="Marcar como Realizado"
+                    >
+                      <Check size={18} />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
+
+        {/* Seção de Serviços Cadastrados */}
+        <Card noPadding>
+          <div className="p-6 border-b border-slate-100">
+            <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+              <Settings className="text-indigo-600" size={20} />
+              Serviços Cadastrados
+            </h2>
+          </div>
+
+          {maintenanceServices.length === 0 ? (
+            <div className="p-8 text-center text-slate-400">
+              <p className="font-medium">Nenhum serviço cadastrado</p>
+              <p className="text-sm">Cadastre serviços para ativar os alertas automáticos.</p>
+            </div>
+          ) : (
+            <div className="divide-y divide-slate-100">
+              {maintenanceServices.map(service => (
+                <div key={service.id} className="p-4 flex items-center justify-between hover:bg-slate-50">
+                  <div>
+                    <p className="font-bold text-slate-800">{service.name}</p>
+                    <p className="text-xs text-slate-500">
+                      A cada {service.periodicityValue.toLocaleString()} {service.periodicityType === 'km' ? 'km' : 'dias'} • {service.applicableTrucks.length} veículo(s)
+                    </p>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => { setEditingService(service); setIsServiceModalOpen(true); }}
+                      className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                      title="Editar"
+                    >
+                      <Pencil size={16} />
+                    </button>
+                    <button
+                      onClick={() => handleDeleteService(service.id, service.name)}
+                      className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                      title="Excluir"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
+
+        {/* Frota - Cards dos Caminhões */}
+        <div>
+          <h2 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
+            <Truck className="text-indigo-600" size={20} />
+            Frota
+          </h2>
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+            {trucks.map(truck => {
+              const stats = getTruckMaintenanceStats(truck.id);
+              const currentKm = getTruckCurrentMileage(truck.id);
+              const alertCount = maintenanceAlerts.filter(a => a.truckId === truck.id).length;
+
+              return (
+                <div
+                  key={truck.id}
+                  onClick={() => setSelectedMaintenanceTruck(truck)}
+                  className="bg-white rounded-2xl p-4 border border-slate-200 hover:border-indigo-300 hover:shadow-lg cursor-pointer transition-all relative"
+                >
+                  {alertCount > 0 && (
+                    <div className="absolute -top-2 -right-2 w-6 h-6 bg-amber-500 text-white text-xs font-bold rounded-full flex items-center justify-center">
+                      {alertCount}
+                    </div>
+                  )}
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="w-10 h-10 bg-indigo-100 rounded-xl flex items-center justify-center text-indigo-600">
+                      <Truck size={20} />
+                    </div>
+                    <div>
+                      <p className="font-bold text-slate-800">{truck.plate}</p>
+                      <p className="text-xs text-slate-500">{truck.driver}</p>
+                    </div>
+                  </div>
+                  <div className="text-xs text-slate-400 space-y-1">
+                    <p>Km: <span className="font-medium text-slate-600">{currentKm.toLocaleString()}</span></p>
+                    <p>Total gasto: <span className="font-medium text-emerald-600">R$ {stats.totalCost.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span></p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Modal de Detalhes do Caminhão */}
+        {selectedMaintenanceTruck && (
+          <ModalBackdrop onClose={() => setSelectedMaintenanceTruck(null)}>
+            <div className="p-6 border-b border-slate-100 flex justify-between items-center">
+              <div>
+                <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
+                  <Truck className="text-indigo-600" size={24} />
+                  {selectedMaintenanceTruck.plate}
+                </h2>
+                <p className="text-sm text-slate-500">Motorista: {selectedMaintenanceTruck.driver}</p>
+              </div>
+              <button onClick={() => setSelectedMaintenanceTruck(null)} className="p-2 hover:bg-slate-100 rounded-full transition-colors">
+                <X size={24} className="text-slate-400" />
+              </button>
+            </div>
+
+            <div className="p-6 max-h-[70vh] overflow-y-auto">
+              {/* Stats */}
+              <div className="grid grid-cols-2 gap-4 mb-6">
+                <div className="bg-indigo-50 p-4 rounded-xl text-center">
+                  <p className="text-xs font-bold text-indigo-600 uppercase">Km Atual</p>
+                  <p className="text-2xl font-bold text-slate-800">{getTruckCurrentMileage(selectedMaintenanceTruck.id).toLocaleString()}</p>
+                </div>
+                <div className="bg-emerald-50 p-4 rounded-xl text-center">
+                  <p className="text-xs font-bold text-emerald-600 uppercase">Total Gasto</p>
+                  <p className="text-2xl font-bold text-slate-800">R$ {getTruckMaintenanceStats(selectedMaintenanceTruck.id).totalCost.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+                </div>
+              </div>
+
+              {/* Histórico */}
+              <h3 className="font-bold text-slate-800 mb-3">Histórico de Manutenções</h3>
+              {(() => {
+                const truckRecords = maintenanceRecords
+                  .filter(r => r.truckId === selectedMaintenanceTruck.id)
+                  .sort((a, b) => new Date(b.date) - new Date(a.date));
+
+                if (truckRecords.length === 0) {
+                  return <p className="text-slate-400 text-sm text-center py-4">Nenhum registro de manutenção ainda.</p>;
+                }
+
+                return (
+                  <div className="space-y-2">
+                    {truckRecords.map(record => (
+                      <div key={record.id} className="bg-slate-50 p-3 rounded-xl flex justify-between items-center">
+                        <div>
+                          <p className="font-medium text-slate-800">{record.serviceName}</p>
+                          <p className="text-xs text-slate-500">{formatDateBR(record.date)} • {record.mileage.toLocaleString()} km</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="font-bold text-emerald-600">R$ {record.cost.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+                          <button
+                            onClick={() => handleDeleteMaintenanceRecord(record.id)}
+                            className="text-xs text-rose-500 hover:underline"
+                          >
+                            Excluir
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
+            </div>
+          </ModalBackdrop>
+        )}
+
+        {/* Modais de Cadastro */}
+        <ServiceModal
+          isOpen={isServiceModalOpen}
+          onClose={() => { setIsServiceModalOpen(false); setEditingService(null); }}
+          onSave={handleSaveService}
+          editingService={editingService}
+          trucks={trucks}
+        />
+        <MaintenanceRecordModal
+          isOpen={isMaintenanceRecordModalOpen}
+          onClose={() => { setIsMaintenanceRecordModalOpen(false); setPrefilledMaintenance(null); }}
+          onSave={handleSaveMaintenanceRecord}
+          trucks={trucks}
+          services={maintenanceServices}
+          entries={entries}
+          records={maintenanceRecords}
+          prefilled={prefilledMaintenance}
+        />
+      </div>
+    );
   };
 
 
@@ -2248,6 +3426,14 @@ export default function FleetManager() {
             <div className="flex space-x-2">
               <button onClick={() => setView('dashboard')} className={`px-4 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all ${view === 'dashboard' ? 'bg-indigo-50 text-indigo-600 shadow-inner' : 'text-slate-400'}`}>Painel</button>
               <button onClick={() => setView('trucks')} className={`px-4 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all ${view.includes('truck') ? 'bg-indigo-50 text-indigo-600 shadow-inner' : 'text-slate-400'}`}>Frota</button>
+              <button onClick={() => setView('maintenance')} className={`px-4 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all relative ${view === 'maintenance' ? 'bg-indigo-50 text-indigo-600 shadow-inner' : 'text-slate-400'}`}>
+                Manutenção
+                {maintenanceAlerts.length > 0 && (
+                  <span className="absolute -top-1 -right-1 w-4 h-4 bg-amber-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
+                    {maintenanceAlerts.length > 9 ? '9+' : maintenanceAlerts.length}
+                  </span>
+                )}
+              </button>
               <button onClick={() => setView('data-management')} className={`px-4 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all ${view === 'data-management' ? 'bg-indigo-50 text-indigo-600 shadow-inner' : 'text-slate-400'}`}>Dados</button>
             </div>
             <button
@@ -2261,7 +3447,7 @@ export default function FleetManager() {
         </div>
       </nav>
       <main className="max-w-7xl mx-auto px-4 py-10">
-        {view === 'dashboard' && renderDashboard()}{view === 'trucks' && renderTrucksList()}{view === 'truck-detail' && renderTruckDetail()}{view === 'data-management' && renderDataManagement()}
+        {view === 'dashboard' && renderDashboard()}{view === 'trucks' && renderTrucksList()}{view === 'truck-detail' && renderTruckDetail()}{view === 'maintenance' && renderMaintenance()}{view === 'data-management' && renderDataManagement()}
       </main>
       <TruckModal isOpen={isTruckModalOpen} onClose={() => { setIsTruckModalOpen(false); setEditingTruck(null); }} onSave={handleSaveTruck} editingTruck={editingTruck} />
       <EntryModal
