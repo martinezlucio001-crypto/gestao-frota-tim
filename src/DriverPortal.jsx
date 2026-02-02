@@ -38,66 +38,80 @@ const CameraCapture = ({ onCapture, label, plate }) => {
 
         setProcessing(true);
 
-        try {
+        // Usar FileReader para melhor compatibilidade (especialmente com HEIC do iPhone)
+        const reader = new FileReader();
+
+        reader.onload = (event) => {
             const img = new Image();
+
             img.onload = () => {
-                const canvas = document.createElement('canvas');
-                const maxWidth = 1200;
-                const scale = Math.min(1, maxWidth / img.width);
-                canvas.width = img.width * scale;
-                canvas.height = img.height * scale;
+                try {
+                    const canvas = document.createElement('canvas');
+                    const maxWidth = 1200;
+                    const scale = Math.min(1, maxWidth / img.width);
+                    canvas.width = img.width * scale;
+                    canvas.height = img.height * scale;
 
-                const ctx = canvas.getContext('2d');
-                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
 
-                // Marca d'água simples: DD/MM/AAAA; HH:MM, [placa]
-                const now = new Date();
-                const dateStr = now.toLocaleDateString('pt-BR'); // DD/MM/AAAA
-                const timeStr = now.toLocaleTimeString('pt-BR').slice(0, 5); // HH:MM
+                    // Marca d'água simples: DD/MM/AAAA; HH:MM, [placa]
+                    const now = new Date();
+                    const dateStr = now.toLocaleDateString('pt-BR'); // DD/MM/AAAA
+                    const timeStr = now.toLocaleTimeString('pt-BR').slice(0, 5); // HH:MM
 
-                // Fonte menor (mais legível sem atrapalhar a imagem)
-                const fontSize = Math.max(32, Math.floor(canvas.width / 18));
+                    // Fonte menor (mais legível sem atrapalhar a imagem)
+                    const fontSize = Math.max(32, Math.floor(canvas.width / 18));
 
-                // Texto simples: data; hora, placa
-                const watermarkText = `${dateStr}; ${timeStr}, ${plate}`;
+                    // Texto simples: data; hora, placa
+                    const watermarkText = `${dateStr}; ${timeStr}, ${plate}`;
 
-                // Posição no canto inferior
-                const textY = canvas.height - fontSize * 0.8;
+                    // Posição no canto inferior
+                    const textY = canvas.height - fontSize * 0.8;
 
-                // Desenhar texto com contorno para legibilidade
-                ctx.font = `bold ${fontSize}px Arial`;
-                ctx.textAlign = 'center';
-                ctx.textBaseline = 'middle';
+                    // Desenhar texto com contorno para legibilidade
+                    ctx.font = `bold ${fontSize}px Arial`;
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
 
-                // Contorno preto
-                ctx.strokeStyle = 'rgba(0, 0, 0, 0.9)';
-                ctx.lineWidth = fontSize / 6;
-                ctx.lineJoin = 'round';
-                ctx.strokeText(watermarkText, canvas.width / 2, textY);
+                    // Contorno preto
+                    ctx.strokeStyle = 'rgba(0, 0, 0, 0.9)';
+                    ctx.lineWidth = fontSize / 6;
+                    ctx.lineJoin = 'round';
+                    ctx.strokeText(watermarkText, canvas.width / 2, textY);
 
-                // Texto branco
-                ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
-                ctx.fillText(watermarkText, canvas.width / 2, textY);
+                    // Texto branco
+                    ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+                    ctx.fillText(watermarkText, canvas.width / 2, textY);
 
-                // Converter para base64
-                const base64 = canvas.toDataURL('image/jpeg', 0.7);
-                setPreview(base64);
-                onCapture(base64);
-                setProcessing(false);
+                    // Converter para base64
+                    const base64 = canvas.toDataURL('image/jpeg', 0.7);
+                    setPreview(base64);
+                    onCapture(base64);
+                    setProcessing(false);
+                } catch (canvasError) {
+                    console.error("Erro no canvas:", canvasError);
+                    setProcessing(false);
+                    alert("Erro ao processar imagem. Tente com outra foto.");
+                }
             };
 
             img.onerror = () => {
-                console.error("Erro ao carregar imagem");
-                alert("Erro ao processar imagem. Tente novamente ou use outra foto.");
+                console.error("Erro ao carregar imagem - formato não suportado");
                 setProcessing(false);
+                alert("Formato de imagem não suportado. Por favor, tire uma nova foto diretamente pela câmera ou use uma imagem JPG/PNG.");
             };
 
-            img.src = URL.createObjectURL(file);
-        } catch (error) {
-            console.error("Erro no processamento:", error);
+            img.src = event.target.result;
+        };
+
+        reader.onerror = () => {
+            console.error("Erro ao ler arquivo");
             setProcessing(false);
-            alert("Erro ao processar arquivo.");
-        }
+            alert("Erro ao ler o arquivo. Tente novamente.");
+        };
+
+        reader.readAsDataURL(file);
     };
 
     const handleReset = () => {
