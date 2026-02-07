@@ -239,12 +239,18 @@ class handler(BaseHTTPRequestHandler):
                 raise Exception("FIREBASE_SERVICE_ACCOUNT not configured")
             
             try:
-                if "{" not in firebase_creds_str[:5]: 
-                    firebase_creds_str = base64.b64decode(firebase_creds_str).decode('utf-8')
-            except: pass
-            
-            firebase_creds_dict = json.loads(firebase_creds_str.replace('\\n', '\n'))
-            db_client = FirestoreClient(firebase_creds_dict)
+                # First attempt: standard JSON load
+                firebase_creds_dict = json.loads(firebase_creds_str)
+            except json.JSONDecodeError:
+                # Second attempt: handle potential escaped newlines ONLY if standard load fails
+                # (Common issue when copying from .env files sometimes)
+                try:
+                    firebase_creds_dict = json.loads(firebase_creds_str.replace('\\n', '\n'))
+                except:
+                    # Final attempt: direct cleanup of invisible control characters
+                    # (Sometimes copy-paste introduces weird chars)
+                    clean_str = "".join(ch for ch in firebase_creds_str if getattr(ch, 'isprintable', lambda: True)())
+                    firebase_creds_dict = json.loads(clean_str)
 
             # 2. Gmail Connection (OAuth2)
             gmail_creds = Credentials(
