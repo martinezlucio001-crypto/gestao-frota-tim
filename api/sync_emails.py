@@ -252,6 +252,8 @@ class handler(BaseHTTPRequestHandler):
                     clean_str = "".join(ch for ch in firebase_creds_str if getattr(ch, 'isprintable', lambda: True)())
                     firebase_creds_dict = json.loads(clean_str)
 
+            db_client = FirestoreClient(firebase_creds_dict)
+
             # 2. Gmail Connection (OAuth2)
             gmail_creds = Credentials(
                 None,
