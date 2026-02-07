@@ -1,17 +1,7 @@
 {
     "functions": {
         "api/*.py": {
-            "excludeFiles": [
-                "node_modules/**",
-                "public/**",
-                "src/**",
-                "dist/**",
-                "*.json",
-                "*.js",
-                "*.html",
-                "*.css",
-                ".git/**"
-            ]
+            "excludeFiles": "{public/**,src/**,dist/**,node_modules,package.json,vite.config.js,index.html}"
         }
     }
 }
