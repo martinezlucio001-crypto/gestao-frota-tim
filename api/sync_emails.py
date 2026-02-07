@@ -289,6 +289,19 @@ class handler(BaseHTTPRequestHandler):
 
             print(f"Encontrados {len(messages)} e-mails.")
 
+            # Helper for recursive part extraction
+            def get_html_part(payload):
+                if payload['mimeType'] == 'text/html':
+                    return base64.urlsafe_b64decode(payload['body']['data']).decode('utf-8')
+                
+                parts = payload.get('parts', [])
+                for part in parts:
+                    result = get_html_part(part)
+                    if result: return result
+                return None
+
+            debug_logs = []
+            
             # 5. Process Emails
             for msg in messages:
                 try:
@@ -300,66 +313,77 @@ class handler(BaseHTTPRequestHandler):
                     subject = next((h['value'] for h in headers if h['name'] == 'Subject'), "")
                     date_header = next((h['value'] for h in headers if h['name'] == 'Date'), "")
                     
-                    html_body = ""
-                    if 'parts' in msg_detail['payload']:
-                        for part in msg_detail['payload']['parts']:
-                            if part['mimeType'] == 'text/html':
-                                html_body = base64.urlsafe_b64decode(part['body']['data']).decode('utf-8')
-                                break
-                    elif msg_detail['payload']['mimeType'] == 'text/html':
-                        html_body = base64.urlsafe_b64decode(msg_detail['payload']['body']['data']).decode('utf-8')
+                    debug_logs.append(f"Analisando: {subject[:50]}...")
+                    
+                    html_body = get_html_part(msg_detail['payload'])
+                    
+                    if not html_body:
+                        debug_logs.append(f" - [ERRO] HTML não encontrado no corpo do email.")
+                        continue
 
                     parsed_data = parse_email_html(html_body)
                     
-                    if parsed_data and parsed_data['nota']:
-                        nota_id = parsed_data['nota']
-                        print(f"Processando Nota: {nota_id} | Assunto: {subject}")
-                        
-                        is_entrada = "Recebimento de Carga" in subject
-                        is_saida = "Devolução de carga" in subject
-                        
-                        if is_entrada:
-                            existing_doc = db_client.get_document(COLLECTION_NAME, nota_id)
-                            if not existing_doc:
-                                payload = {
-                                    "nota_despacho": nota_id,
-                                    "status": "RECEBIDO",
-                                    "data_recebimento": date_header,
-                                    "data_entrega": None,
-                                    "origem": parsed_data['origem'],
-                                    "destino": parsed_data['destino'],
-                                    "peso_total": parsed_data['peso_total'],
-                                    "itens": parsed_data['itens'],
-                                    "criado_em": "SERVER_TIMESTAMP"
-                                }
-                                db_client.create_document(COLLECTION_NAME, nota_id, payload)
-                            else:
-                                print(f"Nota {nota_id} já existe.")
+                    if not parsed_data or not parsed_data['nota']:
+                         debug_logs.append(f" - [PULADO] Nota não encontrada no HTML. (parsed={bool(parsed_data)})")
+                         # Debug: dump text snippet to see what's wrong
+                         soup = BeautifulSoup(html_body, 'html.parser')
+                         text_snippet = soup.get_text()[:100].replace('\n', ' ')
+                         debug_logs.append(f"   Snippet: {text_snippet}")
+                         continue
 
-                        elif is_saida:
+                    nota_id = parsed_data['nota']
+                    debug_logs.append(f" - [OK] Nota encontrada: {nota_id}")
+                    
+                    is_entrada = "Recebimento de Carga" in subject or "Recebimento de Carga" in subject
+                    is_saida = "Devolução de carga" in subject or "Devolução de carga" in subject # redundancy for clarity/safety
+                    
+                    if is_entrada:
+                        existing_doc = db_client.get_document(COLLECTION_NAME, nota_id)
+                        if not existing_doc:
                             payload = {
-                                "status": "ENTREGUE",
-                                "data_entrega": date_header,
-                                "nota_despacho": nota_id
+                                "nota_despacho": nota_id,
+                                "status": "RECEBIDO",
+                                "data_recebimento": date_header,
+                                "data_entrega": None,
+                                "origem": parsed_data['origem'],
+                                "destino": parsed_data['destino'],
+                                "peso_total": parsed_data['peso_total'],
+                                "itens": parsed_data['itens'],
+                                "criado_em": "SERVER_TIMESTAMP"
                             }
-                            # Update existing or create with partial data
-                            try:
-                                db_client.update_document(COLLECTION_NAME, nota_id, payload)
-                            except:
-                                db_client.create_document(COLLECTION_NAME, nota_id, payload)
-                        
-                        # Remove Label
-                        service.users().messages().batchModify(
-                            userId='me',
-                            body={'ids': [msg['id']], 'removeLabelIds': [label_id]}
-                        ).execute()
-                        
-                        processed_count += 1
+                            db_client.create_document(COLLECTION_NAME, nota_id, payload)
+                            debug_logs.append(f"   -> [SALVO] Documento criado.")
+                        else:
+                            debug_logs.append(f"   -> [IGNORADO] Nota já existe.")
+
+                    elif is_saida:
+                        payload = {
+                            "status": "ENTREGUE",
+                            "data_entrega": date_header,
+                            "nota_despacho": nota_id
+                        }
+                        try:
+                            db_client.update_document(COLLECTION_NAME, nota_id, payload)
+                            debug_logs.append(f"   -> [ATUALIZADO] Status mudado para ENTREGUE.")
+                        except:
+                            db_client.create_document(COLLECTION_NAME, nota_id, payload)
+                            debug_logs.append(f"   -> [CRIADO-SAIDA] Documento de saída criado.")
+                    else:
+                        debug_logs.append(f"   -> [PULADO] Assunto não bate com filtros de entrada/saída.")
+                    
+                    # Remove Label
+                    service.users().messages().batchModify(
+                        userId='me',
+                        body={'ids': [msg['id']], 'removeLabelIds': [label_id]}
+                    ).execute()
+                    
+                    processed_count += 1
 
                 except Exception as e:
                     print(f"Erro ao processar mensagem {msg['id']}: {e}")
+                    debug_logs.append(f" - [CRITICO] Erro exceção: {str(e)}")
 
-            self.respond_success(f"Processados {processed_count} e-mails.")
+            self.respond_success(f"Processados {processed_count} e-mails.", debug_logs)
 
         except Exception as e:
             print(f"Erro Crítico: {e}")
@@ -367,8 +391,10 @@ class handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(f"Internal Error: {str(e)}".encode())
 
-    def respond_success(self, message):
+    def respond_success(self, message, debug_logs=None):
         self.send_response(200)
         self.send_header('Content-type', 'application/json')
         self.end_headers()
-        self.wfile.write(json.dumps({"status": "success", "message": message}).encode())
+        res = {"status": "success", "message": message}
+        if debug_logs: res["debug_logs"] = debug_logs
+        self.wfile.write(json.dumps(res, ensure_ascii=False).encode())
