@@ -1,8 +1,7 @@
 {
-    "rewrites": [
-        {
-            "source": "/(.*)",
-            "destination": "/index.html"
+    "functions": {
+        "api/*.py": {
+            "runtime": "python3.9"
         }
-    ]
+    }
 }
