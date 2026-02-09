@@ -1,0 +1,19 @@
+name: Schedule Email Sync
+
+on:
+  schedule:
+    # 08:00 BRT to 20:00 BRT
+    # 08:00 BRT = 11:00 UTC
+    # 20:00 BRT = 23:00 UTC
+    # Every 15 minutes: */15
+    # Monday (1) to Saturday (6)
+    - cron: '*/15 11-23 * * 1-6'
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call Vercel Function
+        run: |
+          curl -X GET "https://gestao-frota-tim.vercel.app/api/sync_emails?key=${{ secrets.CRON_SECRET }}"

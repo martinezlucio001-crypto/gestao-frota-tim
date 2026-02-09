@@ -3,6 +3,7 @@ import os
 import json
 import base64
 import re
+import time
 from urllib.parse import urlparse, parse_qs
 from datetime import datetime
 import requests
@@ -17,8 +18,9 @@ from google.auth.transport.requests import Request
 # -------------------------------------------------------------------------
 # CONSTANTS & CONFIGURATION
 # -------------------------------------------------------------------------
-MAX_EMAILS_PER_RUN = 3
+MAX_EMAILS_PER_RUN = 5
 LABEL_NAME = "ROBO_TIM"
+LABEL_PROCESSED = "PROCESSADO"
 COLLECTION_NAME = "tb_despachos_conferencia"
 
 # -------------------------------------------------------------------------
@@ -57,14 +59,7 @@ class FirestoreClient:
 
     def create_document(self, collection, doc_id, data):
         """Creates or overwrites a document (set/upsert behavior)"""
-        # Firestore REST API uses specific JSON format with type mapping
-        # We need a helper to convert python dict to Firestore JSON
         firestore_data = self._to_firestore_json(data)
-        
-        # Using PATCH with updateMask is complex for full overwrite, 
-        # but PATCH without mask acts as upsert/merge depending on query params.
-        # To simulate 'set' (overwrite), we can just PATCH.
-        
         url = f"{self.base_url}/{collection}/{doc_id}"
         response = requests.patch(url, headers=self._headers(), json=firestore_data)
         
@@ -76,7 +71,6 @@ class FirestoreClient:
         """Updates specific fields (merge behavior)"""
         firestore_data = self._to_firestore_json(data)
         
-        # Build query params for updateMask to only update provided fields
         params = []
         for key in data.keys():
             params.append(f"updateMask.fieldPaths={key}")
@@ -104,18 +98,14 @@ class FirestoreClient:
             elif isinstance(value, str):
                 fields[key] = {"stringValue": value}
             elif isinstance(value, list):
-                # Recursive call for list items. 
-                # Simplified: assumes list of dicts (Map) or simple types
                 array_values = []
                 for item in value:
                      if isinstance(item, dict):
                          array_values.append({"mapValue": {"fields": self._to_firestore_json(item)["fields"]}})
                      else:
-                         # Handle simple types if needed (skipped for now based on known usage)
                          pass 
                 fields[key] = {"arrayValue": {"values": array_values}}
             elif isinstance(value, dict):
-                 # Special handling for firestore.SERVER_TIMESTAMP placeholder
                 if value == "SERVER_TIMESTAMP": 
                      fields[key] = {"timestampValue": datetime.utcnow().isoformat() + "Z"}
                 else:
@@ -139,7 +129,11 @@ def parse_email_html(html_content):
         "itens": [],
         "origem": "Desconhecida",
         "destino": "Desconhecido",
-        "peso_total": 0.0
+        "data_ocorrencia": None,
+        "qtde_unitizadores": 0,
+        "peso_total_declarado": 0.0,
+        "peso_total_calculado": 0.0,
+        "tipo_movimento": "DESCONHECIDO" # Recebimento ou Entrega
     }
     
     if not html_content: return None
@@ -147,14 +141,11 @@ def parse_email_html(html_content):
     try:
         soup = BeautifulSoup(html_content, 'html.parser')
         
-        # 1. Extract Note Number
+        # 1. Regex Backup for Note Number
         text_content = soup.get_text()
         match_nota = re.search(r'(NN\d+)', text_content)
         if match_nota:
             dados["nota"] = match_nota.group(1)
-        else:
-            print("AVISO: Nenhuma nota 'NN...' encontrada no email.")
-            return None
 
         # 2. Extract Table Items
         tables = soup.find_all('table')
@@ -162,47 +153,85 @@ def parse_email_html(html_content):
             rows = table.find_all('tr')
             for row in rows:
                 cols = row.find_all(['td', 'th'])
-                if len(cols) >= 6:
-                    idx_origem, idx_destino = 0, 1
-                    idx_unit, idx_lacre, idx_peso = 5, 6, 7
+                
+                # Skip Header Rows
+                if any(c.name == 'th' for c in cols):
+                    continue
+
+                # New Structure expected (approx 9 columns):
+                # 0:Nota, 1:Origem, 2:Destino, 3:Data, 4:QtdeUnit, 5:PesoTotal, 6:ListUnit, 7:ListLacre, 8:ListPeso
+                if len(cols) >= 9:
+                    idx_nota = 0
+                    idx_origem = 1
+                    idx_destino = 2
+                    idx_data = 3
+                    idx_qtde = 4
+                    idx_peso_total = 5
+                    idx_list_unit = 6
+                    idx_list_lacre = 7
+                    idx_list_peso = 8
+
+                    # Extract scalar values from the first valid data row found
+                    if dados["origem"] == "Desconhecida":
+                        # If finding Nota in column, prefer it or cross-check
+                        col_nota = limpar_html(str(cols[idx_nota]))
+                        if "NN" in col_nota and not dados["nota"]:
+                            dados["nota"] = col_nota
+                        
+                        dados["origem"] = limpar_html(str(cols[idx_origem]))
+                        dados["destino"] = limpar_html(str(cols[idx_destino]))
+                        dados["data_ocorrencia"] = limpar_html(str(cols[idx_data]))
+                        
+                        try:
+                            # Try to extract integer from string like "5" or "5 un"
+                            raw_qtde = limpar_html(str(cols[idx_qtde]))
+                            match_int = re.search(r'(\d+)', raw_qtde)
+                            if match_int:
+                                dados["qtde_unitizadores"] = int(match_int.group(1))
+                        except: pass
+                        
+                        try:
+                            # "1.500,50 Kg" -> 1500.50
+                            p_str = limpar_html(str(cols[idx_peso_total])).replace('.', '').replace(',', '.').replace('Kg', '').strip()
+                            dados["peso_total_declarado"] = float(p_str)
+                        except: pass
+
+                    # Helper to process lists
+                    def get_clean_list(col):
+                        for br in col.find_all('br'): br.replace_with(' ')
+                        text = col.get_text(separator=' ', strip=True)
+                        text = text.replace('&nbsp;', ' ').replace('=', '').replace('?', '')
+                        return text.split()
+
+                    raw_units = get_clean_list(cols[idx_list_unit])
+                    raw_lacres = get_clean_list(cols[idx_list_lacre])
+                    raw_pesos = get_clean_list(cols[idx_list_peso])
                     
-                    if len(cols) > idx_peso:
-                        if dados["origem"] == "Desconhecida":
-                             dados["origem"] = limpar_html(str(cols[idx_origem]))
-                             dados["destino"] = limpar_html(str(cols[idx_destino]))
+                    max_len = max(len(raw_units), len(raw_lacres), len(raw_pesos))
+                    for i in range(max_len):
+                        unit_val = raw_units[i] if i < len(raw_units) else "?"
+                        # Filter noise
+                        if len(unit_val) < 4 or unit_val.lower() in ['unitizador', 'lacre', 'objeto']:
+                            continue
                         
-                        def get_clean_list(col):
-                            for br in col.find_all('br'): br.replace_with(' ')
-                            text = col.get_text(separator=' ', strip=True)
-                            text = text.replace('&nbsp;', ' ').replace('=', '').replace('?', '')
-                            return text.split()
+                        peso_str = raw_pesos[i] if i < len(raw_pesos) else "0"
+                        peso_val = 0.0
+                        try:
+                             # "10,5" -> 10.5
+                            cl_peso = peso_str.replace('.', '').replace(',', '.').replace('Kg', '').strip()
+                            peso_val = float(cl_peso)
+                        except: pass
 
-                        raw_units = get_clean_list(cols[idx_unit])
-                        raw_lacres = get_clean_list(cols[idx_lacre])
-                        raw_pesos = get_clean_list(cols[idx_peso])
-                        
-                        max_len = max(len(raw_units), len(raw_lacres), len(raw_pesos))
-                        for i in range(max_len):
-                            unit_val = raw_units[i] if i < len(raw_units) else "?"
-                            if len(unit_val) < 4 or unit_val.lower() in ['unitizador', 'lacre']:
-                                continue
-                            
-                            peso_str = raw_pesos[i] if i < len(raw_pesos) else "0"
-                            peso_val = 0.0
-                            try:
-                                peso_val = float(peso_str.replace(',', '.').replace('Kg', ''))
-                            except: pass
-
-                            item = {
-                                "unitizador": unit_val,
-                                "lacre": raw_lacres[i] if i < len(raw_lacres) else "?",
-                                "peso": peso_val,
-                                "conferido": False
-                            }
-                            dados["itens"].append(item)
+                        item = {
+                            "unitizador": unit_val,
+                            "lacre": raw_lacres[i] if i < len(raw_lacres) else "?",
+                            "peso": peso_val,
+                            "conferido": False
+                        }
+                        dados["itens"].append(item)
 
         if dados["itens"]:
-            dados["peso_total"] = sum(item["peso"] for item in dados["itens"])
+            dados["peso_total_calculado"] = sum(item["peso"] for item in dados["itens"])
 
     except Exception as e:
         print(f"Erro no parsing HTML: {e}")
@@ -221,7 +250,29 @@ class handler(BaseHTTPRequestHandler):
     def do_POST(self):
         self.process_request()
 
+    def _get_or_create_label(self, service, label_name):
+        try:
+            results = service.users().labels().list(userId='me').execute()
+            labels = results.get('labels', [])
+            existing = next((l for l in labels if l['name'] == label_name), None)
+            
+            if existing:
+                return existing['id']
+            
+            # Create if not exists
+            label_object = {
+                'name': label_name,
+                'labelListVisibility': 'labelShow',
+                'messageListVisibility': 'show'
+            }
+            created = service.users().labels().create(userId='me', body=label_object).execute()
+            return created['id']
+        except Exception as e:
+            print(f"Erro ao criar label {label_name}: {e}")
+            return None
+
     def process_request(self):
+        start_time = time.time()
         query = parse_qs(urlparse(self.path).query)
         key = query.get('key', [None])[0]
         cron_secret = os.environ.get('CRON_SECRET')
@@ -233,28 +284,23 @@ class handler(BaseHTTPRequestHandler):
             return
 
         try:
-            # 1. Initialize Firestore REST Client
+            # 1. Initialize Firestore
             firebase_creds_str = os.environ.get('FIREBASE_SERVICE_ACCOUNT')
             if not firebase_creds_str:
                 raise Exception("FIREBASE_SERVICE_ACCOUNT not configured")
             
             try:
-                # First attempt: standard JSON load
                 firebase_creds_dict = json.loads(firebase_creds_str)
             except json.JSONDecodeError:
-                # Second attempt: handle potential escaped newlines ONLY if standard load fails
-                # (Common issue when copying from .env files sometimes)
                 try:
                     firebase_creds_dict = json.loads(firebase_creds_str.replace('\\n', '\n'))
                 except:
-                    # Final attempt: direct cleanup of invisible control characters
-                    # (Sometimes copy-paste introduces weird chars)
                     clean_str = "".join(ch for ch in firebase_creds_str if getattr(ch, 'isprintable', lambda: True)())
                     firebase_creds_dict = json.loads(clean_str)
 
             db_client = FirestoreClient(firebase_creds_dict)
 
-            # 2. Gmail Connection (OAuth2)
+            # 2. Gmail Connection
             gmail_creds = Credentials(
                 None,
                 refresh_token=os.environ.get('GOOGLE_REFRESH_TOKEN'),
@@ -268,34 +314,37 @@ class handler(BaseHTTPRequestHandler):
 
             service = build('gmail', 'v1', credentials=gmail_creds)
 
-            # 3. Find Label
+            # 3. Handle Labels
+            # Find Source Label
             results = service.users().labels().list(userId='me').execute()
             labels = results.get('labels', [])
-            label_id = next((l['id'] for l in labels if l['name'] == LABEL_NAME), None)
+            label_robo_id = next((l['id'] for l in labels if l['name'] == LABEL_NAME), None)
 
-            if not label_id:
-                self.respond_success("Label ROBO_TIM não encontrada no Gmail.")
+            if not label_robo_id:
+                self.respond_success("Label ROBO_TIM não encontrada.", start_time)
                 return
+
+            # Find/Create Destination Label
+            label_processed_id = self._get_or_create_label(service, LABEL_PROCESSED)
+            if not label_processed_id:
+                print("AVISO: Não foi possível obter ID da label PROCESSADO.")
 
             # 4. Fetch Emails
             results = service.users().messages().list(
-                userId='me', labelIds=[label_id], maxResults=MAX_EMAILS_PER_RUN
+                userId='me', labelIds=[label_robo_id], maxResults=MAX_EMAILS_PER_RUN
             ).execute()
             messages = results.get('messages', [])
 
             processed_count = 0
-            
             if not messages:
-                self.respond_success("Nenhum e-mail pendente.")
+                self.respond_success("Nenhum e-mail pendente.", start_time)
                 return
 
             print(f"Encontrados {len(messages)} e-mails.")
 
-            # Helper for recursive part extraction
             def get_html_part(payload):
                 if payload['mimeType'] == 'text/html':
                     return base64.urlsafe_b64decode(payload['body']['data']).decode('utf-8')
-                
                 parts = payload.get('parts', [])
                 for part in parts:
                     result = get_html_part(part)
@@ -318,85 +367,112 @@ class handler(BaseHTTPRequestHandler):
                     debug_logs.append(f"Analisando: {subject[:50]}...")
                     
                     html_body = get_html_part(msg_detail['payload'])
-                    
                     if not html_body:
-                        debug_logs.append(f" - [ERRO] HTML não encontrado no corpo do email.")
+                        debug_logs.append(f" - [ERRO] HTML não encontrado.")
                         continue
 
                     parsed_data = parse_email_html(html_body)
                     
                     if not parsed_data or not parsed_data['nota']:
-                         debug_logs.append(f" - [PULADO] Nota não encontrada no HTML. (parsed={bool(parsed_data)})")
-                         # Debug: dump text snippet to see what's wrong
-                         soup = BeautifulSoup(html_body, 'html.parser')
-                         text_snippet = soup.get_text()[:100].replace('\n', ' ')
-                         debug_logs.append(f"   Snippet: {text_snippet}")
+                         debug_logs.append(f" - [PULADO] Nota não encontrada no HTML.")
                          continue
 
                     nota_id = parsed_data['nota']
                     debug_logs.append(f" - [OK] Nota encontrada: {nota_id}")
                     
-                    is_entrada = "Recebimento de Carga" in subject or "Recebimento de Carga" in subject
-                    is_saida = "Devolução de carga" in subject or "Devolução de carga" in subject # redundancy for clarity/safety
+                    # Check Headers for type or Subject
+                    is_entrada = "Recebimento de Carga" in subject or "Recebimento de carga" in subject
+                    is_saida = "Devolução de carga" in subject or "Devolução de Carga" in subject
                     
+                    # Force check to avoid skipping valid emails if case sensitivity issues
+                    if not is_entrada and not is_saida:
+                        # Fallback heuristic: check if data_ocorrencia/origem exist
+                        pass 
+
                     if is_entrada:
+                        parsed_data["tipo_movimento"] = "RECEBIMENTO"
                         existing_doc = db_client.get_document(COLLECTION_NAME, nota_id)
+                        
                         if not existing_doc:
+                            # Parse dates if possible or keep string
                             payload = {
                                 "nota_despacho": nota_id,
                                 "status": "RECEBIDO",
-                                "data_recebimento": date_header,
+                                "data_email": date_header,
+                                "data_ocorrencia": parsed_data['data_ocorrencia'], # Data from table
                                 "data_entrega": None,
                                 "origem": parsed_data['origem'],
                                 "destino": parsed_data['destino'],
-                                "peso_total": parsed_data['peso_total'],
+                                "qtde_unitizadores": parsed_data['qtde_unitizadores'],
+                                "peso_total_declarado": parsed_data['peso_total_declarado'],
+                                "peso_total_calculado": parsed_data['peso_total_calculado'],
                                 "itens": parsed_data['itens'],
                                 "criado_em": "SERVER_TIMESTAMP"
                             }
                             db_client.create_document(COLLECTION_NAME, nota_id, payload)
-                            debug_logs.append(f"   -> [SALVO] Documento criado.")
+                            debug_logs.append(f"   -> [SALVO] Documento criado com {len(parsed_data['itens'])} itens.")
                         else:
                             debug_logs.append(f"   -> [IGNORADO] Nota já existe.")
 
                     elif is_saida:
+                        parsed_data["tipo_movimento"] = "ENTREGA"
                         payload = {
                             "status": "ENTREGUE",
-                            "data_entrega": date_header,
+                            "data_entrega": parsed_data['data_ocorrencia'] or date_header,
                             "nota_despacho": nota_id
                         }
                         try:
+                            # Update existing input doc based on logic
+                            # Normally we want to find the doc by nota_id and update it
                             db_client.update_document(COLLECTION_NAME, nota_id, payload)
                             debug_logs.append(f"   -> [ATUALIZADO] Status mudado para ENTREGUE.")
                         except:
+                            # Fallback if document doesn't exist
                             db_client.create_document(COLLECTION_NAME, nota_id, payload)
                             debug_logs.append(f"   -> [CRIADO-SAIDA] Documento de saída criado.")
                     else:
-                        debug_logs.append(f"   -> [PULADO] Assunto não bate com filtros de entrada/saída.")
+                        debug_logs.append(f"   -> [PULADO] Tipo de movimento não identificado no assunto.")
+                        continue # Skip label removal if not processed
                     
-                    # Remove Label
-                    service.users().messages().batchModify(
-                        userId='me',
-                        body={'ids': [msg['id']], 'removeLabelIds': [label_id]}
-                    ).execute()
-                    
+                    # Swap Label
+                    if label_processed_id:
+                        mods = {
+                            'ids': [msg['id']],
+                            'removeLabelIds': [label_robo_id],
+                            'addLabelIds': [label_processed_id]
+                        }
+                        service.users().messages().batchModify(userId='me', body=mods).execute()
+                        debug_logs.append(f"   -> [LABEL] Trocado ROBO_TIM por PROCESSADO.")
+                    else:
+                        debug_logs.append(f"   -> [ERRO-LABEL] ID de PROCESSADO não disponível.")
+
                     processed_count += 1
 
                 except Exception as e:
                     print(f"Erro ao processar mensagem {msg['id']}: {e}")
                     debug_logs.append(f" - [CRITICO] Erro exceção: {str(e)}")
 
-            self.respond_success(f"Processados {processed_count} e-mails.", debug_logs)
+            self.respond_success(f"Processados {processed_count} e-mails.", start_time, debug_logs)
 
         except Exception as e:
             print(f"Erro Crítico: {e}")
             self.send_response(500)
             self.end_headers()
-            self.wfile.write(f"Internal Error: {str(e)}".encode())
+            # self.wfile.write(f"Internal Error: {str(e)}".encode())
+            # Safer for Vercel logging:
+            res = {"status": "error", "message": f"Internal Error: {str(e)}"}
+            self.wfile.write(json.dumps(res).encode())
 
-    def respond_success(self, message, debug_logs=None):
+    def respond_success(self, message, start_time, debug_logs=None):
+        duration = time.time() - start_time
         self.send_response(200)
         self.send_header('Content-type', 'application/json')
         self.end_headers()
-        res = {"status": "success", "message": message}
+        
+        res = {
+            "status": "success", 
+            "message": message,
+            "execution_time_seconds": round(duration, 2)
+        }
         if debug_logs: res["debug_logs"] = debug_logs
         self.wfile.write(json.dumps(res, ensure_ascii=False).encode())

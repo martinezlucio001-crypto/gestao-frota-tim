@@ -43,9 +43,7 @@ import {
   Wrench,
   Settings
 } from 'lucide-react';
-import { initializeApp } from 'firebase/app';
 import {
-  getAuth,
   signInAnonymously,
   onAuthStateChanged,
   signInWithCustomToken,
@@ -54,7 +52,6 @@ import {
   signOut
 } from 'firebase/auth';
 import {
-  getFirestore,
   collection,
   addDoc,
   doc,
@@ -64,22 +61,7 @@ import {
   deleteDoc,
   getDocs
 } from 'firebase/firestore';
-
-// --- Configuração do Firebase ---
-const firebaseConfig = {
-  apiKey: "AIzaSyA3VhT2iHrD1uzOFI9Bc_BYyMoCpOG-G8w",
-  authDomain: "gestao-frota-tim.firebaseapp.com",
-  projectId: "gestao-frota-tim",
-  storageBucket: "gestao-frota-tim.firebasestorage.app",
-  messagingSenderId: "455143595757",
-  appId: "1:455143595757:web:036dc514ad7f983ca336e4",
-  measurementId: "G-LDYRESTCTG"
-};
-
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
-const appId = "frota-tim-oficial"; // Esse é o nome da pasta onde os dados vão ficar
+import { auth, db, appId } from './lib/firebase'; // Usando configuração centralizada
 
 // --- URL DO SEU SCRIPT GOOGLE ---
 const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbw_mOblGA9apR8iX8lNWf2SD8scFuyMe0u-AtFxkSJ4OVUrWxks_srLuPlv_KVKcx9_uQ/exec";
@@ -150,6 +132,7 @@ const globalStyles = `
 `;
 
 // --- Componentes UI ---
+
 
 const Card = ({ children, className = "", noPadding = false, ...props }) => (
   <div className={`bg-white rounded-2xl shadow-sm border border-slate-100 hover:shadow-md transition-all duration-300 ${noPadding ? '' : 'p-6'} ${className}`} {...props}>
@@ -1802,7 +1785,7 @@ const EfficiencyChart = ({ data, period, onPeriodChange }) => {
 
 // --- Componente Principal ---
 
-export default function FleetManager() {
+export default function FleetManager({ embedded = false, externalView, onNavigate }) {
   const [user, setUser] = useState(null);
   const [view, setView] = useState('dashboard');
   const [trucks, setTrucks] = useState([]);
@@ -1820,7 +1803,23 @@ export default function FleetManager() {
   const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
   const [detailsEntry, setDetailsEntry] = useState(null);
 
-  // Estado de Manutenção
+  // Sincronizar view externa (quando embarcado)
+  useEffect(() => {
+    if (embedded && externalView) {
+      setView(externalView);
+    }
+  }, [embedded, externalView]);
+
+  // Função interna para mudar view (chama onNavigate se embarcado)
+  const handleViewChange = (newView) => {
+    if (embedded && onNavigate) {
+      onNavigate(newView);
+    } else {
+      setView(newView);
+    }
+  };
+
+  // ... (o restante dos estados) ...
   const [maintenanceServices, setMaintenanceServices] = useState([]);
   const [maintenanceRecords, setMaintenanceRecords] = useState([]);
   const [isServiceModalOpen, setIsServiceModalOpen] = useState(false);
@@ -1841,8 +1840,10 @@ export default function FleetManager() {
   const [resetEmailSent, setResetEmailSent] = useState(false);
 
   useEffect(() => {
-    document.title = "Gestão de Frota TIM";
-  }, []);
+    if (!embedded) {
+      document.title = "Gestão de Frota TIM";
+    }
+  }, [embedded]);
 
   // Monitorar estado de autenticação do admin
   useEffect(() => {
@@ -3417,41 +3418,43 @@ export default function FleetManager() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50/50 font-sans text-slate-900 pb-10">
-      <nav className="bg-white border-b sticky top-0 z-40 backdrop-blur-md bg-white/80">
-        <div className="max-w-7xl mx-auto px-4 flex items-center justify-between h-20">
-          <div className="flex items-center gap-3 cursor-pointer" onClick={() => setView('dashboard')}>
-            <div className="bg-indigo-600 p-2 rounded-xl text-white shadow-lg"><Truck size={24} /></div>
-            <div>
-              <span className="font-black text-xl tracking-tight block">Gestão de Combustível Tim</span>
-              <span className="text-[10px] uppercase font-bold text-indigo-500 tracking-widest">Enterprise v3.0</span>
+    <div className={`min-h-screen bg-slate-50/50 font-sans text-slate-900 ${embedded ? '' : 'pb-10'}`}>
+      {!embedded && (
+        <nav className="bg-white border-b sticky top-0 z-40 backdrop-blur-md bg-white/80">
+          <div className="max-w-7xl mx-auto px-4 flex items-center justify-between h-20">
+            <div className="flex items-center gap-3 cursor-pointer" onClick={() => setView('dashboard')}>
+              <div className="bg-indigo-600 p-2 rounded-xl text-white shadow-lg"><Truck size={24} /></div>
+              <div>
+                <span className="font-black text-xl tracking-tight block">Gestão de Combustível Tim</span>
+                <span className="text-[10px] uppercase font-bold text-indigo-500 tracking-widest">Enterprise v3.0</span>
+              </div>
             </div>
-          </div>
-          <div className="flex items-center gap-4">
-            <div className="flex space-x-2">
-              <button onClick={() => setView('dashboard')} className={`px-4 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all ${view === 'dashboard' ? 'bg-indigo-50 text-indigo-600 shadow-inner' : 'text-slate-400'}`}>Painel</button>
-              <button onClick={() => setView('trucks')} className={`px-4 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all ${view.includes('truck') ? 'bg-indigo-50 text-indigo-600 shadow-inner' : 'text-slate-400'}`}>Frota</button>
-              <button onClick={() => setView('maintenance')} className={`px-4 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all relative ${view === 'maintenance' ? 'bg-indigo-50 text-indigo-600 shadow-inner' : 'text-slate-400'}`}>
-                Manutenção
-                {maintenanceAlerts.length > 0 && (
-                  <span className="absolute -top-1 -right-1 w-4 h-4 bg-amber-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
-                    {maintenanceAlerts.length > 9 ? '9+' : maintenanceAlerts.length}
-                  </span>
-                )}
+            <div className="flex items-center gap-4">
+              <div className="flex space-x-2">
+                <button onClick={() => setView('dashboard')} className={`px-4 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all ${view === 'dashboard' ? 'bg-indigo-50 text-indigo-600 shadow-inner' : 'text-slate-400'}`}>Painel</button>
+                <button onClick={() => setView('trucks')} className={`px-4 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all ${view.includes('truck') ? 'bg-indigo-50 text-indigo-600 shadow-inner' : 'text-slate-400'}`}>Frota</button>
+                <button onClick={() => setView('maintenance')} className={`px-4 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all relative ${view === 'maintenance' ? 'bg-indigo-50 text-indigo-600 shadow-inner' : 'text-slate-400'}`}>
+                  Manutenção
+                  {maintenanceAlerts.length > 0 && (
+                    <span className="absolute -top-1 -right-1 w-4 h-4 bg-amber-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
+                      {maintenanceAlerts.length > 9 ? '9+' : maintenanceAlerts.length}
+                    </span>
+                  )}
+                </button>
+                <button onClick={() => setView('data-management')} className={`px-4 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all ${view === 'data-management' ? 'bg-indigo-50 text-indigo-600 shadow-inner' : 'text-slate-400'}`}>Dados</button>
+              </div>
+              <button
+                onClick={handleAdminLogout}
+                className="p-2.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-all"
+                title="Sair do sistema"
+              >
+                <LogOut size={20} />
               </button>
-              <button onClick={() => setView('data-management')} className={`px-4 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all ${view === 'data-management' ? 'bg-indigo-50 text-indigo-600 shadow-inner' : 'text-slate-400'}`}>Dados</button>
             </div>
-            <button
-              onClick={handleAdminLogout}
-              className="p-2.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-all"
-              title="Sair do sistema"
-            >
-              <LogOut size={20} />
-            </button>
           </div>
-        </div>
-      </nav>
-      <main className="max-w-7xl mx-auto px-4 py-10">
+        </nav>
+      )}
+      <main className={`mx-auto ${embedded ? 'w-full px-0 py-0' : 'max-w-7xl px-4 py-10'}`}>
         {view === 'dashboard' && renderDashboard()}{view === 'trucks' && renderTrucksList()}{view === 'truck-detail' && renderTruckDetail()}{view === 'maintenance' && renderMaintenance()}{view === 'data-management' && renderDataManagement()}
       </main>
       <TruckModal isOpen={isTruckModalOpen} onClose={() => { setIsTruckModalOpen(false); setEditingTruck(null); }} onSave={handleSaveTruck} editingTruck={editingTruck} />
