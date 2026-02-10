@@ -31,11 +31,9 @@ const NotaDetalheModal = ({ nota, onClose, onProcessar }) => {
     }, [nota]);
 
     const toggleItem = (index) => {
-        setItens(prev => {
-            const newItens = [...prev];
-            newItens[index].conferido = !newItens[index].conferido;
-            return newItens;
-        });
+        setItens(prev => prev.map((item, i) =>
+            i === index ? { ...item, conferido: !item.conferido } : item
+        ));
     };
 
     const todosConferidos = itens.length > 0 && itens.every(i => i.conferido);
@@ -95,14 +93,10 @@ const NotaDetalheModal = ({ nota, onClose, onProcessar }) => {
                                     {item.unitizador}
                                 </span>
                                 <div className="text-sm font-medium text-slate-800 whitespace-pre-line">
-                                    {(item.lacre && item.lacre.trim() !== '') ? item.lacre : <span className="text-slate-400 italic font-normal">Sem Lacre</span>}
+                                    {(item.lacre && item.lacre !== '?' && item.lacre.trim() !== '') ? item.lacre : <span className="text-slate-400 italic font-normal">Sem Lacre</span>}
                                 </div>
                             </div>
                             <div
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    toggleItem(idx);
-                                }}
                                 className={`w-12 h-12 rounded-full flex items-center justify-center transition-all cursor-pointer hover:scale-105 active:scale-95 ${item.conferido ? 'bg-emerald-500 text-white shadow-md shadow-emerald-200' : 'bg-slate-100 text-slate-300 hover:bg-slate-200'
                                     }`}>
                                 <CheckCircle2 size={24} strokeWidth={3} />
@@ -211,7 +205,7 @@ const NotasDespachoPage = () => {
             destino: selectedNota.destino,
             pesoTotal: selectedNota.peso_total_declarado,
             volumesCorreios: selectedNota.qtde_unitizadores,
-            volumesEntregues: selectedNota.qtde_unitizadores, // Assume entrega igual a coleta inicialmente
+            volumesEntregues: '', // Deixa em branco para usuário preencher
             quantidadePaletes: 0,
             observacoes: `Despacho gerado a partir da Nota ${selectedNota.nota_despacho}.`
         };

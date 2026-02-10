@@ -216,7 +216,7 @@ def parse_email_html(html_content):
                     
                     max_len = max(len(raw_units), len(raw_lacres), len(raw_pesos))
                     for i in range(max_len):
-                        unit_val = raw_units[i] if i < len(raw_units) else "?"
+                        unit_val = raw_units[i] if i < len(raw_units) else ""
                         # Filter noise
                         if len(unit_val) < 4 or unit_val.lower() in ['unitizador', 'lacre', 'objeto']:
                             continue
@@ -231,7 +231,7 @@ def parse_email_html(html_content):
 
                         item = {
                             "unitizador": unit_val,
-                            "lacre": raw_lacres[i] if i < len(raw_lacres) else "?",
+                            "lacre": raw_lacres[i] if i < len(raw_lacres) else "",
                             "peso": peso_val,
                             "conferido": False
                         }
