@@ -101,7 +101,7 @@ const NotaSection = ({ title, notas, icon: Icon, colorClass, onOpenNota, emptyMe
                 </div>
             </div>
 
-            <div className="max-h-[300px] overflow-y-auto custom-scrollbar">
+            <div className="max-h-[600px] overflow-y-auto custom-scrollbar">
                 <Table>
                     <TableHeader className="sticky top-0 bg-white shadow-sm z-10">
                         <TableRow>
@@ -266,12 +266,15 @@ const NotasDespachoPage = () => {
 
     // Sectioning Logic
     const sections = useMemo(() => {
+        // Helper: Treat undefined created_by as ROBO (Legacy compatibility)
+        const isRobo = (n) => n.created_by === 'ROBO' || !n.created_by;
+
         return {
-            recebidos: filteredNotas.filter(n => n.status === 'RECEBIDO' && n.created_by === 'ROBO'),
-            processados: filteredNotas.filter(n => n.status === 'PROCESSADA' && n.created_by === 'ROBO'),
-            concluidos: filteredNotas.filter(n => ['CONCLUIDO', 'ENTREGUE'].includes(n.status) && n.created_by === 'ROBO'),
-            divergentes: filteredNotas.filter(n => ['DIVERGENTE', 'DEVOLVED_ORPHAN'].includes(n.status) && n.created_by === 'ROBO'),
-            manuais: filteredNotas.filter(n => n.created_by !== 'ROBO')
+            recebidos: filteredNotas.filter(n => n.status === 'RECEBIDO' && isRobo(n)),
+            processados: filteredNotas.filter(n => n.status === 'PROCESSADA' && isRobo(n)),
+            concluidos: filteredNotas.filter(n => ['CONCLUIDO', 'ENTREGUE'].includes(n.status) && isRobo(n)),
+            divergentes: filteredNotas.filter(n => ['DIVERGENTE', 'DEVOLVED_ORPHAN'].includes(n.status) && isRobo(n)),
+            manuais: filteredNotas.filter(n => !isRobo(n))
         };
     }, [filteredNotas]);
 
@@ -323,6 +326,32 @@ const NotasDespachoPage = () => {
                         )}
                     </div>
                 </div>
+
+                <Button
+                    variant="outline"
+                    className="flex items-center gap-2"
+                    onClick={async () => {
+                        try {
+                            setLoading(true);
+                            const response = await fetch(`https://gestao-frota-tim.vercel.app/api/sync_emails?key=${import.meta.env.VITE_SYNC_KEY || 'timbelem2025*'}`);
+                            const data = await response.json();
+                            if (response.ok) {
+                                alert(`Sucesso: ${data.message || 'Notas atualizadas!'}`);
+                            } else {
+                                alert(`Erro: ${data.error || 'Falha na atualização'}`);
+                            }
+                        } catch (error) {
+                            alert('Erro de conexão ao tentar atualizar.');
+                            console.error(error);
+                        } finally {
+                            setLoading(false);
+                        }
+                    }}
+                    disabled={loading}
+                >
+                    <RefreshCw size={16} className={loading ? "animate-spin" : ""} />
+                    {loading ? "Atualizando..." : "Atualizar Notas"}
+                </Button>
             </div>
 
             {/* Global Filters */}

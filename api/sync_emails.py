@@ -293,9 +293,11 @@ class handler(BaseHTTPRequestHandler):
         cron_secret = os.environ.get('CRON_SECRET')
         
         if not cron_secret or key != cron_secret:
-            self.send_response(401)
-            self.end_headers()
-            self.wfile.write(b"Unauthorized")
+            self._set_headers(401)
+            self.wfile.write(json.dumps({
+                "error": "Unauthorized", 
+                "message": "Invalid or missing key."
+            }).encode('utf-8'))
             return
 
         try:
@@ -550,20 +552,28 @@ class handler(BaseHTTPRequestHandler):
 
             self.respond_success(f"Processados {processed_count} e-mails.", start_time, debug_logs)
 
+
+
         except Exception as e:
             print(f"Erro Crítico: {e}")
-            self.send_response(500)
-            self.end_headers()
-            # self.wfile.write(f"Internal Error: {str(e)}".encode())
-            # Safer for Vercel logging:
+            self._set_headers(500)
             res = {"status": "error", "message": f"Internal Error: {str(e)}"}
-            self.wfile.write(json.dumps(res).encode())
+            self.wfile.write(json.dumps(res).encode('utf-8'))
+
+    def _set_headers(self, status=200):
+        self.send_response(status)
+        self.send_header('Content-type', 'application/json')
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.send_header('Access-Control-Allow-Methods', 'GET, OPTIONS')
+        self.send_header('Access-Control-Allow-Headers', 'Content-Type')
+        self.end_headers()
+
+    def do_OPTIONS(self):
+        self._set_headers(200)
 
     def respond_success(self, message, start_time, debug_logs=None):
         duration = time.time() - start_time
-        self.send_response(200)
-        self.send_header('Content-type', 'application/json')
-        self.end_headers()
+        self._set_headers(200)
         
         res = {
             "status": "success", 
@@ -571,4 +581,4 @@ class handler(BaseHTTPRequestHandler):
             "execution_time_seconds": round(duration, 2)
         }
         if debug_logs: res["debug_logs"] = debug_logs
-        self.wfile.write(json.dumps(res, ensure_ascii=False).encode())
+        self.wfile.write(json.dumps(res, ensure_ascii=False).encode('utf-8'))
