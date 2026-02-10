@@ -145,6 +145,15 @@ const NotasDespachoPage = () => {
     const [selectedNota, setSelectedNota] = useState(null);
     const [isDespachoModalOpen, setIsDespachoModalOpen] = useState(false);
 
+    // Filtros
+    const [filterOrigem, setFilterOrigem] = useState('');
+    const [filterDestino, setFilterDestino] = useState('');
+    const [filterData, setFilterData] = useState('');
+    const [filterStatus, setFilterStatus] = useState('TODOS'); // TODOS, PENDENTE, PROCESSADA
+
+    // Ordenação
+    const [sortOrder, setSortOrder] = useState('DESC'); // DESC ou ASC (por status/data)
+
     // Carregar Notas
     useEffect(() => {
         const q = query(
@@ -160,6 +169,58 @@ const NotasDespachoPage = () => {
 
         return () => unsubscribe();
     }, []);
+
+    // Filter & Sort Logic
+    const filteredNotas = useMemo(() => {
+        let result = [...notas];
+
+        // 1. Filtros
+        if (filterOrigem) {
+            result = result.filter(n => n.origem?.toLowerCase().includes(filterOrigem.toLowerCase()));
+        }
+        if (filterDestino) {
+            result = result.filter(n => n.destino?.toLowerCase().includes(filterDestino.toLowerCase()));
+        }
+        if (filterData) {
+            // Comparação simples de string por enquanto ou converter para dados reais
+            result = result.filter(n => n.data_ocorrencia?.includes(filterData)); // Espera formato DD/MM/YYYY
+        }
+        if (filterStatus !== 'TODOS') {
+            if (filterStatus === 'PROCESSADA') {
+                result = result.filter(n => n.status === 'PROCESSADA');
+            } else {
+                result = result.filter(n => n.status !== 'PROCESSADA');
+            }
+        }
+
+        // 2. Ordenação (Priority: Status Pendente first if ASC, else Date)
+        // O cliente pediu "Opção de ordenação por status". vamos simplificar:
+        // Agrupar por status ou apenas ordenar.
+        // Vamos ordenar primariamente por Status (Pendentes primeiro) e secundariamente por Data.
+        result.sort((a, b) => {
+            const isAProcessada = a.status === 'PROCESSADA';
+            const isBProcessada = b.status === 'PROCESSADA';
+
+            if (isAProcessada === isBProcessada) {
+                // Desempate por data (string compare works for YYYY-MM-DD but here we have DD/MM/YYYY usually... 
+                // but firestore query already returns ordered by data_ocorrencia desc.
+                // so we just keep stable sort or rely on index.
+                return 0;
+            }
+
+            if (sortOrder === 'ASC') {
+                // Pendentes (false) < Processadas (true) -> Pendentes Primeiro? Não.
+                // Se array sort ASC: false vem antes de true? (0 vs 1)
+                // Quero Pendentes Primeiro (0) depois Processadas (1)
+                return (isAProcessada ? 1 : 0) - (isBProcessada ? 1 : 0);
+            } else {
+                // DESC: Processadas Primeiro
+                return (isBProcessada ? 1 : 0) - (isAProcessada ? 1 : 0);
+            }
+        });
+
+        return result;
+    }, [notas, filterOrigem, filterDestino, filterData, filterStatus, sortOrder]);
 
     // Carregar Servidores (para o modal de despacho)
     useEffect(() => {
@@ -220,6 +281,62 @@ const NotasDespachoPage = () => {
                 </div>
             </div>
 
+            {/* Filtros */}
+            <Card className="p-4 grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
+                <div className="space-y-1">
+                    <label className="text-xs font-semibold text-slate-500 uppercase">Origem</label>
+                    <input
+                        type="text"
+                        placeholder="Filtrar origem..."
+                        className="w-full h-10 px-3 rounded-lg border border-slate-200 text-sm focus:outline-none focus:border-indigo-500 transition-colors"
+                        value={filterOrigem}
+                        onChange={(e) => setFilterOrigem(e.target.value)}
+                    />
+                </div>
+                <div className="space-y-1">
+                    <label className="text-xs font-semibold text-slate-500 uppercase">Destino</label>
+                    <input
+                        type="text"
+                        placeholder="Filtrar destino..."
+                        className="w-full h-10 px-3 rounded-lg border border-slate-200 text-sm focus:outline-none focus:border-indigo-500 transition-colors"
+                        value={filterDestino}
+                        onChange={(e) => setFilterDestino(e.target.value)}
+                    />
+                </div>
+                <div className="space-y-1">
+                    <label className="text-xs font-semibold text-slate-500 uppercase">Data (DD/MM/AAAA)</label>
+                    <input
+                        type="text"
+                        placeholder="Ex: 09/02/2026"
+                        className="w-full h-10 px-3 rounded-lg border border-slate-200 text-sm focus:outline-none focus:border-indigo-500 transition-colors"
+                        value={filterData}
+                        onChange={(e) => setFilterData(e.target.value)}
+                    />
+                </div>
+                <div className="space-y-1">
+                    <label className="text-xs font-semibold text-slate-500 uppercase">Status</label>
+                    <select
+                        className="w-full h-10 px-3 rounded-lg border border-slate-200 text-sm focus:outline-none focus:border-indigo-500 transition-colors bg-white"
+                        value={filterStatus}
+                        onChange={(e) => setFilterStatus(e.target.value)}
+                    >
+                        <option value="TODOS">Todos</option>
+                        <option value="PENDENTE">Pendentes</option>
+                        <option value="PROCESSADA">Processadas</option>
+                    </select>
+                </div>
+                <div className="space-y-1">
+                    <label className="text-xs font-semibold text-slate-500 uppercase">Ordenação</label>
+                    <button
+                        onClick={() => setSortOrder(prev => prev === 'ASC' ? 'DESC' : 'ASC')}
+                        className="w-full h-10 px-3 rounded-lg border border-slate-200 text-sm font-medium text-slate-600 bg-white hover:bg-slate-50 transition-colors flex items-center justify-between"
+                    >
+                        <span>{sortOrder === 'ASC' ? 'Pendentes 1º' : 'Processadas 1º'}</span>
+                        {/* Ícones poderiam ser adicionados aqui se importados */}
+                    </button>
+                </div>
+            </Card>
+
             {/* Lista Principal */}
             <Card className="overflow-hidden">
                 <Table>
@@ -240,10 +357,10 @@ const NotasDespachoPage = () => {
                             <TableRow>
                                 <TableCell colSpan={8} className="text-center py-8">Carregando...</TableCell>
                             </TableRow>
-                        ) : notas.length === 0 ? (
-                            <TableEmpty message="Nenhuma nota encontrada." icon={Mail} />
+                        ) : filteredNotas.length === 0 ? (
+                            <TableEmpty message="Nenhuma nota encontrada com os filtros atuais." icon={Mail} />
                         ) : (
-                            notas.map(nota => (
+                            filteredNotas.map(nota => (
                                 <TableRow
                                     key={nota.id}
                                     className="cursor-pointer hover:bg-slate-50 transition-colors"
