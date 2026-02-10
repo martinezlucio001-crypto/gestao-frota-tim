@@ -98,8 +98,13 @@ const NotaDetalheModal = ({ nota, onClose, onProcessar }) => {
                                     {(item.lacre && item.lacre.trim() !== '') ? item.lacre : <span className="text-slate-400 italic font-normal">Sem Lacre</span>}
                                 </div>
                             </div>
-                            <div className={`w-12 h-12 rounded-full flex items-center justify-center transition-all ${item.conferido ? 'bg-emerald-500 text-white shadow-md shadow-emerald-200' : 'bg-slate-100 text-slate-300'
-                                }`}>
+                            <div
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    toggleItem(idx);
+                                }}
+                                className={`w-12 h-12 rounded-full flex items-center justify-center transition-all cursor-pointer hover:scale-105 active:scale-95 ${item.conferido ? 'bg-emerald-500 text-white shadow-md shadow-emerald-200' : 'bg-slate-100 text-slate-300 hover:bg-slate-200'
+                                    }`}>
                                 <CheckCircle2 size={24} strokeWidth={3} />
                             </div>
                         </div>

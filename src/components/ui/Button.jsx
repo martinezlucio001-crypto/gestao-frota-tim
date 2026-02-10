@@ -24,6 +24,8 @@ export const Button = ({
     className = "",
     disabled = false,
     type = "button",
+    leftIcon: LeftIcon,
+    rightIcon: RightIcon,
     ...props
 }) => {
     const baseStyle = "rounded-xl font-medium transition-all duration-200 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed active:scale-95";
@@ -36,7 +38,9 @@ export const Button = ({
             className={cn(baseStyle, variants[variant], sizes[size], className)}
             {...props}
         >
+            {LeftIcon && <LeftIcon size={20} />}
             {children}
+            {RightIcon && <RightIcon size={20} />}
         </button>
     );
 };
