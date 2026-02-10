@@ -14,6 +14,7 @@ import CombustivelModule from './modules/combustivel/CombustivelModule';
 import PainelDespachos from './modules/despacho/PainelDespachos';
 import ServidoresPage from './modules/despacho/ServidoresPage';
 import PagamentosPage from './modules/despacho/PagamentosPage';
+import NotasDespachoPage from './modules/despacho/NotasDespachoPage';
 import ContratosPage from './modules/receita/ContratosPage';
 import NotasPage from './modules/receita/NotasPage';
 import ReceitaDashboard from './modules/receita/ReceitaDashboard';
@@ -207,6 +208,8 @@ const GestaoTIM = () => {
                 return <PainelDespachos />;
             case 'despacho-servidores':
                 return <ServidoresPage />;
+            case 'despacho-notas':
+                return <NotasDespachoPage />;
             case 'despacho-pagamentos':
                 return <PagamentosPage />;
 

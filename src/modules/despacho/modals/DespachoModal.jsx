@@ -6,7 +6,7 @@ import { Modal, ModalFooter, Button, Input, Select, Textarea } from '../../../co
 import { formatCurrency, routeMatches } from '../../../lib/utils';
 import { CITIES, CARGO_TYPES, PRICING_UNITS, FINANCIAL_STATUS } from '../../../lib/cities';
 
-const DespachoModal = ({ isOpen, onClose, editingDespacho, servidores = [] }) => {
+const DespachoModal = ({ isOpen, onClose, editingDespacho, servidores = [], initialData = null, onSaveSuccess }) => {
     const [isLoading, setIsLoading] = useState(false);
     const [formData, setFormData] = useState({
         data: new Date().toISOString().split('T')[0],
@@ -45,6 +45,23 @@ const DespachoModal = ({ isOpen, onClose, editingDespacho, servidores = [] }) =>
                     statusFinanceiro: editingDespacho.statusFinanceiro || 'Pendente',
                     observacoes: editingDespacho.observacoes || ''
                 });
+            } else if (initialData) {
+                setFormData({
+                    data: initialData.data || new Date().toISOString().split('T')[0],
+                    origem: initialData.origem || '',
+                    destino: initialData.destino || '',
+                    tipoCarga: '',
+                    servidorId: '',
+                    servidorNome: '',
+                    unidadePrecificacao: '',
+                    volumesCorreios: initialData.volumesCorreios || '',
+                    volumesEntregues: initialData.volumesEntregues || '',
+                    pesoTotal: initialData.pesoTotal || '',
+                    quantidadePaletes: initialData.quantidadePaletes || '',
+                    valorUnitario: '',
+                    statusFinanceiro: 'Pendente',
+                    observacoes: initialData.observacoes || ''
+                });
             } else {
                 setFormData({
                     data: new Date().toISOString().split('T')[0],
@@ -64,7 +81,7 @@ const DespachoModal = ({ isOpen, onClose, editingDespacho, servidores = [] }) =>
                 });
             }
         }
-    }, [isOpen, editingDespacho]);
+    }, [isOpen, editingDespacho, initialData]);
 
     // Servidores não são mais filtrados restritivamente, mas exibidos para escolha
     const servidorOptions = useMemo(() => {
@@ -232,6 +249,7 @@ const DespachoModal = ({ isOpen, onClose, editingDespacho, servidores = [] }) =>
                 await addDoc(collection(db, `artifacts/${appId}/despachos`), payload);
             }
 
+            if (onSaveSuccess) onSaveSuccess();
             onClose();
         } catch (error) {
             console.error('Erro ao salvar:', error);

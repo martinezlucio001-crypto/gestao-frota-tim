@@ -53,6 +53,7 @@ const menuItems = [
         module: 'despacho',
         submenu: [
             { id: 'despacho-painel', label: 'Painel de Despachos', view: 'despacho-painel' },
+            { id: 'despacho-notas', label: 'Notas de Despacho', view: 'despacho-notas' },
             { id: 'despacho-servidores', label: 'Servidores', view: 'despacho-servidores' },
             { id: 'despacho-pagamentos', label: 'Pagamentos', view: 'despacho-pagamentos' },
         ]

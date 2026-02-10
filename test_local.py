@@ -40,8 +40,15 @@ def parse_email_html(html_content):
             for row in rows:
                 cols = row.find_all(['td', 'th'])
                 
-                # Skip header rows
+                # Skip Header Rows
                 if any(c.name == 'th' for c in cols):
+                    continue
+                
+                # Robust Header Check (case insensitive)
+                col0_text = limpar_html(str(cols[0])).lower() if cols else ""
+                col1_text = limpar_html(str(cols[1])).lower() if len(cols) > 1 else ""
+                
+                if 'nota de despacho' in col0_text or 'origem' in col1_text:
                     continue
 
                 # New Structure expected (approx 9 columns):
@@ -131,15 +138,15 @@ html_exemplo = """
     <table border="1">
         <thead>
             <tr>
-                <th>Nota de Despacho</th>
-                <th>Origem</th>
-                <th>Destino</th>
-                <th>Data/Hora Recebimento</th>
-                <th>Qtde Unitizadores</th>
-                <th>Peso total (kg)</th>
-                <th>Unitizador</th>
-                <th>Lacre/Objeto</th>
-                <th>Peso(Kg)</th>
+                <td>Nota de Despacho</td> <!-- Header masked as td -->
+                <td>Origem</td>
+                <td>Destino</td>
+                <td>Data/Hora Recebimento</td>
+                <td>Qtde Unitizadores</td>
+                <td>Peso total (kg)</td>
+                <td>Unitizador</td>
+                <td>Lacre/Objeto</td>
+                <td>Peso(Kg)</td>
             </tr>
         </thead>
         <tbody>
