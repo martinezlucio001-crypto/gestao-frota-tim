@@ -422,7 +422,8 @@ class handler(BaseHTTPRequestHandler):
                                 "peso_total_calculado": parsed_data['peso_total_calculado'],
                                 "itens": parsed_data['itens'],
                                 "criado_em": "SERVER_TIMESTAMP",
-                                "divergencia": None # Clear any previous divergence if re-processing
+                                "divergencia": None, # Clear any previous divergence if re-processing
+                                "created_by": "ROBO" 
                             }
                             db_client.create_document(COLLECTION_NAME, nota_id, payload)
                             debug_logs.append(f"   -> [SALVO] Documento criado com {len(parsed_data['itens'])} itens.")
@@ -508,7 +509,8 @@ class handler(BaseHTTPRequestHandler):
                                 "peso_total_calculado": parsed_data['peso_total_calculado'],
                                 "itens": parsed_data['itens'],
                                 "criado_em": "SERVER_TIMESTAMP",
-                                "divergencia": "Nota de Devolução sem entrada prévia."
+                                "divergencia": "Nota de Devolução sem entrada prévia.",
+                                "created_by": "ROBO"
                             }
                             db_client.create_document(COLLECTION_NAME, nota_id, payload)
                             debug_logs.append(f"   -> [CRIADO-ORFAO] Nota de Devolução sem origem.")
@@ -534,6 +536,17 @@ class handler(BaseHTTPRequestHandler):
                 except Exception as e:
                     print(f"Erro ao processar mensagem {msg['id']}: {e}")
                     debug_logs.append(f" - [CRITICO] Erro exceção: {str(e)}")
+
+            # 6. Save Sync Metadata
+            try:
+                meta_payload = {
+                    "last_sync": "SERVER_TIMESTAMP",
+                    "status": "SUCCESS",
+                    "processed_count": processed_count
+                }
+                db_client.create_document("artifacts", f"{os.environ.get('FIREBASE_APP_ID', 'default')}_sync_metadata", meta_payload)
+            except Exception as e:
+                debug_logs.append(f" - [ERRO] Falha ao salvar metadata: {e}")
 
             self.respond_success(f"Processados {processed_count} e-mails.", start_time, debug_logs)
 

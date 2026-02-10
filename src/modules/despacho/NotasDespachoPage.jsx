@@ -1,408 +1,163 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { collection, onSnapshot, query, orderBy, doc, updateDoc } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, doc, updateDoc, getDoc } from 'firebase/firestore';
 import { db, appId } from '../../lib/firebase';
+import { Card, Button, Input, Select, Modal, ModalFooter } from '../../components/ui';
 import {
-    Table, TableHeader, TableBody, TableRow, TableHead, TableCell, TableEmpty,
-    Button, StatusBadge, Card
-} from '../../components/ui';
-import { formatDateBR, formatCurrency } from '../../lib/utils';
-import {
-    Mail,
-    ArrowRight,
-    Truck,
-    CheckCircle2,
-    X,
-    ChevronRight,
-    Package,
-    AlertCircle,
-    Scale
+    FileText, Package, Truck, Calendar, Search, Filter,
+    MoreVertical, CheckCircle2, AlertCircle, X, ChevronRight,
+    ArrowUp, ArrowDown, RefreshCw
 } from 'lucide-react';
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell, TableEmpty } from '../../components/ui/Table';
+import NotaDetalheModal from './modals/NotaDetalheModal';
 import DespachoModal from './modals/DespachoModal';
+import { formatCurrency } from '../../lib/utils';
 
-// --- Subcomponent: Modal de Detalhes da Nota (Mobile First) ---
-const NotaDetalheModal = ({ nota, onClose, onProcessar }) => {
-    const [itens, setItens] = useState([]);
+// Helper for Status Dots (Lights Style)
+const StatusLights = ({ status, divergencia }) => {
+    // Styles for "lights"
+    const lightBase = "w-3 h-3 rounded-full border transition-all duration-300";
+    const lightOn = "shadow-[0_0_8px_1px] opacity-100 scale-110 border-transparent";
+    const lightOff = "bg-transparent opacity-30 scale-90";
 
-    useEffect(() => {
-        if (nota) {
-            // Inicializa itens com estado de conferido
-            setItens(nota.itens.map(i => ({ ...i, conferido: false })));
-        }
-    }, [nota]);
-
-    const toggleItem = (index) => {
-        setItens(prev => prev.map((item, i) =>
-            i === index ? { ...item, conferido: !item.conferido } : item
-        ));
-    };
-
-    const todosConferidos = itens.length > 0 && itens.every(i => i.conferido);
-
-    if (!nota) return null;
+    const isRecebido = ['RECEBIDO', 'PROCESSADA', 'CONCLUIDO', 'DIVERGENTE'].includes(status);
+    const isProcessado = ['PROCESSADA', 'CONCLUIDO', 'DIVERGENTE'].includes(status);
+    const isEntregue = ['CONCLUIDO', 'DIVERGENTE', 'DEVOLVED_ORPHAN'].includes(status);
+    const isOrphan = status === 'DEVOLVED_ORPHAN';
 
     return (
-        <div className="fixed inset-0 z-50 flex flex-col bg-slate-50">
-            {/* 1. Header Fixo */}
-            <div className="bg-white border-b border-slate-200 px-4 py-3 shadow-sm flex-none">
-                <div className="flex items-center justify-between mb-3">
-                    <button onClick={onClose} className="p-2 -ml-2 text-slate-500 hover:bg-slate-100 rounded-full">
-                        <X size={24} />
-                    </button>
-                    <h3 className="font-bold text-lg text-slate-800">Nota {nota.nota_despacho}</h3>
-                    <div className="w-10"></div> {/* Spacer */}
+        <div className="flex items-center justify-center gap-2">
+            {/* Amarelo (Recebido) */}
+            <div
+                className={`${lightBase} border-yellow-500 ${isRecebido && !isOrphan ? `bg-yellow-400 ${lightOn} shadow-yellow-400/60` : lightOff}`}
+                title="Recebido"
+            />
+            {/* Azul (Processado) */}
+            <div
+                className={`${lightBase} border-blue-500 ${isProcessado && !isOrphan ? `bg-blue-500 ${lightOn} shadow-blue-500/60` : lightOff}`}
+                title="Processado"
+            />
+            {/* Verde (Entregue) */}
+            <div
+                className={`${lightBase} border-emerald-500 ${isEntregue ? `bg-emerald-500 ${lightOn} shadow-emerald-500/60` : lightOff}`}
+                title="Concluído/Entregue"
+            />
+
+            {/* Divergência Warning */}
+            {(status === 'DIVERGENTE' || divergencia) && (
+                <div className="ml-1 text-rose-500 animate-pulse" title={`Divergência: ${divergencia}`}>
+                    <AlertCircle size={16} fill="currentColor" className="text-white" />
                 </div>
-
-                {/* Macro Info */}
-                <div className="grid grid-cols-2 gap-3 text-sm">
-                    <div className="bg-slate-50 p-2 rounded-lg">
-                        <span className="block text-xs text-slate-400 mb-1">Rota</span>
-                        <div className="font-semibold text-slate-700 flex items-center gap-1">
-                            {nota.origem} <ArrowRight size={12} /> {nota.destino}
-                        </div>
-                    </div>
-                    <div className="bg-slate-50 p-2 rounded-lg">
-                        <span className="block text-xs text-slate-400 mb-1">Data</span>
-                        <span className="font-semibold text-slate-700">{formatDateBR(nota.data_ocorrencia)}</span>
-                    </div>
-                    <div className="bg-slate-50 p-2 rounded-lg">
-                        <span className="block text-xs text-slate-400 mb-1">Qtd. Total</span>
-                        <span className="font-semibold text-slate-700">{nota.qtde_unitizadores} Unit.</span>
-                    </div>
-                    <div className="bg-slate-50 p-2 rounded-lg">
-                        <span className="block text-xs text-slate-400 mb-1">Peso Total</span>
-                        <span className="font-semibold text-slate-700">{nota.peso_total_declarado?.toLocaleString('pt-BR')} kg</span>
-                    </div>
-                </div>
-            </div>
-
-            {/* 2. Lista Scrollable */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-3">
-                <h4 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-2">Itens da Nota</h4>
-                {itens.map((item, idx) => (
-                    <div
-                        key={idx}
-                        onClick={() => toggleItem(idx)}
-                        className={`bg-white p-4 rounded-xl border-2 transition-all cursor-pointer relative overflow-hidden ${item.conferido
-                            ? 'border-emerald-500 bg-emerald-50/30'
-                            : 'border-transparent shadow-sm hover:border-indigo-200'
-                            }`}
-                    >
-                        <div className="flex justify-between items-start mb-2">
-                            <div>
-                                <span className="text-sm font-bold text-indigo-700 bg-indigo-50 px-2.5 py-1.5 rounded mb-1 inline-block">
-                                    {item.unitizador}
-                                </span>
-                                <div className="text-sm font-medium text-slate-800 whitespace-pre-line">
-                                    {(item.lacre && item.lacre !== '?' && item.lacre.trim() !== '') ? item.lacre : <span className="text-slate-400 italic font-normal">Sem Lacre</span>}
-                                </div>
-                            </div>
-                            <div
-                                className={`w-12 h-12 rounded-full flex items-center justify-center transition-all cursor-pointer hover:scale-105 active:scale-95 ${item.conferido ? 'bg-emerald-500 text-white shadow-md shadow-emerald-200' : 'bg-slate-100 text-slate-300 hover:bg-slate-200'
-                                    }`}>
-                                <CheckCircle2 size={24} strokeWidth={3} />
-                            </div>
-                        </div>
-
-                        <div className="flex items-center gap-2 text-slate-500 text-sm mt-2 pt-2 border-t border-slate-100">
-                            <Scale size={14} />
-                            <span>{item.peso?.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} kg</span>
-                        </div>
-                    </div>
-                ))}
-            </div>
-
-            {/* 3. Footer de Ações */}
-            <div className="bg-white border-t border-slate-200 p-4 pb-8 flex-none shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
-                <div className="flex gap-3">
-                    <Button variant="ghost" className="flex-1 h-12" onClick={onClose}>
-                        Cancelar
-                    </Button>
-                    <Button
-                        onClick={() => onProcessar(nota)}
-                        className={`flex-1 h-12 text-base shadow-lg shadow-indigo-200 ${todosConferidos ? 'bg-emerald-600 hover:bg-emerald-700' : ''
-                            }`}
-                        leftIcon={Truck}
-                    >
-                        Realizar Despacho
-                    </Button>
-                </div>
-                {!todosConferidos && (
-                    <p className="text-center text-xs text-amber-600 mt-2 flex items-center justify-center gap-1">
-                        <AlertCircle size={12} />
-                        Confira todos os itens antes de despachar
-                    </p>
-                )}
-            </div>
-        </div >
+            )}
+        </div>
     );
 };
 
-// --- Página Principal ---
-const NotasDespachoPage = () => {
-    const [notas, setNotas] = useState([]);
-    const [servidores, setServidores] = useState([]);
-    const [isLoading, setIsLoading] = useState(true);
-    const [selectedNota, setSelectedNota] = useState(null);
-    const [isDespachoModalOpen, setIsDespachoModalOpen] = useState(false);
+// Section Component
+const NotaSection = ({ title, notas, icon: Icon, colorClass, onOpenNota, emptyMessage }) => {
+    const [sortConfig, setSortConfig] = useState({ key: 'data_ocorrencia', direction: 'desc' });
 
-    // Filtros
-    const [filterOrigem, setFilterOrigem] = useState('');
-    const [filterDestino, setFilterDestino] = useState('');
-    const [filterData, setFilterData] = useState('');
-    const [filterStatus, setFilterStatus] = useState('TODOS'); // TODOS, PENDENTE, PROCESSADA
+    const sortedNotas = useMemo(() => {
+        let sortable = [...notas];
+        if (sortConfig.key) {
+            sortable.sort((a, b) => {
+                let aVal = a[sortConfig.key] || '';
+                let bVal = b[sortConfig.key] || '';
 
-    // Ordenação
-    const [sortOrder, setSortOrder] = useState('DESC'); // DESC ou ASC (por status/data)
+                // Special handling for dates (DD/MM/YYYY)
+                if (sortConfig.key === 'data_ocorrencia' && aVal.includes('/')) {
+                    aVal = aVal.split('/').reverse().join('-');
+                    bVal = bVal.split('/').reverse().join('-');
+                }
 
-    // Carregar Notas
-    useEffect(() => {
-        const q = query(
-            collection(db, 'tb_despachos_conferencia'),
-            orderBy('data_ocorrencia', 'desc')
-        );
-
-        const unsubscribe = onSnapshot(q, (snapshot) => {
-            const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            setNotas(data);
-            setIsLoading(false);
-        });
-
-        return () => unsubscribe();
-    }, []);
-
-    // Filter & Sort Logic
-    const filteredNotas = useMemo(() => {
-        let result = [...notas];
-
-        // 1. Filtros
-        if (filterOrigem) {
-            result = result.filter(n => n.origem?.toLowerCase().includes(filterOrigem.toLowerCase()));
-        }
-        if (filterDestino) {
-            result = result.filter(n => n.destino?.toLowerCase().includes(filterDestino.toLowerCase()));
-        }
-        if (filterData) {
-            // Comparação simples de string por enquanto ou converter para dados reais
-            result = result.filter(n => n.data_ocorrencia?.includes(filterData)); // Espera formato DD/MM/YYYY
-        }
-        if (filterStatus !== 'TODOS') {
-            if (filterStatus === 'PROCESSADA') {
-                result = result.filter(n => n.status === 'PROCESSADA');
-            } else {
-                result = result.filter(n => n.status !== 'PROCESSADA');
-            }
-        }
-
-        // 2. Ordenação (Priority: Status Pendente first if ASC, else Date)
-        // O cliente pediu "Opção de ordenação por status". vamos simplificar:
-        // Agrupar por status ou apenas ordenar.
-        // Vamos ordenar primariamente por Status (Pendentes primeiro) e secundariamente por Data.
-        result.sort((a, b) => {
-            const isAProcessada = a.status === 'PROCESSADA';
-            const isBProcessada = b.status === 'PROCESSADA';
-
-            if (isAProcessada === isBProcessada) {
-                // Desempate por data (string compare works for YYYY-MM-DD but here we have DD/MM/YYYY usually... 
-                // but firestore query already returns ordered by data_ocorrencia desc.
-                // so we just keep stable sort or rely on index.
+                if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
+                if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
                 return 0;
-            }
-
-            if (sortOrder === 'ASC') {
-                // Pendentes (false) < Processadas (true) -> Pendentes Primeiro? Não.
-                // Se array sort ASC: false vem antes de true? (0 vs 1)
-                // Quero Pendentes Primeiro (0) depois Processadas (1)
-                return (isAProcessada ? 1 : 0) - (isBProcessada ? 1 : 0);
-            } else {
-                // DESC: Processadas Primeiro
-                return (isBProcessada ? 1 : 0) - (isAProcessada ? 1 : 0);
-            }
-        });
-
-        return result;
-    }, [notas, filterOrigem, filterDestino, filterData, filterStatus, sortOrder]);
-
-    // Carregar Servidores (para o modal de despacho)
-    useEffect(() => {
-        const unsubscribe = onSnapshot(collection(db, `artifacts/${appId}/servidores`), (snapshot) => {
-            setServidores(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-        });
-        return () => unsubscribe();
-    }, []);
-
-    const handleOpenNota = (nota) => {
-        setSelectedNota(nota);
-    };
-
-    const handleProcessarNota = (nota) => {
-        // Fecha visualização detalhada e abre o modal de despacho oficial
-        // O selectedNota continua setado para passar os dados
-        setIsDespachoModalOpen(true);
-    };
-
-    const handleDespachoSuccess = async () => {
-        // Callback após salvar o despacho com sucesso
-        // Atualizar status da nota para PROCESSADA
-        if (selectedNota) {
-            try {
-                await updateDoc(doc(db, 'tb_despachos_conferencia', selectedNota.id), {
-                    status: 'PROCESSADA',
-                    processado_em: new Date().toISOString()
-                });
-            } catch (error) {
-                console.error("Erro ao atualizar status da nota:", error);
-            }
+            });
         }
-        setIsDespachoModalOpen(false);
-        setSelectedNota(null);
+        return sortable;
+    }, [notas, sortConfig]);
+
+    const handleSort = (key) => {
+        setSortConfig(current => ({
+            key,
+            direction: current.key === key && current.direction === 'asc' ? 'desc' : 'asc'
+        }));
     };
 
-    // Dados para preencher o formulário automaticamente
-    const initialDespachoData = useMemo(() => {
-        if (!selectedNota) return null;
-        return {
-            data: selectedNota.data_ocorrencia ? selectedNota.data_ocorrencia.split(' ')[0].split('/').reverse().join('-') : '', // DD/MM/YYYY -> YYYY-MM-DD (aprox) ou verificar formato salvo
-            origem: selectedNota.origem,
-            destino: selectedNota.destino,
-            pesoTotal: selectedNota.peso_total_declarado,
-            volumesCorreios: selectedNota.qtde_unitizadores,
-            volumesEntregues: '', // Deixa em branco para usuário preencher
-            quantidadePaletes: 0,
-            observacoes: `Despacho gerado a partir da Nota ${selectedNota.nota_despacho}.`
-        };
-    }, [selectedNota]);
+    const SortIcon = ({ column }) => {
+        if (sortConfig.key !== column) return <span className="w-4 h-4" />;
+        return sortConfig.direction === 'asc' ? <ArrowUp size={14} /> : <ArrowDown size={14} />;
+    };
 
     return (
-        <div className="space-y-6">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <div>
-                    <h1 className="text-2xl font-bold text-slate-800">Notas de Despacho</h1>
-                    <p className="text-slate-500">Gerencie e processe as notas recebidas por e-mail.</p>
+        <Card className={`overflow-hidden border-l-4 ${colorClass}`}>
+            <div className="bg-slate-50 px-4 py-3 border-b border-slate-100 flex justify-between items-center">
+                <div className="flex items-center gap-2">
+                    <Icon size={18} className="text-slate-500" />
+                    <h3 className="font-bold text-slate-700">{title}</h3>
+                    <span className="bg-slate-200 text-slate-600 text-xs px-2 py-0.5 rounded-full font-bold">
+                        {notas.length}
+                    </span>
                 </div>
             </div>
 
-            {/* Filtros */}
-            <Card className="p-4 grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
-                <div className="space-y-1">
-                    <label className="text-xs font-semibold text-slate-500 uppercase">Origem</label>
-                    <input
-                        type="text"
-                        placeholder="Filtrar origem..."
-                        className="w-full h-10 px-3 rounded-lg border border-slate-200 text-sm focus:outline-none focus:border-indigo-500 transition-colors"
-                        value={filterOrigem}
-                        onChange={(e) => setFilterOrigem(e.target.value)}
-                    />
-                </div>
-                <div className="space-y-1">
-                    <label className="text-xs font-semibold text-slate-500 uppercase">Destino</label>
-                    <input
-                        type="text"
-                        placeholder="Filtrar destino..."
-                        className="w-full h-10 px-3 rounded-lg border border-slate-200 text-sm focus:outline-none focus:border-indigo-500 transition-colors"
-                        value={filterDestino}
-                        onChange={(e) => setFilterDestino(e.target.value)}
-                    />
-                </div>
-                <div className="space-y-1">
-                    <label className="text-xs font-semibold text-slate-500 uppercase">Data (DD/MM/AAAA)</label>
-                    <input
-                        type="text"
-                        placeholder="Ex: 09/02/2026"
-                        className="w-full h-10 px-3 rounded-lg border border-slate-200 text-sm focus:outline-none focus:border-indigo-500 transition-colors"
-                        value={filterData}
-                        onChange={(e) => setFilterData(e.target.value)}
-                    />
-                </div>
-                <div className="space-y-1">
-                    <label className="text-xs font-semibold text-slate-500 uppercase">Status</label>
-                    <select
-                        className="w-full h-10 px-3 rounded-lg border border-slate-200 text-sm focus:outline-none focus:border-indigo-500 transition-colors bg-white"
-                        value={filterStatus}
-                        onChange={(e) => setFilterStatus(e.target.value)}
-                    >
-                        <option value="TODOS">Todos</option>
-                        <option value="PENDENTE">Pendentes</option>
-                        <option value="PROCESSADA">Processadas</option>
-                    </select>
-                </div>
-                <div className="space-y-1">
-                    <label className="text-xs font-semibold text-slate-500 uppercase">Ordenação</label>
-                    <button
-                        onClick={() => setSortOrder(prev => prev === 'ASC' ? 'DESC' : 'ASC')}
-                        className="w-full h-10 px-3 rounded-lg border border-slate-200 text-sm font-medium text-slate-600 bg-white hover:bg-slate-50 transition-colors flex items-center justify-between"
-                    >
-                        <span>{sortOrder === 'ASC' ? 'Pendentes 1º' : 'Processadas 1º'}</span>
-                        {/* Ícones poderiam ser adicionados aqui se importados */}
-                    </button>
-                </div>
-            </Card>
-
-            {/* Lista Principal */}
-            <Card className="overflow-hidden">
+            <div className="max-h-[300px] overflow-y-auto custom-scrollbar">
                 <Table>
-                    <TableHeader>
+                    <TableHeader className="sticky top-0 bg-white shadow-sm z-10">
                         <TableRow>
-                            <TableHead>Nota de Despacho</TableHead>
-                            <TableHead>Origem</TableHead>
-                            <TableHead>Destino</TableHead>
-                            <TableHead>Data Recebimento</TableHead>
-                            <TableHead className="text-right">Qtd. Unit.</TableHead>
+                            <TableHead className="w-[140px]">Nota</TableHead>
+                            <TableHead
+                                className="cursor-pointer hover:bg-slate-50 transition-colors group"
+                                onClick={() => handleSort('origem')}
+                            >
+                                <div className="flex items-center gap-1">
+                                    Origem <SortIcon column="origem" />
+                                </div>
+                            </TableHead>
+                            <TableHead
+                                className="cursor-pointer hover:bg-slate-50 transition-colors group"
+                                onClick={() => handleSort('destino')}
+                            >
+                                <div className="flex items-center gap-1">
+                                    Destino <SortIcon column="destino" />
+                                </div>
+                            </TableHead>
+                            <TableHead
+                                className="cursor-pointer hover:bg-slate-50 transition-colors group"
+                                onClick={() => handleSort('data_ocorrencia')}
+                            >
+                                <div className="flex items-center gap-1">
+                                    Data <SortIcon column="data_ocorrencia" />
+                                </div>
+                            </TableHead>
                             <TableHead className="text-right">Peso (kg)</TableHead>
                             <TableHead className="text-center w-[120px]">Status</TableHead>
                             <TableHead className="w-[50px]"></TableHead>
                         </TableRow>
                     </TableHeader>
                     <TableBody>
-                        {isLoading ? (
-                            <TableRow>
-                                <TableCell colSpan={8} className="text-center py-8">Carregando...</TableCell>
-                            </TableRow>
-                        ) : filteredNotas.length === 0 ? (
-                            <TableEmpty message="Nenhuma nota encontrada com os filtros atuais." icon={Mail} />
+                        {sortedNotas.length === 0 ? (
+                            <TableEmpty message={emptyMessage || "Nenhuma nota nesta seção."} />
                         ) : (
-                            filteredNotas.map(nota => (
+                            sortedNotas.map(nota => (
                                 <TableRow
                                     key={nota.id}
                                     className="cursor-pointer hover:bg-slate-50 transition-colors"
-                                    onClick={() => handleOpenNota(nota)}
+                                    onClick={() => onOpenNota(nota)}
                                 >
-                                    <TableCell className="font-bold text-indigo-700">
+                                    <TableCell className="font-medium text-indigo-600">
                                         {nota.nota_despacho}
                                     </TableCell>
-                                    <TableCell>{nota.origem}</TableCell>
-                                    <TableCell>{nota.destino}</TableCell>
-                                    <TableCell>{/* Formato da data pode variar, exibir como string ou formatar se possível */}
-                                        {nota.data_ocorrencia || '-'}
-                                    </TableCell>
-                                    <TableCell className="text-right">
-                                        <span className="bg-slate-100 px-2 py-1 rounded text-xs font-semibold">
-                                            {nota.qtde_unitizadores || 0}
-                                        </span>
+                                    <TableCell className="text-slate-600">{nota.origem}</TableCell>
+                                    <TableCell className="text-slate-600">{nota.destino}</TableCell>
+                                    <TableCell className="text-slate-500 text-xs">
+                                        {nota.data_ocorrencia}
                                     </TableCell>
                                     <TableCell className="text-right font-medium">
                                         {(nota.peso_total_declarado || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                                     </TableCell>
                                     <TableCell className="text-center">
-                                        <div className="flex items-center justify-center gap-1.5">
-                                            {/* Bolinha Amarela (Recebido) */}
-                                            <div className={`w-3 h-3 rounded-full border border-yellow-400 ${['RECEBIDO', 'PROCESSADA', 'CONCLUIDO', 'DIVERGENTE'].includes(nota.status) ? 'bg-yellow-400' : 'bg-transparent'
-                                                }`} title="Recebido" />
-
-                                            {/* Bolinha Azul (Processado) */}
-                                            <div className={`w-3 h-3 rounded-full border border-blue-500 ${['PROCESSADA', 'CONCLUIDO', 'DIVERGENTE'].includes(nota.status) ? 'bg-blue-500' : 'bg-transparent'
-                                                }`} title="Processado" />
-
-                                            {/* Bolinha Verde (Devolvido/Entregue) */}
-                                            <div className={`w-3 h-3 rounded-full border border-emerald-500 ${['CONCLUIDO', 'DIVERGENTE', 'DEVOLVED_ORPHAN'].includes(nota.status) ? 'bg-emerald-500' : 'bg-transparent'
-                                                }`} title="Devolvido" />
-
-                                            {/* Divergência Warning */}
-                                            {(nota.status === 'DIVERGENTE' || nota.divergencia) && (
-                                                <div className="ml-1 text-rose-500" title={`Divergência: ${nota.divergencia || 'Erro na conciliação'}`}>
-                                                    <AlertCircle size={16} fill="currentColor" className="text-white" />
-                                                </div>
-                                            )}
-                                        </div>
+                                        <StatusLights status={nota.status} divergencia={nota.divergencia} />
                                     </TableCell>
                                     <TableCell>
                                         <ChevronRight size={18} className="text-slate-400" />
@@ -412,9 +167,281 @@ const NotasDespachoPage = () => {
                         )}
                     </TableBody>
                 </Table>
+            </div>
+        </Card>
+    );
+};
+
+const NotasDespachoPage = () => {
+    const [notas, setNotas] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [servidores, setServidores] = useState([]);
+    const [lastUpdate, setLastUpdate] = useState(null);
+
+    const [selectedNota, setSelectedNota] = useState(null);
+    const [isDespachoModalOpen, setIsDespachoModalOpen] = useState(false);
+
+    // Filters
+    const [filterDateStart, setFilterDateStart] = useState('');
+    const [filterDateEnd, setFilterDateEnd] = useState('');
+    const [filterOrigem, setFilterOrigem] = useState('');
+    const [filterDestino, setFilterDestino] = useState('');
+
+    // Load Metadata (Last Sync)
+    useEffect(() => {
+        const fetchMeta = async () => {
+            const docRef = doc(db, 'artifacts', `${appId}_sync_metadata`);
+            const snap = await getDoc(docRef);
+            if (snap.exists()) {
+                const data = snap.data();
+                if (data.last_sync && data.last_sync.seconds) { // Firestore Timestamp
+                    setLastUpdate(new Date(data.last_sync.seconds * 1000).toLocaleString());
+                } else if (data.last_sync) {
+                    setLastUpdate(new Date(data.last_sync).toLocaleString());
+                }
+            }
+        };
+        fetchMeta();
+        // Poll every minute
+        const interval = setInterval(fetchMeta, 60000);
+        return () => clearInterval(interval);
+    }, []);
+
+    // Load Notes
+    useEffect(() => {
+        const q = query(
+            collection(db, 'tb_despachos_conferencia'),
+            orderBy('criado_em', 'desc') // Load by creation time to get newest
+        );
+
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+            const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            setNotas(data);
+            setLoading(false);
+        });
+
+        return () => unsubscribe();
+    }, []);
+
+    // Load Servers for Modal
+    useEffect(() => {
+        const unsubscribe = onSnapshot(collection(db, `artifacts/${appId}/servidores`), (snapshot) => {
+            setServidores(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+        });
+        return () => unsubscribe();
+    }, []);
+
+    // Extract Unique Cities for Dropdowns
+    const uniqueOrigens = useMemo(() => [...new Set(notas.map(n => n.origem).filter(Boolean))].sort(), [notas]);
+    const uniqueDestinos = useMemo(() => [...new Set(notas.map(n => n.destino).filter(Boolean))].sort(), [notas]);
+
+    // Filtering Logic
+    const filteredNotas = useMemo(() => {
+        return notas.filter(nota => {
+            // Date Range
+            if (filterDateStart || filterDateEnd) {
+                const notaDateStr = nota.data_ocorrencia; // DD/MM/YYYY
+                if (notaDateStr) {
+                    const [d, m, y] = notaDateStr.split('/');
+                    const notaDate = new Date(`${y}-${m}-${d}`);
+
+                    if (filterDateStart) {
+                        const start = new Date(filterDateStart);
+                        if (notaDate < start) return false;
+                    }
+                    if (filterDateEnd) {
+                        const end = new Date(filterDateEnd);
+                        if (notaDate > end) return false;
+                    }
+                }
+            }
+            // Origin
+            if (filterOrigem && nota.origem !== filterOrigem) return false;
+            // Destino
+            if (filterDestino && nota.destino !== filterDestino) return false;
+
+            return true;
+        });
+    }, [notas, filterDateStart, filterDateEnd, filterOrigem, filterDestino]);
+
+    // Sectioning Logic
+    const sections = useMemo(() => {
+        return {
+            recebidos: filteredNotas.filter(n => n.status === 'RECEBIDO' && n.created_by === 'ROBO'),
+            processados: filteredNotas.filter(n => n.status === 'PROCESSADA' && n.created_by === 'ROBO'),
+            concluidos: filteredNotas.filter(n => ['CONCLUIDO', 'ENTREGUE'].includes(n.status) && n.created_by === 'ROBO'),
+            divergentes: filteredNotas.filter(n => ['DIVERGENTE', 'DEVOLVED_ORPHAN'].includes(n.status) && n.created_by === 'ROBO'),
+            manuais: filteredNotas.filter(n => n.created_by !== 'ROBO')
+        };
+    }, [filteredNotas]);
+
+    // Actions
+    const handleProcessarNota = (nota) => {
+        setIsDespachoModalOpen(true);
+    };
+
+    const handleDespachoSuccess = async () => {
+        if (selectedNota) {
+            try {
+                await updateDoc(doc(db, 'tb_despachos_conferencia', selectedNota.id), {
+                    status: 'PROCESSADA',
+                    processado_em: new Date().toISOString()
+                });
+            } catch (error) {
+                console.error("Erro ao atualizar status:", error);
+            }
+        }
+        setIsDespachoModalOpen(false);
+        setSelectedNota(null);
+    };
+
+    const initialDespachoData = useMemo(() => {
+        if (!selectedNota) return null;
+        return {
+            data: selectedNota.data_ocorrencia ? selectedNota.data_ocorrencia.split(' ')[0].split('/').reverse().join('-') : '',
+            origem: selectedNota.origem,
+            destino: selectedNota.destino,
+            pesoTotal: selectedNota.peso_total_declarado,
+            volumesCorreios: selectedNota.qtde_unitizadores,
+            volumesEntregues: '',
+            quantidadePaletes: 0,
+            observacoes: `Despacho gerado a partir da Nota ${selectedNota.nota_despacho}.`
+        };
+    }, [selectedNota]);
+
+    return (
+        <div className="space-y-6 pb-20">
+            <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+                <div>
+                    <h1 className="text-2xl font-bold text-slate-800">Notas de Despacho</h1>
+                    <div className="flex items-center gap-2 text-sm text-slate-500 mt-1">
+                        <span>Gerenciamento automático via e-mail</span>
+                        {lastUpdate && (
+                            <span className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded text-xs border border-slate-200">
+                                Última atualização: {lastUpdate}
+                            </span>
+                        )}
+                    </div>
+                </div>
+            </div>
+
+            {/* Global Filters */}
+            <Card className="p-4 bg-white shadow-sm border border-slate-200">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+                    <div className="space-y-1">
+                        <label className="text-xs font-semibold text-slate-500 uppercase">Período</label>
+                        <div className="flex gap-2">
+                            <input
+                                type="date"
+                                className="w-full h-9 px-2 rounded border border-slate-200 text-sm focus:border-indigo-500 focus:outline-none"
+                                value={filterDateStart}
+                                onChange={e => setFilterDateStart(e.target.value)}
+                            />
+                            <input
+                                type="date"
+                                className="w-full h-9 px-2 rounded border border-slate-200 text-sm focus:border-indigo-500 focus:outline-none"
+                                value={filterDateEnd}
+                                onChange={e => setFilterDateEnd(e.target.value)}
+                            />
+                        </div>
+                    </div>
+
+                    <div className="space-y-1">
+                        <label className="text-xs font-semibold text-slate-500 uppercase">Origem</label>
+                        <select
+                            className="w-full h-9 px-2 rounded border border-slate-200 text-sm focus:border-indigo-500 focus:outline-none bg-white"
+                            value={filterOrigem}
+                            onChange={e => setFilterOrigem(e.target.value)}
+                        >
+                            <option value="">Todas</option>
+                            {uniqueOrigens.map(c => <option key={c} value={c}>{c}</option>)}
+                        </select>
+                    </div>
+
+                    <div className="space-y-1">
+                        <label className="text-xs font-semibold text-slate-500 uppercase">Destino</label>
+                        <select
+                            className="w-full h-9 px-2 rounded border border-slate-200 text-sm focus:border-indigo-500 focus:outline-none bg-white"
+                            value={filterDestino}
+                            onChange={e => setFilterDestino(e.target.value)}
+                        >
+                            <option value="">Todos</option>
+                            {uniqueDestinos.map(c => <option key={c} value={c}>{c}</option>)}
+                        </select>
+                    </div>
+
+                    <div className="flex justify-end">
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                                setFilterDateStart('');
+                                setFilterDateEnd('');
+                                setFilterOrigem('');
+                                setFilterDestino('');
+                            }}
+                            disabled={!filterDateStart && !filterDateEnd && !filterOrigem && !filterDestino}
+                        >
+                            Limpar Filtros
+                        </Button>
+                    </div>
+                </div>
             </Card>
 
-            {/* Modal de Detalhes (Mobile Styles) */}
+            {/* Sections */}
+            <div className="space-y-8">
+                {/* 1. Recebido - Amarelo */}
+                <NotaSection
+                    title="Recebidos - Aguardando Processamento"
+                    notas={sections.recebidos}
+                    icon={Package}
+                    colorClass="border-l-yellow-400"
+                    onOpenNota={setSelectedNota}
+                    emptyMessage="Nenhuma nota pendente."
+                />
+
+                {/* 2. Processado - Amarelo + Azul */}
+                <NotaSection
+                    title="Processados / Em Trânsito"
+                    notas={sections.processados}
+                    icon={Truck}
+                    colorClass="border-l-blue-500"
+                    onOpenNota={setSelectedNota}
+                />
+
+                {/* 3. Concluído - 3 Bolinhas */}
+                <NotaSection
+                    title="Entregues / Devolvidos (Concluídos)"
+                    notas={sections.concluidos}
+                    icon={CheckCircle2}
+                    colorClass="border-l-emerald-500"
+                    onOpenNota={setSelectedNota}
+                />
+
+                {/* 4. Divergentes / Órfãs - Red/Green mix */}
+                {sections.divergentes.length > 0 && (
+                    <NotaSection
+                        title="Divergências e Órfãs (Atenção)"
+                        notas={sections.divergentes}
+                        icon={AlertCircle}
+                        colorClass="border-l-rose-500"
+                        onOpenNota={setSelectedNota}
+                    />
+                )}
+
+                {/* 5. Manuais */}
+                {sections.manuais.length > 0 && (
+                    <NotaSection
+                        title="Notas Manuais"
+                        notas={sections.manuais}
+                        icon={FileText}
+                        colorClass="border-l-slate-400"
+                        onOpenNota={setSelectedNota}
+                    />
+                )}
+            </div>
+
+            {/* Modais */}
             {selectedNota && !isDespachoModalOpen && (
                 <NotaDetalheModal
                     nota={selectedNota}
@@ -423,13 +450,12 @@ const NotasDespachoPage = () => {
                 />
             )}
 
-            {/* Modal Oficial de Despacho (Reutilizado) */}
             <DespachoModal
                 isOpen={isDespachoModalOpen}
                 onClose={() => setIsDespachoModalOpen(false)}
-                servidores={servidores}
                 initialData={initialDespachoData}
                 onSaveSuccess={handleDespachoSuccess}
+                servidores={servidores}
             />
         </div>
     );
