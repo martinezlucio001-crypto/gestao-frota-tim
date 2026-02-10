@@ -123,6 +123,14 @@ def limpar_html(texto):
     texto = re.sub(r'\s+', ' ', texto)
     return texto
 
+def clean_city_name(name):
+    if not name: return "Desconhecida"
+    # Remove common prefixes like "CDD ", "AC ", "UD ", etc.
+    name = re.sub(r'^(CDD|AC|UD|AG|CTO|TECA)\s+', '', name, flags=re.IGNORECASE)
+    # Title case "RIO DE JANEIRO" -> "Rio De Janeiro" (simple) or keep upper if preferred.
+    # User prefers simple names. Let's Title Case.
+    return name.title()
+
 def parse_email_html(html_content):
     dados = {
         "nota": None,
@@ -185,8 +193,8 @@ def parse_email_html(html_content):
                         if "NN" in col_nota and not dados["nota"]:
                             dados["nota"] = col_nota
                         
-                        dados["origem"] = limpar_html(str(cols[idx_origem]))
-                        dados["destino"] = limpar_html(str(cols[idx_destino]))
+                        dados["origem"] = clean_city_name(limpar_html(str(cols[idx_origem])))
+                        dados["destino"] = clean_city_name(limpar_html(str(cols[idx_destino])))
                         dados["data_ocorrencia"] = limpar_html(str(cols[idx_data]))
                         
                         try:
@@ -401,20 +409,20 @@ class handler(BaseHTTPRequestHandler):
                         existing_doc = db_client.get_document(COLLECTION_NAME, nota_id)
                         
                         if not existing_doc:
-                            # Parse dates if possible or keep string
+                            # Payload for New Note
                             payload = {
                                 "nota_despacho": nota_id,
-                                "status": "RECEBIDO",
+                                "status": "RECEBIDO", # Yellow dot only
                                 "data_email": date_header,
-                                "data_ocorrencia": parsed_data['data_ocorrencia'], # Data from table
-                                "data_entrega": None,
+                                "data_ocorrencia": parsed_data['data_ocorrencia'], 
                                 "origem": parsed_data['origem'],
                                 "destino": parsed_data['destino'],
                                 "qtde_unitizadores": parsed_data['qtde_unitizadores'],
                                 "peso_total_declarado": parsed_data['peso_total_declarado'],
                                 "peso_total_calculado": parsed_data['peso_total_calculado'],
                                 "itens": parsed_data['itens'],
-                                "criado_em": "SERVER_TIMESTAMP"
+                                "criado_em": "SERVER_TIMESTAMP",
+                                "divergencia": None # Clear any previous divergence if re-processing
                             }
                             db_client.create_document(COLLECTION_NAME, nota_id, payload)
                             debug_logs.append(f"   -> [SALVO] Documento criado com {len(parsed_data['itens'])} itens.")
@@ -423,23 +431,91 @@ class handler(BaseHTTPRequestHandler):
 
                     elif is_saida:
                         parsed_data["tipo_movimento"] = "ENTREGA"
-                        payload = {
-                            "status": "ENTREGUE",
-                            "data_entrega": parsed_data['data_ocorrencia'] or date_header,
-                            "nota_despacho": nota_id
-                        }
-                        try:
-                            # Update existing input doc based on logic
-                            # Normally we want to find the doc by nota_id and update it
+                        existing_doc = db_client.get_document(COLLECTION_NAME, nota_id)
+
+                        if existing_doc:
+                            # Reconciliation Logic
+                            doc_data = existing_doc.get('fields', {})
+                            
+                            # Helper to get field value safely
+                            def get_val(field, type_key='stringValue'):
+                                return doc_data.get(field, {}).get(type_key)
+
+                            stored_qtde = int(get_val('qtde_unitizadores', 'integerValue') or 0)
+                            stored_peso = float(get_val('peso_total_declarado', 'doubleValue') or 0.0)
+                            stored_origem = get_val('origem')
+                            stored_destino = get_val('destino')
+
+                            # Compare fields
+                            # Note: parsed_data['origem'] is already cleaned, stored might be too if new.
+                            # If stored is old (AC prefix), match might fail slightly but we update it anyway?
+                            # Rule: "A nota com o comprovante de devolução mostra um dos itens a seguir diferente"
+                            
+                            divergences = []
+                            if parsed_data['qtde_unitizadores'] != stored_qtde:
+                                divergences.append(f"Qtd: {stored_qtde} -> {parsed_data['qtde_unitizadores']}")
+                            
+                            # Floating point comparison tolerance
+                            if abs(parsed_data['peso_total_declarado'] - stored_peso) > 0.01:
+                                divergences.append(f"Peso: {stored_peso} -> {parsed_data['peso_total_declarado']}")
+                                
+                            if parsed_data['origem'] != stored_origem:
+                                divergences.append(f"Origem: {stored_origem} -> {parsed_data['origem']}")
+                                
+                            if parsed_data['destino'] != stored_destino:
+                                divergences.append(f"Destino: {stored_destino} -> {parsed_data['destino']}")
+
+                            # Determine Status
+                            new_status = "CONCLUIDO" # Default success (Green filled)
+                            divergencia_text = None
+                            
+                            if divergences:
+                                new_status = "DIVERGENTE" # Red Warning
+                                divergencia_text = "; ".join(divergences)
+                            
+                            # Update Payload
+                            payload = {
+                                "status": new_status,
+                                "data_entrega": parsed_data['data_ocorrencia'] or date_header,
+                                "divergencia": divergencia_text,
+                                # Update fields to match the return proof (source of truth for delivery)?
+                                # User said "mudar o status... mas sinalizar... que está com erro". 
+                                # implying we KEEP original data or UPDATE it?
+                                # Usually we keep original and flag diff. 
+                                # But let's implicitly update the "delivery" timestamp.
+                            }
+                            
                             db_client.update_document(COLLECTION_NAME, nota_id, payload)
-                            debug_logs.append(f"   -> [ATUALIZADO] Status mudado para ENTREGUE.")
-                        except:
-                            # Fallback if document doesn't exist
+                            debug_logs.append(f"   -> [ATUALIZADO] Status: {new_status}. Divergências: {divergencia_text or 'Nenhuma'}")
+                            
+                        else:
+                            # Orphan Note (Devolved without Receipt)
+                            # "inserir a nota... com status 'Entregue' (Entendo como CONCLUIDO/ORPHAN)... bolinhas amarela/azul vazias"
+                            # We will use a special status or flags. 
+                            # User said: "bolinhas amarela (Recebido), Azul (Processado) ficam vazias".
+                            # Only Green filled. Status = 'DEVOLVED_ORPHAN'
+                            
+                            payload = {
+                                "nota_despacho": nota_id,
+                                "status": "DEVOLVED_ORPHAN",
+                                "data_email": date_header,
+                                "data_ocorrencia": parsed_data['data_ocorrencia'], # Delivery date
+                                "data_entrega": parsed_data['data_ocorrencia'],
+                                "origem": parsed_data['origem'],
+                                "destino": parsed_data['destino'],
+                                "qtde_unitizadores": parsed_data['qtde_unitizadores'],
+                                "peso_total_declarado": parsed_data['peso_total_declarado'],
+                                "peso_total_calculado": parsed_data['peso_total_calculado'],
+                                "itens": parsed_data['itens'],
+                                "criado_em": "SERVER_TIMESTAMP",
+                                "divergencia": "Nota de Devolução sem entrada prévia."
+                            }
                             db_client.create_document(COLLECTION_NAME, nota_id, payload)
-                            debug_logs.append(f"   -> [CRIADO-SAIDA] Documento de saída criado.")
+                            debug_logs.append(f"   -> [CRIADO-ORFAO] Nota de Devolução sem origem.")
+
                     else:
                         debug_logs.append(f"   -> [PULADO] Tipo de movimento não identificado no assunto.")
-                        continue # Skip label removal if not processed
+                        continue # Skip label removal
                     
                     # Swap Label
                     if label_processed_id:

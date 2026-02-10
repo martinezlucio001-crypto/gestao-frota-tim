@@ -89,7 +89,7 @@ const NotaDetalheModal = ({ nota, onClose, onProcessar }) => {
                     >
                         <div className="flex justify-between items-start mb-2">
                             <div>
-                                <span className="text-xs font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded mb-1 inline-block">
+                                <span className="text-sm font-bold text-indigo-700 bg-indigo-50 px-2.5 py-1.5 rounded mb-1 inline-block">
                                     {item.unitizador}
                                 </span>
                                 <div className="text-sm font-medium text-slate-800 whitespace-pre-line">
@@ -383,16 +383,26 @@ const NotasDespachoPage = () => {
                                         {(nota.peso_total_declarado || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                                     </TableCell>
                                     <TableCell className="text-center">
-                                        {nota.status === 'PROCESSADA' ? (
-                                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800">
-                                                <CheckCircle2 size={12} />
-                                                Processada
-                                            </span>
-                                        ) : (
-                                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
-                                                Pend. Despacho
-                                            </span>
-                                        )}
+                                        <div className="flex items-center justify-center gap-1.5">
+                                            {/* Bolinha Amarela (Recebido) */}
+                                            <div className={`w-3 h-3 rounded-full border border-yellow-400 ${['RECEBIDO', 'PROCESSADA', 'CONCLUIDO', 'DIVERGENTE'].includes(nota.status) ? 'bg-yellow-400' : 'bg-transparent'
+                                                }`} title="Recebido" />
+
+                                            {/* Bolinha Azul (Processado) */}
+                                            <div className={`w-3 h-3 rounded-full border border-blue-500 ${['PROCESSADA', 'CONCLUIDO', 'DIVERGENTE'].includes(nota.status) ? 'bg-blue-500' : 'bg-transparent'
+                                                }`} title="Processado" />
+
+                                            {/* Bolinha Verde (Devolvido/Entregue) */}
+                                            <div className={`w-3 h-3 rounded-full border border-emerald-500 ${['CONCLUIDO', 'DIVERGENTE', 'DEVOLVED_ORPHAN'].includes(nota.status) ? 'bg-emerald-500' : 'bg-transparent'
+                                                }`} title="Devolvido" />
+
+                                            {/* Divergência Warning */}
+                                            {(nota.status === 'DIVERGENTE' || nota.divergencia) && (
+                                                <div className="ml-1 text-rose-500" title={`Divergência: ${nota.divergencia || 'Erro na conciliação'}`}>
+                                                    <AlertCircle size={16} fill="currentColor" className="text-white" />
+                                                </div>
+                                            )}
+                                        </div>
                                     </TableCell>
                                     <TableCell>
                                         <ChevronRight size={18} className="text-slate-400" />

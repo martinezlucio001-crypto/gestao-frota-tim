@@ -9,6 +9,11 @@ def limpar_html(texto):
     texto = re.sub(r'\s+', ' ', texto)
     return texto
 
+def clean_city_name(name):
+    if not name: return "Desconhecida"
+    name = re.sub(r'^(CDD|AC|UD|AG|CTO|TECA)\s+', '', name, flags=re.IGNORECASE)
+    return name.title()
+
 def parse_email_html(html_content):
     dados = {
         "nota": None,
@@ -71,8 +76,8 @@ def parse_email_html(html_content):
                         if "NN" in col_nota and not dados["nota"]:
                             dados["nota"] = col_nota
                         
-                        dados["origem"] = limpar_html(str(cols[idx_origem]))
-                        dados["destino"] = limpar_html(str(cols[idx_destino]))
+                        dados["origem"] = clean_city_name(limpar_html(str(cols[idx_origem])))
+                        dados["destino"] = clean_city_name(limpar_html(str(cols[idx_destino])))
                         dados["data_ocorrencia"] = limpar_html(str(cols[idx_data]))
                         
                         try:
