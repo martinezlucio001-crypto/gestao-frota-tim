@@ -55,7 +55,7 @@ const menuItems = [
             { id: 'despacho-painel', label: 'Painel de Despachos', view: 'despacho-painel' },
             { id: 'despacho-notas', label: 'Notas de Despacho', view: 'despacho-notas' },
             { id: 'despacho-unitizadores', label: 'Unitizadores', view: 'despacho-unitizadores' },
-            { id: 'despacho-auditoria', label: 'Auditoria', view: 'despacho-auditoria', disabled: true },
+            { id: 'despacho-auditoria', label: 'Auditoria', view: 'despacho-auditoria' },
             { id: 'despacho-servidores', label: 'Servidores', view: 'despacho-servidores' },
             { id: 'despacho-pagamentos', label: 'Pagamentos', view: 'despacho-pagamentos' },
         ]

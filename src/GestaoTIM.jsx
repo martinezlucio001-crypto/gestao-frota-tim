@@ -16,6 +16,8 @@ import ServidoresPage from './modules/despacho/ServidoresPage';
 import PagamentosPage from './modules/despacho/PagamentosPage';
 import UnitizadoresPage from './modules/despacho/UnitizadoresPage';
 import NotasDespachoPage from './modules/despacho/NotasDespachoPage';
+import AuditoriaPage from './modules/despacho/AuditoriaPage';
+import ServidorModal from './modules/despacho/modals/ServidorModal';
 
 import ContratosPage from './modules/receita/ContratosPage';
 import NotasPage from './modules/receita/NotasPage';
@@ -208,12 +210,10 @@ const GestaoTIM = () => {
                 return <PainelDespachos />;
             case 'despacho-servidores':
                 return <ServidoresPage />;
-            case 'despacho-notas':
-                return <NotasDespachoPage />;
-            case 'despacho-pagamentos':
-                return <PagamentosPage />;
-            case 'despacho-unitizadores':
-                return <UnitizadoresPage />;
+            case 'despacho-notas': return <NotasDespachoPage />;
+            case 'despacho-unitizadores': return <UnitizadoresPage />;
+            case 'despacho-auditoria': return <AuditoriaPage />;
+            case 'despacho-servidores': return <ServidoresPage />;
 
             // Módulo Receita
             case 'receita-painel':

@@ -263,7 +263,8 @@ const UnitizadoresPage = () => {
                         data: nota.data_ocorrencia,
                         peso: uData.peso,
                         lacre: uData.lacre,
-                        statusNota: nota.status // RECEBIDO, PROCESSADA, etc.
+                        statusNota: nota.status, // RECEBIDO, PROCESSADA, etc.
+                        correiosMatch: uData.correios_match
                     });
                 });
 
@@ -292,7 +293,8 @@ const UnitizadoresPage = () => {
                         statusNota: nota.status,
                         // Orphans fetch location from here
                         origem: nota.origem,
-                        destino: nota.destino
+                        destino: nota.destino,
+                        correiosMatch: uData.correios_match
                     });
                 });
             });
@@ -324,7 +326,7 @@ const UnitizadoresPage = () => {
                     lacre: entry?.lacre || exit?.lacre || '-',
                     status: 'UNKNOWN',
                     divergenceType: null,
-                    correiosMatch: false
+                    correiosMatch: entry?.correiosMatch || exit?.correiosMatch || false
                 };
 
                 // Section Categorization Logic (Mutually Exclusive for Lists)
