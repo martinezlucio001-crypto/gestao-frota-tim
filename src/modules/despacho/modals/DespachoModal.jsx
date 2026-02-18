@@ -54,10 +54,10 @@ const DespachoModal = ({ isOpen, onClose, editingDespacho, servidores = [], init
                     servidorId: '',
                     servidorNome: '',
                     unidadePrecificacao: '',
-                    volumesCorreios: initialData.volumesCorreios || '',
-                    volumesEntregues: initialData.volumesEntregues || '',
-                    pesoTotal: initialData.pesoTotal || '',
-                    quantidadePaletes: initialData.quantidadePaletes || '',
+                    volumesCorreios: initialData.volumesCorreios !== undefined && initialData.volumesCorreios !== null ? String(initialData.volumesCorreios) : '',
+                    volumesEntregues: initialData.volumesEntregues !== undefined && initialData.volumesEntregues !== null ? String(initialData.volumesEntregues) : '',
+                    pesoTotal: initialData.pesoTotal !== undefined && initialData.pesoTotal !== null ? String(initialData.pesoTotal) : '',
+                    quantidadePaletes: initialData.quantidadePaletes !== undefined && initialData.quantidadePaletes !== null ? String(initialData.quantidadePaletes) : '',
                     valorUnitario: '',
                     statusFinanceiro: 'Pendente',
                     observacoes: initialData.observacoes || ''
@@ -195,8 +195,11 @@ const DespachoModal = ({ isOpen, onClose, editingDespacho, servidores = [], init
                         rotaOrigem = 'Santarém';
                     }
 
-                    updated.origem = rotaOrigem;
-                    updated.destino = rotaDestino;
+                    // Somente preencher se os campos estiverem vazios (para não sobrescrever dados da nota)
+                    if (!updated.origem && !updated.destino) {
+                        updated.origem = rotaOrigem;
+                        updated.destino = rotaDestino;
+                    }
                 }
             }
             if (field === 'unidadePrecificacao') {
@@ -292,7 +295,7 @@ const DespachoModal = ({ isOpen, onClose, editingDespacho, servidores = [], init
             <form onSubmit={handleSubmit}>
                 {/* Seção 1: Informações Básicas */}
                 {/* Seção 1: Informações Básicas */}
-                <div className="grid grid-cols-2 gap-4 mb-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
                     <Input
                         label="Data"
                         type="date"
@@ -321,7 +324,7 @@ const DespachoModal = ({ isOpen, onClose, editingDespacho, servidores = [], init
                     />
                 </div>
 
-                <div className="grid grid-cols-[1fr,auto,1fr] gap-3 items-start mb-6">
+                <div className="grid grid-cols-1 sm:grid-cols-[1fr,auto,1fr] gap-3 items-start mb-6">
                     <Select
                         label="Origem"
                         value={formData.origem}
@@ -334,7 +337,7 @@ const DespachoModal = ({ isOpen, onClose, editingDespacho, servidores = [], init
                     <button
                         type="button"
                         onClick={handleSwapRoute}
-                        className="mt-8 p-2 rounded-full hover:bg-slate-100 text-slate-500 hover:text-indigo-600 transition-colors border border-transparent hover:border-slate-200"
+                        className="sm:mt-8 p-2 rounded-full hover:bg-slate-100 text-slate-500 hover:text-indigo-600 transition-colors border border-transparent hover:border-slate-200 justify-self-center"
                         title="Inverter Origem e Destino"
                     >
                         <ArrowRightLeft size={20} />
@@ -351,80 +354,79 @@ const DespachoModal = ({ isOpen, onClose, editingDespacho, servidores = [], init
                 </div>
 
                 {/* Seção 2: Detalhes da Carga */}
-                {formData.servidorId && (
-                    <div className="bg-slate-50 p-4 rounded-xl mb-6">
-                        <h4 className="text-sm font-bold text-slate-700 mb-4">Detalhes da Carga</h4>
+                <div className="bg-slate-50 p-4 rounded-xl mb-6">
+                    <h4 className="text-sm font-bold text-slate-700 mb-4">Detalhes da Carga</h4>
 
-                        <div className="grid grid-cols-2 gap-4">
-                            <Select
-                                label="Unidade de Precificação"
-                                value={formData.unidadePrecificacao}
-                                onChange={(e) => handleChange('unidadePrecificacao', e.target.value)}
-                                options={availableUnits}
-                                placeholder="Selecione"
-                                required
-                            />
-                            <Input
-                                label="Valor Unitário (R$)"
-                                type="number"
-                                step="0.01"
-                                value={formData.valorUnitario}
-                                onChange={(e) => handleChange('valorUnitario', e.target.value)}
-                                helper="Valor sugerido do cadastro. Editável."
-                                required
-                                className="[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                            />
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <Select
+                            label="Unidade de Precificação"
+                            value={formData.unidadePrecificacao}
+                            onChange={(e) => handleChange('unidadePrecificacao', e.target.value)}
+                            options={availableUnits}
+                            placeholder={formData.servidorId ? "Selecione" : "Selecione o servidor primeiro"}
+                            disabled={!formData.servidorId}
+                            required
+                        />
+                        <Input
+                            label="Valor Unitário (R$)"
+                            type="number"
+                            step="0.01"
+                            value={formData.valorUnitario}
+                            onChange={(e) => handleChange('valorUnitario', e.target.value)}
+                            helper="Valor sugerido do cadastro. Editável."
+                            required
+                            className="[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                        />
 
-                            <Input
-                                label="Volumes Correios"
-                                type="number"
-                                value={formData.volumesCorreios}
-                                onChange={(e) => handleChange('volumesCorreios', e.target.value)}
-                                onKeyDown={handleIntegerInput}
-                                required
-                                className="[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                            />
-                            <Input
-                                label="Volumes Entregues"
-                                type="number"
-                                value={formData.volumesEntregues}
-                                onChange={(e) => handleChange('volumesEntregues', e.target.value)}
-                                onKeyDown={handleIntegerInput}
-                                required
-                                className="[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                            />
+                        <Input
+                            label="Volumes Correios"
+                            type="number"
+                            value={formData.volumesCorreios}
+                            onChange={(e) => handleChange('volumesCorreios', e.target.value)}
+                            onKeyDown={handleIntegerInput}
+                            required
+                            className="[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                        />
+                        <Input
+                            label="Volumes Entregues"
+                            type="number"
+                            value={formData.volumesEntregues}
+                            onChange={(e) => handleChange('volumesEntregues', e.target.value)}
+                            onKeyDown={handleIntegerInput}
+                            required
+                            className="[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                        />
 
-                            <Input
-                                label="Peso Total (kg)"
-                                type="number"
-                                step="0.01"
-                                value={formData.pesoTotal}
-                                onChange={(e) => handleChange('pesoTotal', e.target.value)}
-                                className="[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                            />
-                            <Input
-                                label="Quantidade de Paletes"
-                                type="number"
-                                value={formData.quantidadePaletes}
-                                onChange={(e) => handleChange('quantidadePaletes', e.target.value)}
-                                onKeyDown={handleIntegerInput}
-                                disabled={!selectedServidor?.unidadesPrecificacao?.palete?.ativo}
-                                className="[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                            />
-                        </div>
+                        <Input
+                            label="Peso Total (kg)"
+                            type="number"
+                            step="0.01"
+                            value={formData.pesoTotal}
+                            onChange={(e) => handleChange('pesoTotal', e.target.value)}
+                            className="[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                        />
+                        <Input
+                            label="Quantidade de Paletes"
+                            type="number"
+                            value={formData.quantidadePaletes}
+                            onChange={(e) => handleChange('quantidadePaletes', e.target.value)}
+                            onKeyDown={handleIntegerInput}
+                            disabled={!selectedServidor?.unidadesPrecificacao?.palete?.ativo}
+                            className="[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                        />
+                    </div>
 
-                        {/* Resumo Financeiro */}
-                        <div className="mt-4 pt-4 border-t border-slate-200">
-                            <div className="bg-white p-3 rounded-lg">
-                                <p className="text-xs text-slate-500 mb-1">Custo Total</p>
-                                <p className="text-lg font-bold text-slate-800">{formatCurrency(calculations.custoTotal)}</p>
-                            </div>
+                    {/* Resumo Financeiro */}
+                    <div className="mt-4 pt-4 border-t border-slate-200">
+                        <div className="bg-white p-3 rounded-lg">
+                            <p className="text-xs text-slate-500 mb-1">Custo Total</p>
+                            <p className="text-lg font-bold text-slate-800">{formatCurrency(calculations.custoTotal)}</p>
                         </div>
                     </div>
-                )}
+                </div>
 
                 {/* Status e Observações */}
-                <div className="grid grid-cols-2 gap-4 mb-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
                     <Select
                         label="Status Financeiro"
                         value={formData.statusFinanceiro}
@@ -440,14 +442,14 @@ const DespachoModal = ({ isOpen, onClose, editingDespacho, servidores = [], init
                     placeholder="Anotações adicionais sobre este despacho..."
                 />
 
-                <ModalFooter>
-                    <Button type="button" variant="ghost" onClick={onClose} className="flex-1">
+                <ModalFooter className="flex-col sm:flex-row">
+                    <Button type="button" variant="ghost" onClick={onClose} className="flex-1 w-full sm:w-auto">
                         Cancelar
                     </Button>
                     <Button
                         type="submit"
                         variant={editingDespacho ? 'primary' : 'success'}
-                        className="flex-1"
+                        className="flex-1 w-full sm:w-auto"
                         disabled={isLoading}
                     >
                         {isLoading ? (

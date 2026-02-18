@@ -11,16 +11,22 @@ import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell, TableEmp
 import NotaDetalheModal from './modals/NotaDetalheModal';
 import DespachoModal from './modals/DespachoModal';
 import { formatCurrency } from '../../lib/utils';
+import { CITIES } from '../../lib/cities';
 
 // Helper for Status Dots (Lights Style)
-const StatusLights = ({ status, divergencia }) => {
+const StatusLights = ({ nota }) => {
+    const { status, divergencia, processado_em } = nota;
+
     // Styles for "lights"
     const lightBase = "w-3 h-3 rounded-full border transition-all duration-300";
     const lightOn = "shadow-[0_0_8px_1px] opacity-100 scale-110 border-transparent";
     const lightOff = "bg-transparent opacity-30 scale-90";
 
     const isRecebido = ['RECEBIDO', 'PROCESSADA', 'CONCLUIDO', 'DIVERGENTE'].includes(status);
-    const isProcessado = ['PROCESSADA', 'CONCLUIDO', 'DIVERGENTE'].includes(status);
+
+    // Blue Dot: Only if explicitly processed (has timestamp or specific status)
+    const isProcessado = status === 'PROCESSADA' || !!processado_em;
+
     const isEntregue = ['CONCLUIDO', 'DIVERGENTE', 'DEVOLVED_ORPHAN'].includes(status);
     const isOrphan = status === 'DEVOLVED_ORPHAN';
 
@@ -33,8 +39,8 @@ const StatusLights = ({ status, divergencia }) => {
             />
             {/* Azul (Processado) */}
             <div
-                className={`${lightBase} border-blue-500 ${isProcessado && !isOrphan ? `bg-blue-500 ${lightOn} shadow-blue-500/60` : lightOff}`}
-                title="Processado"
+                className={`${lightBase} border-blue-500 ${isProcessado ? `bg-blue-500 ${lightOn} shadow-blue-500/60` : lightOff}`}
+                title={isProcessado ? "Processado/Despachado" : "Não Processado"}
             />
             {/* Verde (Entregue) */}
             <div
@@ -64,11 +70,55 @@ const NotaSection = ({ title, notas, icon: Icon, colorClass, onOpenNota, emptyMe
                 let bVal = b[sortConfig.key] || '';
 
                 // Special handling for dates (DD/MM/YYYY)
-                if (sortConfig.key === 'data_ocorrencia' && aVal.includes('/')) {
-                    aVal = aVal.split('/').reverse().join('-');
-                    bVal = bVal.split('/').reverse().join('-');
+                if (sortConfig.key === 'data_ocorrencia') {
+                    // Helper to convert DD/MM/YYYY HH:mm:ss to YYYY-MM-DD HH:mm:ss for string comparison
+                    const parseDate = (val) => {
+                        if (!val) return '';
+                        const cleanVal = val.toString().trim();
+
+                        // Handle DD/MM/YYYY or DD/MM/YYYY HH:mm:ss
+                        if (cleanVal.includes('/')) {
+                            const [datePart, timePart] = cleanVal.split(' ');
+                            const parts = datePart.split('/');
+                            if (parts.length === 3) {
+                                // YYYY-MM-DD + Time (if exists)
+                                return `${parts[2]}-${parts[1]}-${parts[0]}${timePart ? ' ' + timePart : ''}`;
+                            }
+                        }
+                        return cleanVal;
+                    };
+
+                    const dateA = parseDate(aVal);
+                    const dateB = parseDate(bVal);
+
+                    // If dates are different, sort by date
+                    if (dateA !== dateB) {
+                        if (!dateA) return 1; // Empty dates go to bottom
+                        if (!dateB) return -1;
+                        if (dateA < dateB) return sortConfig.direction === 'asc' ? -1 : 1;
+                        if (dateA > dateB) return sortConfig.direction === 'asc' ? 1 : -1;
+                    }
+
+                    // Tie-breaker: Creation Time (criado_em)
+                    // Ensure the most recently created appears first (desc) or last (asc)
+                    const getTimestamp = (obj) => {
+                        if (!obj.criado_em) return 0;
+                        if (obj.criado_em.seconds) return obj.criado_em.seconds; // Firestore Timestamp
+                        const d = new Date(obj.criado_em);
+                        return isNaN(d.getTime()) ? 0 : d.getTime();
+                    };
+
+                    const timeA = getTimestamp(a);
+                    const timeB = getTimestamp(b);
+
+                    // Always respect direction for tie-breaker too to keep consistent ordering visual
+                    if (timeA < timeB) return sortConfig.direction === 'asc' ? -1 : 1;
+                    if (timeA > timeB) return sortConfig.direction === 'asc' ? 1 : -1;
+
+                    return 0;
                 }
 
+                // Default string/number comparison
                 if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
                 if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
                 return 0;
@@ -94,7 +144,7 @@ const NotaSection = ({ title, notas, icon: Icon, colorClass, onOpenNota, emptyMe
             <div className="bg-slate-50 px-4 py-3 border-b border-slate-100 flex justify-between items-center">
                 <div className="flex items-center gap-2">
                     <Icon size={18} className="text-slate-500" />
-                    <h3 className="font-bold text-slate-700">{title}</h3>
+                    <h3 className="font-bold text-slate-700 text-sm sm:text-base">{title}</h3>
                     <span className="bg-slate-200 text-slate-600 text-xs px-2 py-0.5 rounded-full font-bold">
                         {notas.length}
                     </span>
@@ -102,71 +152,107 @@ const NotaSection = ({ title, notas, icon: Icon, colorClass, onOpenNota, emptyMe
             </div>
 
             <div className="max-h-[600px] overflow-y-auto custom-scrollbar">
-                <Table>
-                    <TableHeader className="sticky top-0 bg-white shadow-sm z-10">
-                        <TableRow>
-                            <TableHead className="w-[140px]">Nota</TableHead>
-                            <TableHead
-                                className="cursor-pointer hover:bg-slate-50 transition-colors group"
-                                onClick={() => handleSort('origem')}
-                            >
-                                <div className="flex items-center gap-1">
-                                    Origem <SortIcon column="origem" />
-                                </div>
-                            </TableHead>
-                            <TableHead
-                                className="cursor-pointer hover:bg-slate-50 transition-colors group"
-                                onClick={() => handleSort('destino')}
-                            >
-                                <div className="flex items-center gap-1">
-                                    Destino <SortIcon column="destino" />
-                                </div>
-                            </TableHead>
-                            <TableHead
-                                className="cursor-pointer hover:bg-slate-50 transition-colors group"
-                                onClick={() => handleSort('data_ocorrencia')}
-                            >
-                                <div className="flex items-center gap-1">
-                                    Data <SortIcon column="data_ocorrencia" />
-                                </div>
-                            </TableHead>
-                            <TableHead className="text-right">Peso (kg)</TableHead>
-                            <TableHead className="text-center w-[120px]">Status</TableHead>
-                            <TableHead className="w-[50px]"></TableHead>
-                        </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                        {sortedNotas.length === 0 ? (
-                            <TableEmpty message={emptyMessage || "Nenhuma nota nesta seção."} />
-                        ) : (
-                            sortedNotas.map(nota => (
-                                <TableRow
-                                    key={nota.id}
-                                    className="cursor-pointer hover:bg-slate-50 transition-colors"
-                                    onClick={() => onOpenNota(nota)}
+                {/* Desktop Table */}
+                <div className="hidden sm:block">
+                    <Table>
+                        <TableHeader className="sticky top-0 bg-white shadow-sm z-10">
+                            <TableRow>
+                                <TableHead className="w-[140px]">Nota</TableHead>
+                                <TableHead
+                                    className="cursor-pointer hover:bg-slate-50 transition-colors group"
+                                    onClick={() => handleSort('origem')}
                                 >
-                                    <TableCell className="font-medium text-indigo-600">
-                                        {nota.nota_despacho}
-                                    </TableCell>
-                                    <TableCell className="text-slate-600">{nota.origem}</TableCell>
-                                    <TableCell className="text-slate-600">{nota.destino}</TableCell>
-                                    <TableCell className="text-slate-500 text-xs">
-                                        {nota.data_ocorrencia}
-                                    </TableCell>
-                                    <TableCell className="text-right font-medium">
-                                        {(nota.peso_total_declarado || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                                    </TableCell>
-                                    <TableCell className="text-center">
-                                        <StatusLights status={nota.status} divergencia={nota.divergencia} />
-                                    </TableCell>
-                                    <TableCell>
-                                        <ChevronRight size={18} className="text-slate-400" />
-                                    </TableCell>
-                                </TableRow>
-                            ))
-                        )}
-                    </TableBody>
-                </Table>
+                                    <div className="flex items-center gap-1">
+                                        Origem <SortIcon column="origem" />
+                                    </div>
+                                </TableHead>
+                                <TableHead
+                                    className="cursor-pointer hover:bg-slate-50 transition-colors group"
+                                    onClick={() => handleSort('destino')}
+                                >
+                                    <div className="flex items-center gap-1">
+                                        Destino <SortIcon column="destino" />
+                                    </div>
+                                </TableHead>
+                                <TableHead
+                                    className="cursor-pointer hover:bg-slate-50 transition-colors group"
+                                    onClick={() => handleSort('data_ocorrencia')}
+                                >
+                                    <div className="flex items-center gap-1">
+                                        Data <SortIcon column="data_ocorrencia" />
+                                    </div>
+                                </TableHead>
+                                <TableHead className="text-right">Peso (kg)</TableHead>
+                                <TableHead className="text-center w-[120px]">Status</TableHead>
+                                <TableHead className="w-[50px]"></TableHead>
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                            {sortedNotas.length === 0 ? (
+                                <TableEmpty message={emptyMessage || "Nenhuma nota nesta seção."} />
+                            ) : (
+                                sortedNotas.map(nota => (
+                                    <TableRow
+                                        key={nota.id}
+                                        className="cursor-pointer hover:bg-slate-50 transition-colors"
+                                        onClick={() => onOpenNota(nota)}
+                                    >
+                                        <TableCell className="font-medium text-indigo-600">
+                                            {nota.nota_despacho}
+                                        </TableCell>
+                                        <TableCell className="text-slate-600">{nota.origem}</TableCell>
+                                        <TableCell className="text-slate-600">{nota.destino}</TableCell>
+                                        <TableCell className="text-slate-500 text-xs">
+                                            {nota.data_ocorrencia}
+                                        </TableCell>
+                                        <TableCell className="text-right font-medium">
+                                            {(nota.peso_total_declarado || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                        </TableCell>
+                                        <TableCell className="text-center">
+                                            <StatusLights nota={nota} />
+                                        </TableCell>
+                                        <TableCell>
+                                            <ChevronRight size={18} className="text-slate-400" />
+                                        </TableCell>
+                                    </TableRow>
+                                ))
+                            )}
+                        </TableBody>
+                    </Table>
+                </div>
+
+                {/* Mobile Cards */}
+                <div className="sm:hidden divide-y divide-slate-100">
+                    {sortedNotas.length === 0 ? (
+                        <div className="px-4 py-8 text-center text-slate-400 italic text-sm">
+                            {emptyMessage || "Nenhuma nota nesta seção."}
+                        </div>
+                    ) : (
+                        sortedNotas.map(nota => (
+                            <div
+                                key={nota.id}
+                                className="px-4 py-3 active:bg-slate-50 transition-colors cursor-pointer"
+                                onClick={() => onOpenNota(nota)}
+                            >
+                                <div className="flex items-center justify-between mb-1">
+                                    <span className="font-bold text-indigo-600 text-sm">{nota.nota_despacho}</span>
+                                    <StatusLights nota={nota} />
+                                </div>
+                                <div className="flex items-center gap-1 text-slate-600 text-xs mb-1">
+                                    <span>{nota.origem}</span>
+                                    <span className="text-slate-400">→</span>
+                                    <span>{nota.destino}</span>
+                                </div>
+                                <div className="flex items-center justify-between text-xs text-slate-400">
+                                    <span>{nota.data_ocorrencia}</span>
+                                    <span className="font-medium text-slate-600">
+                                        {(nota.peso_total_declarado || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })} kg
+                                    </span>
+                                </div>
+                            </div>
+                        ))
+                    )}
+                </div>
             </div>
         </Card>
     );
@@ -186,6 +272,7 @@ const NotasDespachoPage = () => {
     const [filterDateEnd, setFilterDateEnd] = useState('');
     const [filterOrigem, setFilterOrigem] = useState('');
     const [filterDestino, setFilterDestino] = useState('');
+    const [searchTerm, setSearchTerm] = useState('');
 
     // Load Metadata (Last Sync)
     useEffect(() => {
@@ -238,6 +325,22 @@ const NotasDespachoPage = () => {
     // Filtering Logic
     const filteredNotas = useMemo(() => {
         return notas.filter(nota => {
+            // Text Search (ID, Origin, Unitizers)
+            if (searchTerm) {
+                const lowerTerm = searchTerm.toLowerCase();
+                const matchId = nota.nota_despacho?.toLowerCase().includes(lowerTerm);
+                const matchOrigem = nota.origem?.toLowerCase().includes(lowerTerm);
+                const matchDestino = nota.destino?.toLowerCase().includes(lowerTerm);
+
+                // Search in Items (Unitizers)
+                const matchItems = nota.itens?.some(item =>
+                    item.unitizador?.toLowerCase().includes(lowerTerm) ||
+                    item.lacre?.toLowerCase().includes(lowerTerm)
+                );
+
+                if (!matchId && !matchOrigem && !matchDestino && !matchItems) return false;
+            }
+
             // Date Range
             if (filterDateStart || filterDateEnd) {
                 const notaDateStr = nota.data_ocorrencia; // DD/MM/YYYY
@@ -262,7 +365,7 @@ const NotasDespachoPage = () => {
 
             return true;
         });
-    }, [notas, filterDateStart, filterDateEnd, filterOrigem, filterDestino]);
+    }, [notas, filterDateStart, filterDateEnd, filterOrigem, filterDestino, searchTerm]);
 
     // Sectioning Logic
     const sections = useMemo(() => {
@@ -273,7 +376,8 @@ const NotasDespachoPage = () => {
             recebidos: filteredNotas.filter(n => n.status === 'RECEBIDO' && isRobo(n)),
             processados: filteredNotas.filter(n => n.status === 'PROCESSADA' && isRobo(n)),
             concluidos: filteredNotas.filter(n => ['CONCLUIDO', 'ENTREGUE'].includes(n.status) && isRobo(n)),
-            divergentes: filteredNotas.filter(n => ['DIVERGENTE', 'DEVOLVED_ORPHAN'].includes(n.status) && isRobo(n)),
+            divergentes: filteredNotas.filter(n => n.status === 'DIVERGENTE' && isRobo(n)),
+            orfas: filteredNotas.filter(n => n.status === 'DEVOLVED_ORPHAN' && isRobo(n)),
             manuais: filteredNotas.filter(n => !isRobo(n))
         };
     }, [filteredNotas]);
@@ -298,15 +402,133 @@ const NotasDespachoPage = () => {
         setSelectedNota(null);
     };
 
+
+    const handleToggleItem = async (unitizador, newStatus) => {
+        if (!selectedNota) return;
+
+        // Helper para buscar e atualizar em uma lista
+        const findAndUpdate = (list) => {
+            const updatedList = [...(list || [])];
+            const index = updatedList.findIndex(item => {
+                const u = (typeof item === 'string' ? item.split(' - ')[0] : item.unitizador) || '';
+                return u.trim() === unitizador.trim();
+            });
+
+            if (index === -1) return null;
+
+            const item = updatedList[index];
+            if (typeof item === 'string') {
+                const parts = item.split(' - ');
+                updatedList[index] = {
+                    unitizador: parts[0] || '-',
+                    lacre: parts[1] || '-',
+                    peso: parts[2] || '-',
+                    conferido: newStatus,
+                    origem: item
+                };
+            } else {
+                updatedList[index] = { ...item, conferido: newStatus };
+            }
+            return updatedList;
+        };
+
+        // 1. Tentar encontrar na lista de entrada (padrão)
+        let targetField = 'itens';
+        let updatedList = findAndUpdate(selectedNota.itens);
+
+        // 2. Se não encontrar, tentar na lista de conferência (devoluções/órfãs)
+        if (!updatedList) {
+            targetField = 'itens_conferencia';
+            updatedList = findAndUpdate(selectedNota.itens_conferencia);
+        }
+
+        if (!updatedList) return; // Não encontrou em lugar nenhum
+
+        // Atualizar estado
+        const updatedNota = { ...selectedNota, [targetField]: updatedList };
+        setSelectedNota(updatedNota);
+        setNotas(prev => prev.map(n => n.id === selectedNota.id ? updatedNota : n));
+
+        // Persistir no Firebase
+        try {
+            await updateDoc(doc(db, 'tb_despachos_conferencia', selectedNota.id), {
+                [targetField]: updatedList
+            });
+        } catch (error) {
+            console.error("Erro ao atualizar item:", error);
+            alert("Erro ao salvar alteração. Verifique sua conexão.");
+        }
+    };
+
+    const handleToggleAllItems = async (newStatus) => {
+        if (!selectedNota) return;
+
+        const updateListStatus = (list) => {
+            return (list || []).map(item => {
+                if (typeof item === 'string') {
+                    const parts = item.split(' - ');
+                    return {
+                        unitizador: parts[0] || '-',
+                        lacre: parts[1] || '-',
+                        peso: parts[2] || '-',
+                        conferido: newStatus,
+                        origem: item
+                    };
+                }
+                return { ...item, conferido: newStatus };
+            });
+        };
+
+        const updatedItens = updateListStatus(selectedNota.itens);
+        const updatedItensConferencia = updateListStatus(selectedNota.itens_conferencia);
+
+        const updatedNota = {
+            ...selectedNota,
+            itens: updatedItens,
+            itens_conferencia: updatedItensConferencia
+        };
+
+        setSelectedNota(updatedNota);
+        setNotas(prev => prev.map(n => n.id === selectedNota.id ? updatedNota : n));
+
+        try {
+            await updateDoc(doc(db, 'tb_despachos_conferencia', selectedNota.id), {
+                itens: updatedItens,
+                itens_conferencia: updatedItensConferencia
+            });
+        } catch (error) {
+            console.error("Erro ao atualizar todos os itens:", error);
+            alert("Erro ao salvar alterações em massa.");
+        }
+    };
+
+    const findClosestCity = (cityName) => {
+        if (!cityName) return '';
+        const normalize = str => str.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+        const target = normalize(cityName);
+        const match = CITIES.find(c => normalize(c) === target);
+        return match || cityName;
+    };
+
     const initialDespachoData = useMemo(() => {
         if (!selectedNota) return null;
+
+        // Parse weights safely
+        let peso = selectedNota.peso_total_declarado;
+        if (typeof peso === 'string') {
+            peso = peso.replace(',', '.');
+        }
+
         return {
-            data: selectedNota.data_ocorrencia ? selectedNota.data_ocorrencia.split(' ')[0].split('/').reverse().join('-') : '',
-            origem: selectedNota.origem,
-            destino: selectedNota.destino,
-            pesoTotal: selectedNota.peso_total_declarado,
-            volumesCorreios: selectedNota.qtde_unitizadores,
-            volumesEntregues: '',
+            data: (() => {
+                const d = new Date();
+                return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+            })(),
+            origem: findClosestCity(selectedNota.origem),
+            destino: findClosestCity(selectedNota.destino),
+            pesoTotal: peso,
+            volumesCorreios: selectedNota.qtde_unitizadores || (selectedNota.itens ? selectedNota.itens.length : 0),
+            volumesEntregues: '', // User usually fills this upon delivery/dispatch
             quantidadePaletes: 0,
             observacoes: `Despacho gerado a partir da Nota ${selectedNota.nota_despacho}.`
         };
@@ -335,6 +557,7 @@ const NotasDespachoPage = () => {
                             setLoading(true);
                             const response = await fetch(`https://gestao-frota-tim.vercel.app/api/sync_emails?key=${import.meta.env.VITE_SYNC_KEY || 'timbelem2025*'}`);
                             const data = await response.json();
+
                             if (response.ok) {
                                 alert(`Sucesso: ${data.message || 'Notas atualizadas!'}`);
                             } else {
@@ -352,6 +575,28 @@ const NotasDespachoPage = () => {
                     <RefreshCw size={16} className={loading ? "animate-spin" : ""} />
                     {loading ? "Atualizando..." : "Atualizar Notas"}
                 </Button>
+            </div>
+
+            {/* Search Bar */}
+            <div className="flex gap-4">
+                <div className="relative flex-1">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
+                    <input
+                        type="text"
+                        placeholder="Pesquisar por Nota, Unitizador, Lacre..."
+                        className="w-full h-12 pl-10 pr-4 rounded-lg border border-slate-200 shadow-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none text-slate-700 bg-white"
+                        value={searchTerm}
+                        onChange={e => setSearchTerm(e.target.value)}
+                    />
+                    {searchTerm && (
+                        <button
+                            onClick={() => setSearchTerm('')}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                        >
+                            <X size={16} />
+                        </button>
+                    )}
+                </div>
             </div>
 
             {/* Global Filters */}
@@ -447,10 +692,21 @@ const NotasDespachoPage = () => {
                     onOpenNota={setSelectedNota}
                 />
 
-                {/* 4. Divergentes / Órfãs - Red/Green mix */}
+                {/* 4. Notas Órfãs (Entregues sem Entrada) */}
+                {sections.orfas.length > 0 && (
+                    <NotaSection
+                        title="Notas Órfãs"
+                        notas={sections.orfas}
+                        icon={AlertCircle}
+                        colorClass="border-l-orange-400"
+                        onOpenNota={setSelectedNota}
+                    />
+                )}
+
+                {/* 5. Notas Divergentes */}
                 {sections.divergentes.length > 0 && (
                     <NotaSection
-                        title="Divergências e Órfãs (Atenção)"
+                        title="Notas Divergentes"
                         notas={sections.divergentes}
                         icon={AlertCircle}
                         colorClass="border-l-rose-500"
@@ -476,10 +732,13 @@ const NotasDespachoPage = () => {
                     nota={selectedNota}
                     onClose={() => setSelectedNota(null)}
                     onProcessar={handleProcessarNota}
+                    onToggleItem={handleToggleItem}
+                    onToggleAll={handleToggleAllItems}
                 />
             )}
 
             <DespachoModal
+                key={selectedNota ? selectedNota.id : 'new-despacho'}
                 isOpen={isDespachoModalOpen}
                 onClose={() => setIsDespachoModalOpen(false)}
                 initialData={initialDespachoData}

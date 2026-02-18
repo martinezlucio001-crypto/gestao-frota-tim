@@ -28,21 +28,22 @@ export const Modal = ({
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 transition-opacity duration-300">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-end sm:items-center justify-center z-50 sm:p-4 transition-opacity duration-300">
             <div
                 className={cn(
-                    "bg-white rounded-3xl w-full shadow-2xl animate-in fade-in zoom-in-95 duration-200 overflow-hidden flex flex-col max-h-[90vh]",
+                    "bg-white w-full shadow-2xl animate-in fade-in zoom-in-95 duration-200 overflow-hidden flex flex-col",
+                    "rounded-t-2xl sm:rounded-3xl max-h-full sm:max-h-[90vh] h-[95vh] sm:h-auto",
                     maxWidth
                 )}
                 onClick={e => e.stopPropagation()}
             >
                 {/* Header */}
-                <div className="p-8 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center flex-shrink-0">
+                <div className="p-4 sm:p-8 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center flex-shrink-0">
                     <div>
-                        <h2 className="text-2xl font-bold text-slate-800">{title}</h2>
-                        {subtitle && <p className="text-sm text-slate-500 mt-1">{subtitle}</p>}
+                        <h2 className="text-xl sm:text-2xl font-bold text-slate-800">{title}</h2>
+                        {subtitle && <p className="text-xs sm:text-sm text-slate-500 mt-1">{subtitle}</p>}
                     </div>
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2 sm:gap-3">
                         {Icon && (
                             <div className={cn("p-2 rounded-full", iconBg, iconColor)}>
                                 <Icon size={24} />
@@ -58,7 +59,7 @@ export const Modal = ({
                 </div>
 
                 {/* Content */}
-                <div className="p-8 overflow-y-auto flex-1">
+                <div className="p-4 sm:p-8 overflow-y-auto flex-1">
                     {children}
                 </div>
             </div>

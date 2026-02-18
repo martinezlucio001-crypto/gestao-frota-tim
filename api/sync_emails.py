@@ -347,14 +347,26 @@ class handler(BaseHTTPRequestHandler):
                 print("AVISO: Não foi possível obter ID da label PROCESSADO.")
 
             # 4. Fetch Emails
+            # Fetch larger batch (50) to find older emails, then take the last N (Oldest)
             results = service.users().messages().list(
-                userId='me', labelIds=[label_robo_id], maxResults=MAX_EMAILS_PER_RUN
+                userId='me', labelIds=[label_robo_id], maxResults=50
             ).execute()
-            messages = results.get('messages', [])
+            all_messages = results.get('messages', [])
+            
+            # Take the last MAX_EMAILS_PER_RUN (The oldest in this batch)
+            messages = all_messages[-MAX_EMAILS_PER_RUN:]
+            
+            # Process Oldest First (Chronological Order)
+            messages.reverse()
+
+
+            debug_logs = []
+            debug_logs.append(f"Iniciando sincronização. Label ID: {label_robo_id}")
 
             processed_count = 0
             if not messages:
-                self.respond_success("Nenhum e-mail pendente.", start_time)
+                debug_logs.append("Nenhuma mensagem encontrada na busca da API.")
+                self.respond_success("Nenhum e-mail pendente.", start_time, debug_logs)
                 return
 
             print(f"Encontrados {len(messages)} e-mails.")
@@ -424,56 +436,148 @@ class handler(BaseHTTPRequestHandler):
                                 "peso_total_calculado": parsed_data['peso_total_calculado'],
                                 "itens": parsed_data['itens'],
                                 "criado_em": "SERVER_TIMESTAMP",
-                                "divergencia": None, # Clear any previous divergence if re-processing
+                                "divergencia": None, 
                                 "created_by": "ROBO" 
                             }
                             db_client.create_document(COLLECTION_NAME, nota_id, payload)
                             debug_logs.append(f"   -> [SALVO] Documento criado com {len(parsed_data['itens'])} itens.")
                         else:
-                            debug_logs.append(f"   -> [IGNORADO] Nota já existe.")
+                            # Update Existing Note (Fix Orphan or Update Entry Data)
+                            payload = {
+                                "nota_despacho": nota_id,
+                                "data_email": date_header,
+                                "data_ocorrencia": parsed_data['data_ocorrencia'], 
+                                "origem": parsed_data['origem'],
+                                "destino": parsed_data['destino'],
+                                "qtde_unitizadores": parsed_data['qtde_unitizadores'],
+                                "peso_total_declarado": parsed_data['peso_total_declarado'],
+                                "peso_total_calculado": parsed_data['peso_total_calculado'],
+                                "itens": parsed_data['itens'],
+                                "last_updated": "SERVER_TIMESTAMP"
+                            }
+                            
+                            # Check if it was an ORPHAN (has exit data 'itens_conferencia')
+                            existing_fields = existing_doc.get('fields', {})
+                            itens_conferencia = existing_fields.get('itens_conferencia')
+                            
+                            if itens_conferencia:
+                                # Re-run Reconciliation (V2 Logic)
+                                # We need to parse the stored 'itens_conferencia' back to list of dicts
+                                # Firestore format is complex, but let's assume we can extract critical data
+                                # Actually, it's better to implement a robust comparison helper.
+                                
+                                # Simplified for now: match by Unitizer ID
+                                stored_units = {}
+                                
+                                # Helper to extract from Firestore Array
+                                try:
+                                    vals = itens_conferencia.get('arrayValue', {}).get('values', [])
+                                    for v in vals:
+                                        fdata = v.get('mapValue', {}).get('fields', {})
+                                        uid = fdata.get('unitizador', {}).get('stringValue', '').strip()
+                                        w = float(fdata.get('peso', {}).get('doubleValue', 0))
+                                        if uid: stored_units[uid] = w
+                                except:
+                                    pass # Malformed data
+
+                                entry_items = parsed_data['itens'] # List of dicts
+                                
+                                divergences = []
+                                matched_count = 0
+                                
+                                for item in entry_items:
+                                    uid = item['unitizador'].strip()
+                                    w_entry = item['peso']
+                                    
+                                    if uid in stored_units:
+                                        matched_count += 1
+                                        w_exit = stored_units[uid]
+                                        if abs(w_entry - w_exit) > 0.1: # 100g tolerance
+                                            divergences.append(f"Unit {uid}: Peso Entrada {w_entry} != Saida {w_exit}")
+                                    else:
+                                        divergences.append(f"Unit {uid}: Não consta na devolução")
+                                
+                                # Check for items in Exit that are not in Entry
+                                entry_uids = set(i['unitizador'].strip() for i in entry_items)
+                                for uid in stored_units:
+                                    if uid not in entry_uids:
+                                        divergences.append(f"Unit {uid}: Faltou na entrada (sobra na devolução)")
+
+                                if divergences:
+                                    payload['status'] = "DIVERGENTE"
+                                    payload['divergencia'] = "; ".join(divergences)
+                                    debug_logs.append(f"   -> [RECONCILIACAO] Divergências encontradas: {len(divergences)}")
+                                else:
+                                    payload['status'] = "CONCLUIDO"
+                                    payload['divergencia'] = None
+                                    debug_logs.append(f"   -> [RECONCILIACAO] Sucesso! Nota conciliada.")
+
+                            else:
+                                # Just a normal update of Entry data (no exit data yet)
+                                # Clear orphan status if it was set wrongly
+                                doc_status = existing_fields.get('status', {}).get('stringValue')
+                                if doc_status == 'DEVOLVED_ORPHAN':
+                                    payload['divergencia'] = None
+                                    payload['status'] = 'RECEBIDO' # Reset to valid state
+                            
+                            db_client.update_document(COLLECTION_NAME, nota_id, payload)
+                            debug_logs.append(f"   -> [ATUALIZADO] Dados de Entrada vinculados.")
 
                     elif is_saida:
                         parsed_data["tipo_movimento"] = "ENTREGA"
                         existing_doc = db_client.get_document(COLLECTION_NAME, nota_id)
 
                         if existing_doc:
-                            # Reconciliation Logic
+                            # Reconciliation Logic (V2) - Triggered by Exit Email
                             doc_data = existing_doc.get('fields', {})
                             
-                            # Helper to get field value safely
-                            def get_val(field, type_key='stringValue'):
-                                return doc_data.get(field, {}).get(type_key)
+                            # We need Entry data ('itens') to compare against this Exit email ('itens' -> save as 'itens_conferencia')
+                            # Extract Entry items from Firestore
+                            stored_units = {}
+                            try:
+                                # 'itens' in Firestore
+                                f_itens = doc_data.get('itens', {}).get('arrayValue', {}).get('values', [])
+                                for v in f_itens:
+                                    fdata = v.get('mapValue', {}).get('fields', {})
+                                    uid = fdata.get('unitizador', {}).get('stringValue', '').strip()
+                                    w = float(fdata.get('peso', {}).get('doubleValue', 0))
+                                    if uid: stored_units[uid] = w
+                            except: pass
 
-                            stored_qtde = int(get_val('qtde_unitizadores', 'integerValue') or 0)
-                            stored_peso = float(get_val('peso_total_declarado', 'doubleValue') or 0.0)
-                            stored_origem = get_val('origem')
-                            stored_destino = get_val('destino')
-
-                            # Compare fields
-                            # Note: parsed_data['origem'] is already cleaned, stored might be too if new.
-                            # If stored is old (AC prefix), match might fail slightly but we update it anyway?
-                            # Rule: "A nota com o comprovante de devolução mostra um dos itens a seguir diferente"
+                            # Current Email is Exit
+                            exit_items = parsed_data['itens']
                             
                             divergences = []
-                            if parsed_data['qtde_unitizadores'] != stored_qtde:
-                                divergences.append(f"Qtd: {stored_qtde} -> {parsed_data['qtde_unitizadores']}")
                             
-                            # Floating point comparison tolerance
-                            if abs(parsed_data['peso_total_declarado'] - stored_peso) > 0.01:
-                                divergences.append(f"Peso: {stored_peso} -> {parsed_data['peso_total_declarado']}")
+                            if not stored_units:
+                                # No entry data found (?) -> Should be Orphan but we are in "existing_doc" block
+                                # Verify status. If status is RECEBIDO, we should have items.
+                                # If status is DEVOLVED_ORPHAN, implies we are re-processing exit?
+                                pass
+
+                            for item in exit_items:
+                                uid = item['unitizador'].strip()
+                                w_exit = item['peso']
                                 
-                            if parsed_data['origem'] != stored_origem:
-                                divergences.append(f"Origem: {stored_origem} -> {parsed_data['origem']}")
-                                
-                            if parsed_data['destino'] != stored_destino:
-                                divergences.append(f"Destino: {stored_destino} -> {parsed_data['destino']}")
+                                if uid in stored_units:
+                                    w_entry = stored_units[uid]
+                                    if abs(w_entry - w_exit) > 0.1:
+                                        divergences.append(f"Unit {uid}: Peso Entrada {w_entry} != Saida {w_exit}")
+                                else:
+                                    divergences.append(f"Unit {uid}: Não consta na entrada")
+                            
+                            # Reverse check
+                            exit_uids = set(i['unitizador'].strip() for i in exit_items)
+                            for uid in stored_units:
+                                if uid not in exit_uids:
+                                    divergences.append(f"Unit {uid}: Faltou na devolução")
 
                             # Determine Status
-                            new_status = "CONCLUIDO" # Default success (Green filled)
+                            new_status = "CONCLUIDO"
                             divergencia_text = None
                             
                             if divergences:
-                                new_status = "DIVERGENTE" # Red Warning
+                                new_status = "DIVERGENTE"
                                 divergencia_text = "; ".join(divergences)
                             
                             # Update Payload
@@ -481,35 +585,28 @@ class handler(BaseHTTPRequestHandler):
                                 "status": new_status,
                                 "data_entrega": parsed_data['data_ocorrencia'] or date_header,
                                 "divergencia": divergencia_text,
-                                # Update fields to match the return proof (source of truth for delivery)?
-                                # User said "mudar o status... mas sinalizar... que está com erro". 
-                                # implying we KEEP original data or UPDATE it?
-                                # Usually we keep original and flag diff. 
-                                # But let's implicitly update the "delivery" timestamp.
+                                "itens_conferencia": parsed_data['itens'], # Save exit items separately!
+                                "last_updated": "SERVER_TIMESTAMP"
                             }
                             
                             db_client.update_document(COLLECTION_NAME, nota_id, payload)
-                            debug_logs.append(f"   -> [ATUALIZADO] Status: {new_status}. Divergências: {divergencia_text or 'Nenhuma'}")
+                            debug_logs.append(f"   -> [ATUALIZADO] Status: {new_status}. Div: {divergencia_text or 'Nenhuma'}")
                             
                         else:
                             # Orphan Note (Devolved without Receipt)
-                            # "inserir a nota... com status 'Entregue' (Entendo como CONCLUIDO/ORPHAN)... bolinhas amarela/azul vazias"
-                            # We will use a special status or flags. 
-                            # User said: "bolinhas amarela (Recebido), Azul (Processado) ficam vazias".
-                            # Only Green filled. Status = 'DEVOLVED_ORPHAN'
-                            
                             payload = {
                                 "nota_despacho": nota_id,
                                 "status": "DEVOLVED_ORPHAN",
                                 "data_email": date_header,
-                                "data_ocorrencia": parsed_data['data_ocorrencia'], # Delivery date
+                                "data_ocorrencia": parsed_data['data_ocorrencia'], 
                                 "data_entrega": parsed_data['data_ocorrencia'],
                                 "origem": parsed_data['origem'],
                                 "destino": parsed_data['destino'],
                                 "qtde_unitizadores": parsed_data['qtde_unitizadores'],
                                 "peso_total_declarado": parsed_data['peso_total_declarado'],
                                 "peso_total_calculado": parsed_data['peso_total_calculado'],
-                                "itens": parsed_data['itens'],
+                                "itens_conferencia": parsed_data['itens'], # Save as conferência
+                                "itens": [], # Empty entry items
                                 "criado_em": "SERVER_TIMESTAMP",
                                 "divergencia": "Nota de Devolução sem entrada prévia.",
                                 "created_by": "ROBO"

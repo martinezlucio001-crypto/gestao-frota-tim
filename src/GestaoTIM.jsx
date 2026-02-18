@@ -14,7 +14,9 @@ import CombustivelModule from './modules/combustivel/CombustivelModule';
 import PainelDespachos from './modules/despacho/PainelDespachos';
 import ServidoresPage from './modules/despacho/ServidoresPage';
 import PagamentosPage from './modules/despacho/PagamentosPage';
+import UnitizadoresPage from './modules/despacho/UnitizadoresPage';
 import NotasDespachoPage from './modules/despacho/NotasDespachoPage';
+
 import ContratosPage from './modules/receita/ContratosPage';
 import NotasPage from './modules/receita/NotasPage';
 import ReceitaDashboard from './modules/receita/ReceitaDashboard';
@@ -109,11 +111,7 @@ const LoginPage = ({ onLogin, isLoading, error }) => {
                     </button>
                 </form>
 
-                <div className="mt-6 text-center">
-                    <a href="/motorista" className="text-sm text-slate-400 hover:text-indigo-600 transition-colors">
-                        ← Portal do Motorista
-                    </a>
-                </div>
+
             </div>
         </div>
     );
@@ -127,11 +125,13 @@ const GestaoTIM = () => {
     const [isLoggingIn, setIsLoggingIn] = useState(false);
     const [currentView, setCurrentView] = useState('dashboard');
     const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+    const [currentUser, setCurrentUser] = useState(null);
 
     // Verificar autenticação
     useEffect(() => {
         const unsubscribe = onAuthStateChanged(auth, (user) => {
             setIsAuthenticated(!!user);
+            setCurrentUser(user);
             setIsLoading(false);
         });
         return () => unsubscribe();
@@ -201,7 +201,7 @@ const GestaoTIM = () => {
             case 'combustivel-trucks':
             case 'combustivel-maintenance':
             case 'combustivel-data':
-                return <CombustivelModule view={currentView.replace('combustivel-', '')} />;
+                return <CombustivelModule view={currentView.replace('combustivel-', '')} user={currentUser} />;
 
             // Módulo Despacho
             case 'despacho-painel':
@@ -212,6 +212,8 @@ const GestaoTIM = () => {
                 return <NotasDespachoPage />;
             case 'despacho-pagamentos':
                 return <PagamentosPage />;
+            case 'despacho-unitizadores':
+                return <UnitizadoresPage />;
 
             // Módulo Receita
             case 'receita-painel':

@@ -1785,8 +1785,8 @@ const EfficiencyChart = ({ data, period, onPeriodChange }) => {
 
 // --- Componente Principal ---
 
-export default function FleetManager({ embedded = false, externalView, onNavigate }) {
-  const [user, setUser] = useState(null);
+export default function FleetManager({ embedded = false, externalView, onNavigate, user: externalUser }) {
+  const [user, setUser] = useState(externalUser || null);
   const [view, setView] = useState('dashboard');
   const [trucks, setTrucks] = useState([]);
   const [entries, setEntries] = useState([]);
@@ -1830,12 +1830,12 @@ export default function FleetManager({ embedded = false, externalView, onNavigat
 
 
   // Estado de autenticação do admin (Firebase Auth)
-  const [adminUser, setAdminUser] = useState(null);
+  const [adminUser, setAdminUser] = useState((embedded && externalUser && !externalUser.isAnonymous) ? externalUser : null);
   const [adminEmail, setAdminEmail] = useState('');
   const [adminPassword, setAdminPassword] = useState('');
   const [showAdminPassword, setShowAdminPassword] = useState(false);
   const [adminLoginError, setAdminLoginError] = useState('');
-  const [isAdminLoading, setIsAdminLoading] = useState(true);
+  const [isAdminLoading, setIsAdminLoading] = useState(embedded ? (!externalUser) : true);
   const [showPasswordReset, setShowPasswordReset] = useState(false);
   const [resetEmailSent, setResetEmailSent] = useState(false);
 
@@ -1847,6 +1847,7 @@ export default function FleetManager({ embedded = false, externalView, onNavigat
 
   // Monitorar estado de autenticação do admin
   useEffect(() => {
+    if (embedded) return;
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       // Usuário logado com email (não anônimo) = admin
       if (currentUser && !currentUser.isAnonymous && currentUser.email) {
@@ -1858,6 +1859,14 @@ export default function FleetManager({ embedded = false, externalView, onNavigat
     });
     return () => unsubscribe();
   }, []);
+
+  // Sincronizar usuário externo se embarcado
+  useEffect(() => {
+    if (embedded && externalUser && !externalUser.isAnonymous) {
+      setAdminUser(externalUser);
+      setIsAdminLoading(false);
+    }
+  }, [embedded, externalUser]);
 
   // Login do admin com Firebase Auth
   const handleAdminLogin = async (e) => {
@@ -1928,6 +1937,7 @@ export default function FleetManager({ embedded = false, externalView, onNavigat
 
   useEffect(() => {
     const initAuth = async () => {
+      if (embedded) return;
       if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) await signInWithCustomToken(auth, __initial_auth_token);
       else await signInAnonymously(auth);
     };

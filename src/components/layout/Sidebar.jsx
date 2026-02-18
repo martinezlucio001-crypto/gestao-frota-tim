@@ -54,6 +54,8 @@ const menuItems = [
         submenu: [
             { id: 'despacho-painel', label: 'Painel de Despachos', view: 'despacho-painel' },
             { id: 'despacho-notas', label: 'Notas de Despacho', view: 'despacho-notas' },
+            { id: 'despacho-unitizadores', label: 'Unitizadores', view: 'despacho-unitizadores' },
+            { id: 'despacho-auditoria', label: 'Auditoria', view: 'despacho-auditoria', disabled: true },
             { id: 'despacho-servidores', label: 'Servidores', view: 'despacho-servidores' },
             { id: 'despacho-pagamentos', label: 'Pagamentos', view: 'despacho-pagamentos' },
         ]
@@ -173,12 +175,15 @@ export const Sidebar = ({ currentView, onNavigate, isCollapsed, onToggleCollapse
                                 {item.submenu.map(sub => (
                                     <button
                                         key={sub.id}
-                                        onClick={() => handleNavigate(sub.view)}
+                                        onClick={() => !sub.disabled && handleNavigate(sub.view)}
+                                        disabled={sub.disabled}
                                         className={cn(
                                             "w-full flex items-center gap-2 px-3 py-2 rounded-lg transition-all text-left text-sm",
                                             currentView === sub.view
                                                 ? "bg-indigo-100 text-indigo-700 font-semibold"
-                                                : "text-slate-500 hover:bg-slate-50 hover:text-slate-700"
+                                                : sub.disabled
+                                                    ? "text-slate-300 cursor-not-allowed"
+                                                    : "text-slate-500 hover:bg-slate-50 hover:text-slate-700"
                                         )}
                                     >
                                         <div className={cn(

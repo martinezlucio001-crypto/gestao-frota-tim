@@ -5,7 +5,7 @@ import App from '../../App';
  * Módulo de Combustível Wrapper
  * Integra o App.jsx existente ao novo sistema unificado.
  */
-const CombustivelModule = ({ view }) => {
+const CombustivelModule = ({ view, user }) => {
     // Mapeamento de views do novo sistema para o App legado
     const viewMapping = {
         'dashboard': 'dashboard',
@@ -20,6 +20,7 @@ const CombustivelModule = ({ view }) => {
         <div className="w-full">
             <App
                 embedded={true}
+                user={user}
                 externalView={targetView}
                 onNavigate={(newView) => {
                     // O App pode tentar navegar internamente, mas como estamos controlando via prop,

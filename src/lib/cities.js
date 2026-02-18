@@ -1,25 +1,26 @@
 // Lista de 20 cidades do Pará para uso nos dropdowns
 export const CITIES = [
-    "Santarém",
-    "Almeirim",
-    "Monte Dourado",
-    "Prainha",
-    "Monte Alegre",
     "Alenquer",
-    "Óbidos",
-    "Oriximiná",
-    "Trombetas",
-    "Terra Santa",
-    "Faro",
-    "Juruti",
+    "Almeirim",
+    "Aveiro",
     "Belterra",
-    "Mojuí dos Campos",
-    "Rurópolis",
+    "Castelo de Sonhos",
+    "Faro",
     "Itaituba",
     "Jacareacanga",
-    "Trairão",
+    "Juruti",
+    "Mojuí dos Campos",
+    "Monte Alegre",
+    "Monte Dourado",
     "Novo Progresso",
-    "Castelo de Sonhos"
+    "Óbidos",
+    "Oriximiná",
+    "Prainha",
+    "Rurópolis",
+    "Santarém",
+    "Terra Santa",
+    "Trairão",
+    "Trombetas"
 ];
 
 // Tipos de carga disponíveis
