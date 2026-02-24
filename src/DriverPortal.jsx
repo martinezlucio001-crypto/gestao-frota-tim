@@ -928,9 +928,11 @@ const DriverPortal = () => {
                             <div className="mb-4">
                                 <label className="block text-sm font-semibold text-slate-700 mb-2">Quilometragem Atual</label>
                                 <input
-                                    type="number"
+                                    type="text"
+                                    inputMode="numeric"
+                                    pattern="[0-9]*"
                                     value={formData.newMileage}
-                                    onChange={(e) => setFormData({ ...formData, newMileage: e.target.value })}
+                                    onChange={(e) => setFormData({ ...formData, newMileage: e.target.value.replace(/\D/g, '') })}
                                     placeholder="Ex: 125000"
                                     required
                                     className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none"
