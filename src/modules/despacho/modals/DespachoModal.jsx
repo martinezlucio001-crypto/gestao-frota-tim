@@ -183,16 +183,16 @@ const DespachoModal = ({ isOpen, onClose, editingDespacho, servidores = [], init
 
                     // Caso 1: Carga Densa exige que o Destino seja Santarém
                     // Se a rota padrão do servidor sai de Santarém, invertemos para chegar em Santarém
-                    if (updated.tipoCarga === 'Densa' && rotaOrigem === 'Santarém') {
+                    if (updated.tipoCarga === 'Densa' && rotaOrigem.includes('SANTAREM')) {
                         rotaOrigem = servidor.rotas[0].destino;
-                        rotaDestino = 'Santarém';
+                        rotaDestino = 'CDD SANTAREM';
                     }
 
                     // Caso 2: FNDE exige que a Origem seja Santarém
                     // Se a rota padrão do servidor chega em Santarém, invertemos para sair de Santarém
-                    else if (updated.tipoCarga === 'FNDE (Livros)' && rotaDestino === 'Santarém') {
+                    else if (updated.tipoCarga === 'FNDE (Livros)' && rotaDestino.includes('SANTAREM')) {
                         rotaDestino = servidor.rotas[0].origem;
-                        rotaOrigem = 'Santarém';
+                        rotaOrigem = 'CDD SANTAREM';
                     }
 
                     // Somente preencher se os campos estiverem vazios (para não sobrescrever dados da nota)
@@ -211,13 +211,13 @@ const DespachoModal = ({ isOpen, onClose, editingDespacho, servidores = [], init
                 updated.valorUnitario = '';
                 // Sugestão automática para FNDE
                 if (value === 'FNDE (Livros)') {
-                    updated.origem = 'Santarém';
+                    updated.origem = 'CDD SANTAREM';
                 }
                 // Sugestão automática para Carga Densa
                 if (value === 'Densa') {
-                    updated.destino = 'Santarém';
+                    updated.destino = 'CDD SANTAREM';
                     // Se a origem for Santarém, limpamos pois não faz sentido origem=destino
-                    if (updated.origem === 'Santarém') {
+                    if (updated.origem && updated.origem.includes('SANTAREM')) {
                         updated.origem = '';
                     }
                 }

@@ -13,6 +13,7 @@ const viewTitles = {
     'despacho-servidores': { title: 'Servidores', subtitle: 'Prestadores de serviço cadastrados' },
     'despacho-pagamentos': { title: 'Gestão de Pagamentos', subtitle: 'Controle financeiro' },
     'settings': { title: 'Configurações', subtitle: 'Preferências do sistema' },
+    'sistema-usuarios': { title: 'Usuários', subtitle: 'Gerenciar acesso aos portais' },
 };
 
 export const Header = ({ currentView, onLogout, userName = "Administrador" }) => {

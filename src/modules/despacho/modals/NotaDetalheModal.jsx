@@ -40,8 +40,11 @@ const NotaDetalheModal = ({ nota, onClose, onProcessar, onToggleItem, onToggleAl
                     origem: i
                 };
             }
-            if (!i || !i.unitizador) return null;
-            return i;
+            if (!i || i.unitizador === undefined || i.unitizador === null) return null;
+            return {
+                ...i,
+                unitizador: String(i.unitizador).trim()
+            };
         })
         .filter(i => i && i.unitizador && i.unitizador !== '-'); // Filtra nulos ou incompletos
 

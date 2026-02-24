@@ -18,7 +18,7 @@ from google.auth.transport.requests import Request
 # -------------------------------------------------------------------------
 # CONSTANTS & CONFIGURATION
 # -------------------------------------------------------------------------
-MAX_EMAILS_PER_RUN = 5
+MAX_EMAILS_PER_RUN = 50
 LABEL_NAME = "ROBO_TIM"
 LABEL_PROCESSED = "PROCESSADO"
 COLLECTION_NAME = "tb_despachos_conferencia"
@@ -114,6 +114,35 @@ class FirestoreClient:
         return {"fields": fields}
 
 # -------------------------------------------------------------------------
+# MERGE HELPER
+# -------------------------------------------------------------------------
+def merge_item_lists(existing_items, new_items):
+    """
+    Merges two lists of items based on 'unitizador' ID.
+    existing_items: List of dicts (from Firestore or parsed)
+    new_items: List of dicts (from current email)
+    Returns: Merged list of dicts
+    """
+    merged_map = {}
+    
+    # Process Existing
+    for item in existing_items:
+        uid = item.get('unitizador', '').strip()
+        if uid: merged_map[uid] = item
+        
+    # Process New (Updates/Adds)
+    for item in new_items:
+        uid = item.get('unitizador', '').strip()
+        if uid:
+            # If exists, we could update weight? 
+            # User expectation: "Complementar". 
+            # If same unitizer appears twice with different weight, usually latest wins or it's a duplicate.
+            # We'll let new item overwrite existing if key matches, or add if new.
+            merged_map[uid] = item
+            
+    return list(merged_map.values())
+
+# -------------------------------------------------------------------------
 # PARSING HELPERS
 # -------------------------------------------------------------------------
 def limpar_html(texto):
@@ -124,135 +153,157 @@ def limpar_html(texto):
     return texto
 
 def clean_city_name(name):
-    if not name: return "Desconhecida"
-    # Remove common prefixes like "CDD ", "AC ", "UD ", etc.
-    name = re.sub(r'^(CDD|AC|UD|AG|CTO|TECA)\s+', '', name, flags=re.IGNORECASE)
-    # Title case "RIO DE JANEIRO" -> "Rio De Janeiro" (simple) or keep upper if preferred.
-    # User prefers simple names. Let's Title Case.
-    return name.title()
+    if not name: return "DESCONHECIDA"
+    
+    # 1. Uppercase and Trim (New Standard)
+    name = name.strip().upper()
+    
+    # 2. Remove Accents
+    replacements = {
+        'Á': 'A', 'À': 'A', 'Ã': 'A', 'Â': 'A',
+        'É': 'E', 'Ê': 'E',
+        'Í': 'I',
+        'Ó': 'O', 'Õ': 'O', 'Ô': 'O',
+        'Ú': 'U',
+        'Ç': 'C',
+        'Ü': 'U'
+    }
+    for k, v in replacements.items():
+        name = name.replace(k, v)
+        
+    # 3. Preserve Prefixes (AC, CDD, etc.) - DO NOT REMOVE
+    # User requirement: Keep "CDD SANTAREM", "AC OBIDOS", etc.
+    
+    return name
 
 def parse_email_html(html_content):
-    dados = {
-        "nota": None,
-        "itens": [],
-        "origem": "Desconhecida",
-        "destino": "Desconhecido",
-        "data_ocorrencia": None,
-        "qtde_unitizadores": 0,
-        "peso_total_declarado": 0.0,
-        "peso_total_calculado": 0.0,
-        "tipo_movimento": "DESCONHECIDO" # Recebimento ou Entrega
-    }
+    parsed_results = []
     
-    if not html_content: return None
+    if not html_content: return []
 
     try:
         soup = BeautifulSoup(html_content, 'html.parser')
         
-        # 1. Regex Backup for Note Number
-        text_content = soup.get_text()
-        match_nota = re.search(r'(NN\d+)', text_content)
-        if match_nota:
-            dados["nota"] = match_nota.group(1)
-
-        # 2. Extract Table Items
+        # Extract Table Items
         tables = soup.find_all('table')
         for table in tables:
             rows = table.find_all('tr')
             for row in rows:
                 cols = row.find_all(['td', 'th'])
                 
-                # Skip Header Rows
-                if any(c.name == 'th' for c in cols):
-                    continue
+                # Minimum columns validation
+                if len(cols) < 7: continue
                 
-                # Robust Header Check (case insensitive)
+                # Check for "Header" row (skip)
                 col0_text = limpar_html(str(cols[0])).lower() if cols else ""
-                col1_text = limpar_html(str(cols[1])).lower() if len(cols) > 1 else ""
-                
-                if 'nota de despacho' in col0_text or 'origem' in col1_text:
+                if 'nota de despacho' in col0_text or 'origem' in col0_text:
                     continue
-
-                # New Structure expected (approx 9 columns):
-                # 0:Nota, 1:Origem, 2:Destino, 3:Data, 4:QtdeUnit, 5:PesoTotal, 6:ListUnit, 7:ListLacre, 8:ListPeso
-                if len(cols) >= 9:
-                    idx_nota = 0
-                    idx_origem = 1
-                    idx_destino = 2
-                    idx_data = 3
-                    idx_qtde = 4
-                    idx_peso_total = 5
-                    idx_list_unit = 6
-                    idx_list_lacre = 7
-                    idx_list_peso = 8
-
-                    # Extract scalar values from the first valid data row found
-                    if dados["origem"] == "Desconhecida":
-                        # If finding Nota in column, prefer it or cross-check
-                        col_nota = limpar_html(str(cols[idx_nota]))
-                        if "NN" in col_nota and not dados["nota"]:
-                            dados["nota"] = col_nota
-                        
-                        dados["origem"] = clean_city_name(limpar_html(str(cols[idx_origem])))
-                        dados["destino"] = clean_city_name(limpar_html(str(cols[idx_destino])))
-                        dados["data_ocorrencia"] = limpar_html(str(cols[idx_data]))
-                        
-                        try:
-                            # Try to extract integer from string like "5" or "5 un"
-                            raw_qtde = limpar_html(str(cols[idx_qtde]))
-                            match_int = re.search(r'(\d+)', raw_qtde)
-                            if match_int:
-                                dados["qtde_unitizadores"] = int(match_int.group(1))
-                        except: pass
-                        
-                        try:
-                            # "1.500,50 Kg" -> 1500.50
-                            p_str = limpar_html(str(cols[idx_peso_total])).replace('.', '').replace(',', '.').replace('Kg', '').strip()
-                            dados["peso_total_declarado"] = float(p_str)
-                        except: pass
-
-                    # Helper to process lists
-                    def get_clean_list(col):
-                        for br in col.find_all('br'): br.replace_with(' ')
-                        text = col.get_text(separator=' ', strip=True)
-                        text = text.replace('&nbsp;', ' ').replace('=', '').replace('?', '')
-                        return text.split()
-
-                    raw_units = get_clean_list(cols[idx_list_unit])
-                    raw_lacres = get_clean_list(cols[idx_list_lacre])
-                    raw_pesos = get_clean_list(cols[idx_list_peso])
+                
+                # Check for Data Row (Must have "NN" in first column)
+                # Col 0: Nota
+                raw_nota = limpar_html(str(cols[0]))
+                if "NN" not in raw_nota:
+                    continue
                     
-                    max_len = max(len(raw_units), len(raw_lacres), len(raw_pesos))
-                    for i in range(max_len):
-                        unit_val = raw_units[i] if i < len(raw_units) else ""
-                        # Filter noise
-                        if len(unit_val) < 4 or unit_val.lower() in ['unitizador', 'lacre', 'objeto']:
-                            continue
-                        
-                        peso_str = raw_pesos[i] if i < len(raw_pesos) else "0"
-                        peso_val = 0.0
-                        try:
-                             # "10,5" -> 10.5
-                            cl_peso = peso_str.replace('.', '').replace(',', '.').replace('Kg', '').strip()
-                            peso_val = float(cl_peso)
-                        except: pass
+                # Setup specific indexes for standard TIM emails
+                idx_nota = 0
+                idx_origem = 1
+                idx_destino = 2
+                idx_data = 3
+                idx_qtde = 4
+                idx_peso_total = 5
+                idx_list_unit = 6
+                idx_list_lacre = 7
+                idx_list_peso = 8
+                
+                # Create Note Object
+                dados = {
+                    "nota": None,
+                    "itens": [],
+                    "origem": "DESCONHECIDA",
+                    "destino": "DESCONHECIDO",
+                    "data_ocorrencia": None,
+                    "qtde_unitizadores": 0,
+                    "peso_total_declarado": 0.0,
+                    "peso_total_calculado": 0.0,
+                    "tipo_movimento": "DESCONHECIDO" # Will be set by Subject later
+                }
+                
+                # Extract Metadata
+                match_nota = re.search(r'(NN\d+)', raw_nota)
+                if match_nota:
+                    dados["nota"] = match_nota.group(1)
+                else:
+                    continue # Valid row must have NN
+                    
+                dados["origem"] = clean_city_name(limpar_html(str(cols[idx_origem])))
+                dados["destino"] = clean_city_name(limpar_html(str(cols[idx_destino])))
+                dados["data_ocorrencia"] = limpar_html(str(cols[idx_data]))
+                
+                try:
+                    raw_qtde = limpar_html(str(cols[idx_qtde]))
+                    match_int = re.search(r'(\d+)', raw_qtde)
+                    if match_int: dados["qtde_unitizadores"] = int(match_int.group(1))
+                except: pass
+                
+                try:
+                    # "1.500,50 Kg"
+                    p_str = limpar_html(str(cols[idx_peso_total])).replace('.', '').replace(',', '.').replace('Kg', '').strip()
+                    dados["peso_total_declarado"] = float(p_str)
+                except: pass
 
-                        item = {
-                            "unitizador": unit_val,
-                            "lacre": raw_lacres[i] if i < len(raw_lacres) else "",
-                            "peso": peso_val,
-                            "conferido": False
-                        }
-                        dados["itens"].append(item)
+                # Extract Lists (Unitizers, Lacres, Pesos)
+                # Helper to split by <br> or whitespace
+                def get_clean_list(col):
+                    # Replace <br> with explicit separator to ensure splitting
+                    for br in col.find_all('br'): br.replace_with(' ||| ')
+                    text = col.get_text(separator=' ', strip=True)
+                    text = text.replace('&nbsp;', ' ').replace('=', '').replace('?', '')
+                    # Split by our separator or whitespace
+                    if '|||' in text:
+                        return [x.strip() for x in text.split('|||') if x.strip()]
+                    return text.split()
 
-        if dados["itens"]:
-            dados["peso_total_calculado"] = sum(item["peso"] for item in dados["itens"])
+                raw_units = get_clean_list(cols[idx_list_unit])
+                raw_lacres = get_clean_list(cols[idx_list_lacre]) if len(cols) > idx_list_lacre else []
+                raw_pesos = get_clean_list(cols[idx_list_peso]) if len(cols) > idx_list_peso else []
+                
+                max_len = max(len(raw_units), len(raw_lacres), len(raw_pesos))
+                
+                for i in range(max_len):
+                    unit_val = raw_units[i] if i < len(raw_units) else ""
+                    
+                    # Filter noise
+                    if len(unit_val) < 4 or unit_val.lower() in ['unitizador', 'lacre', 'objeto']:
+                        continue
+                    
+                    lacre_val = raw_lacres[i] if i < len(raw_lacres) else ""
+                    peso_str = raw_pesos[i] if i < len(raw_pesos) else "0"
+                    
+                    peso_val = 0.0
+                    try:
+                        cl_peso = peso_str.replace('.', '').replace(',', '.').replace('Kg', '').strip()
+                        peso_val = float(cl_peso)
+                    except: pass
+
+                    item = {
+                        "unitizador": unit_val,
+                        "lacre": lacre_val,
+                        "peso": peso_val,
+                        "conferido": False
+                    }
+                    dados["itens"].append(item)
+                    
+                if dados["itens"]:
+                    dados["peso_total_calculado"] = sum(item["peso"] for item in dados["itens"])
+                    
+                parsed_results.append(dados)
 
     except Exception as e:
         print(f"Erro no parsing HTML: {e}")
-        return None
+        return []
         
-    return dados
+    return parsed_results
 
 # -------------------------------------------------------------------------
 # MAIN HANDLER (VERCEL)
@@ -288,6 +339,13 @@ class handler(BaseHTTPRequestHandler):
 
     def process_request(self):
         start_time = time.time()
+
+        # --- SCRIPT PAUSADO TEMPORARIAMENTE ---
+        # Para reativar, remova as linhas abaixo
+        self.respond_success("Script pausado conforme solicitado.", start_time)
+        return
+        # --------------------------------------
+
         query = parse_qs(urlparse(self.path).query)
         key = query.get('key', [None])[0]
         cron_secret = os.environ.get('CRON_SECRET')
@@ -349,7 +407,7 @@ class handler(BaseHTTPRequestHandler):
             # 4. Fetch Emails
             # Fetch larger batch (50) to find older emails, then take the last N (Oldest)
             results = service.users().messages().list(
-                userId='me', labelIds=[label_robo_id], maxResults=50
+                userId='me', labelIds=[label_robo_id], maxResults=500
             ).execute()
             all_messages = results.get('messages', [])
             
@@ -400,225 +458,270 @@ class handler(BaseHTTPRequestHandler):
                         debug_logs.append(f" - [ERRO] HTML não encontrado.")
                         continue
 
-                    parsed_data = parse_email_html(html_body)
+                    parsed_data_list = parse_email_html(html_body)
                     
-                    if not parsed_data or not parsed_data['nota']:
-                         debug_logs.append(f" - [PULADO] Nota não encontrada no HTML.")
+                    if not parsed_data_list:
+                         debug_logs.append(f" - [PULADO] Nenhuma nota encontrada ou erro no parse.")
                          continue
-
-                    nota_id = parsed_data['nota']
-                    debug_logs.append(f" - [OK] Nota encontrada: {nota_id}")
                     
-                    # Check Headers for type or Subject
+                    debug_logs.append(f" - [OK] {len(parsed_data_list)} notas identificadas.")
+
+                    # Determine Movement Type based on Subject (Global for the email)
                     is_entrada = "Recebimento de Carga" in subject or "Recebimento de carga" in subject
                     is_saida = "Devolução de carga" in subject or "Devolução de Carga" in subject
-                    
-                    # Force check to avoid skipping valid emails if case sensitivity issues
-                    if not is_entrada and not is_saida:
-                        # Fallback heuristic: check if data_ocorrencia/origem exist
-                        pass 
 
-                    if is_entrada:
-                        parsed_data["tipo_movimento"] = "RECEBIMENTO"
-                        existing_doc = db_client.get_document(COLLECTION_NAME, nota_id)
-                        
-                        if not existing_doc:
-                            # Payload for New Note
-                            payload = {
-                                "nota_despacho": nota_id,
-                                "status": "RECEBIDO", # Yellow dot only
-                                "data_email": date_header,
-                                "data_ocorrencia": parsed_data['data_ocorrencia'], 
-                                "origem": parsed_data['origem'],
-                                "destino": parsed_data['destino'],
-                                "qtde_unitizadores": parsed_data['qtde_unitizadores'],
-                                "peso_total_declarado": parsed_data['peso_total_declarado'],
-                                "peso_total_calculado": parsed_data['peso_total_calculado'],
-                                "itens": parsed_data['itens'],
-                                "criado_em": "SERVER_TIMESTAMP",
-                                "divergencia": None, 
-                                "created_by": "ROBO" 
-                            }
-                            db_client.create_document(COLLECTION_NAME, nota_id, payload)
-                            debug_logs.append(f"   -> [SALVO] Documento criado com {len(parsed_data['itens'])} itens.")
-                        else:
-                            # Update Existing Note (Fix Orphan or Update Entry Data)
-                            payload = {
-                                "nota_despacho": nota_id,
-                                "data_email": date_header,
-                                "data_ocorrencia": parsed_data['data_ocorrencia'], 
-                                "origem": parsed_data['origem'],
-                                "destino": parsed_data['destino'],
-                                "qtde_unitizadores": parsed_data['qtde_unitizadores'],
-                                "peso_total_declarado": parsed_data['peso_total_declarado'],
-                                "peso_total_calculado": parsed_data['peso_total_calculado'],
-                                "itens": parsed_data['itens'],
-                                "last_updated": "SERVER_TIMESTAMP"
-                            }
+                    for parsed_data in parsed_data_list:
+                        nota_id = parsed_data['nota']
+                        debug_logs.append(f"   > Processando Nota: {nota_id}")
+
+                        if is_entrada:
+                            parsed_data["tipo_movimento"] = "RECEBIMENTO"
+                            existing_doc = db_client.get_document(COLLECTION_NAME, nota_id)
                             
-                            # Check if it was an ORPHAN (has exit data 'itens_conferencia')
-                            existing_fields = existing_doc.get('fields', {})
-                            itens_conferencia = existing_fields.get('itens_conferencia')
-                            
-                            if itens_conferencia:
-                                # Re-run Reconciliation (V2 Logic)
-                                # We need to parse the stored 'itens_conferencia' back to list of dicts
-                                # Firestore format is complex, but let's assume we can extract critical data
-                                # Actually, it's better to implement a robust comparison helper.
+                            if not existing_doc:
+                                # Payload for New Note
+                                payload = {
+                                    "nota_despacho": nota_id,
+                                    "status": "RECEBIDO", 
+                                    "data_email": date_header,
+                                    "data_ocorrencia": parsed_data['data_ocorrencia'], 
+                                    "origem": parsed_data['origem'],
+                                    "destino": parsed_data['destino'],
+                                    "qtde_unitizadores": parsed_data['qtde_unitizadores'],
+                                    "peso_total_declarado": parsed_data['peso_total_declarado'],
+                                    "peso_total_calculado": parsed_data['peso_total_calculado'],
+                                    "itens": parsed_data['itens'],
+                                    "criado_em": "SERVER_TIMESTAMP",
+                                    "divergencia": None, 
+                                    "created_by": "ROBO",
+                                    "msgs_entrada": 1,
+                                    "msgs_saida": 0
+                                }
+                                db_client.create_document(COLLECTION_NAME, nota_id, payload)
+                                debug_logs.append(f"     -> [SALVO] Criado com {len(parsed_data['itens'])} itens.")
+                            else:
+                                # Update Existing Note (MERGE)
+                                existing_fields = existing_doc.get('fields', {})
                                 
-                                # Simplified for now: match by Unitizer ID
-                                stored_units = {}
-                                
-                                # Helper to extract from Firestore Array
+                                # 1. Extract Existing ITENS
+                                existing_itens = []
                                 try:
-                                    vals = itens_conferencia.get('arrayValue', {}).get('values', [])
+                                    vals = existing_fields.get('itens', {}).get('arrayValue', {}).get('values', [])
                                     for v in vals:
                                         fdata = v.get('mapValue', {}).get('fields', {})
-                                        uid = fdata.get('unitizador', {}).get('stringValue', '').strip()
-                                        w = float(fdata.get('peso', {}).get('doubleValue', 0))
-                                        if uid: stored_units[uid] = w
-                                except:
-                                    pass # Malformed data
+                                        existing_itens.append({
+                                            "unitizador": fdata.get('unitizador', {}).get('stringValue', '').strip(),
+                                            "lacre": fdata.get('lacre', {}).get('stringValue', ''),
+                                            "peso": float(fdata.get('peso', {}).get('doubleValue', 0)),
+                                            "conferido": fdata.get('conferido', {}).get('booleanValue', False)
+                                        })
+                                except: pass
+                                
+                                # 2. Merge New Items (parsed_data['itens']) with Existing
+                                merged_itens = merge_item_lists(existing_itens, parsed_data['itens'])
+                                
+                                # Calculate new totals from MERGED items
+                                new_total_weight = sum(i['peso'] for i in merged_itens)
+                                
+                                # Increment Message Count
+                                current_count = 1
+                                try:
+                                    if 'msgs_entrada' in existing_fields:
+                                        current_count = int(existing_fields['msgs_entrada'].get('integerValue', 1))
+                                    else:
+                                        current_count = 1 # Default if field missing
+                                except: pass
+                                
+                                new_msg_count = current_count + 1
 
-                                entry_items = parsed_data['itens'] # List of dicts
+                                payload = {
+                                    "nota_despacho": nota_id,
+                                    "data_email": date_header,
+                                    "data_ocorrencia": parsed_data['data_ocorrencia'], 
+                                    "origem": parsed_data['origem'],
+                                    "destino": parsed_data['destino'],
+                                    "qtde_unitizadores": len(merged_itens), 
+                                    "peso_total_declarado": new_total_weight, 
+                                    "peso_total_calculado": new_total_weight, 
+                                    "itens": merged_itens,
+                                    "last_updated": "SERVER_TIMESTAMP",
+                                    "msgs_entrada": new_msg_count # Save Count
+                                }
                                 
-                                divergences = []
-                                matched_count = 0
+                                # Check Recalculation logic if Exit data exists
+                                itens_conferencia_field = existing_fields.get('itens_conferencia')
                                 
-                                for item in entry_items:
-                                    uid = item['unitizador'].strip()
-                                    w_entry = item['peso']
+                                if itens_conferencia_field:
+                                    # Reconciliation Logic
+                                    stored_units = {}
+                                    try:
+                                        vals = itens_conferencia_field.get('arrayValue', {}).get('values', [])
+                                        for v in vals:
+                                            fdata = v.get('mapValue', {}).get('fields', {})
+                                            uid = fdata.get('unitizador', {}).get('stringValue', '').strip()
+                                            w = float(fdata.get('peso', {}).get('doubleValue', 0))
+                                            if uid: stored_units[uid] = w
+                                    except: pass
+
+                                    entry_items = merged_itens # Use Merged List
+                                    divergences = []
                                     
-                                    if uid in stored_units:
-                                        matched_count += 1
-                                        w_exit = stored_units[uid]
-                                        if abs(w_entry - w_exit) > 0.1: # 100g tolerance
+                                    for item in entry_items:
+                                        uid = item['unitizador'].strip()
+                                        w_entry = item['peso']
+                                        if uid in stored_units:
+                                            w_exit = stored_units[uid]
+                                            if abs(w_entry - w_exit) > 0.1:
+                                                divergences.append(f"Unit {uid}: Peso Entrada {w_entry} != Saida {w_exit}")
+                                        else:
+                                            divergences.append(f"Unit {uid}: Não consta na devolução")
+                                    
+                                    entry_uids = set(i['unitizador'].strip() for i in entry_items)
+                                    for uid in stored_units:
+                                        if uid not in entry_uids:
+                                            divergences.append(f"Unit {uid}: Faltou na entrada")
+
+                                    if divergences:
+                                        payload['status'] = "DIVERGENTE"
+                                        payload['divergencia'] = "; ".join(divergences)
+                                    else:
+                                        payload['status'] = "CONCLUIDO"
+                                        payload['divergencia'] = None
+                                else:
+                                    doc_status = existing_fields.get('status', {}).get('stringValue')
+                                    if doc_status == 'DEVOLVED_ORPHAN':
+                                        payload['divergencia'] = None
+                                        payload['status'] = 'RECEBIDO'
+                                
+                                db_client.update_document(COLLECTION_NAME, nota_id, payload)
+                                debug_logs.append(f"     -> [ATUALIZADO] Dados de Entrada mesclados e vinculados ({new_msg_count} e-mails).")
+
+                        elif is_saida:
+                            parsed_data["tipo_movimento"] = "ENTREGA"
+                            existing_doc = db_client.get_document(COLLECTION_NAME, nota_id)
+
+                            if existing_doc:
+                                doc_data = existing_doc.get('fields', {})
+                                
+                                # 1. Extract Existing EXIT Items (itens_conferencia)
+                                existing_exit_items = []
+                                try:
+                                    vals = doc_data.get('itens_conferencia', {}).get('arrayValue', {}).get('values', [])
+                                    for v in vals:
+                                        fdata = v.get('mapValue', {}).get('fields', {})
+                                        existing_exit_items.append({
+                                            "unitizador": fdata.get('unitizador', {}).get('stringValue', '').strip(),
+                                            "lacre": fdata.get('lacre', {}).get('stringValue', ''),
+                                            "peso": float(fdata.get('peso', {}).get('doubleValue', 0)),
+                                            "conferido": fdata.get('conferido', {}).get('booleanValue', False)
+                                        })
+                                except: pass
+                                
+                                # 2. Merge New Exit Items with Existing
+                                merged_exit_items = merge_item_lists(existing_exit_items, parsed_data['itens'])
+                                stored_units = {i['unitizador']: i['peso'] for i in merged_exit_items}
+
+                                # 3. Extract ENTRY Items to compare
+                                entry_items = []
+                                try:
+                                    f_itens = doc_data.get('itens', {}).get('arrayValue', {}).get('values', [])
+                                    for v in f_itens:
+                                        fdata = v.get('mapValue', {}).get('fields', {})
+                                        entry_items.append({
+                                            "unitizador": fdata.get('unitizador', {}).get('stringValue', '').strip(),
+                                            "peso": float(fdata.get('peso', {}).get('doubleValue', 0))
+                                        })
+                                except: pass
+
+                                divergences = []
+                                
+                                # Compare Merged Exit Data vs Entry Data
+                                for item in merged_exit_items:
+                                    uid = item['unitizador'].strip()
+                                    w_exit = item['peso']
+                                    
+                                    # Find matching Entry item
+                                    w_entry = next((i['peso'] for i in entry_items if i['unitizador'] == uid), None)
+                                    
+                                    if w_entry is not None:
+                                        if abs(w_entry - w_exit) > 0.1:
                                             divergences.append(f"Unit {uid}: Peso Entrada {w_entry} != Saida {w_exit}")
                                     else:
-                                        divergences.append(f"Unit {uid}: Não consta na devolução")
+                                        # Only flag as missing if we HAVE entry items (otherwise it's just orphan)
+                                        if entry_items:
+                                            divergences.append(f"Unit {uid}: Não consta na entrada")
                                 
-                                # Check for items in Exit that are not in Entry
-                                entry_uids = set(i['unitizador'].strip() for i in entry_items)
-                                for uid in stored_units:
-                                    if uid not in entry_uids:
-                                        divergences.append(f"Unit {uid}: Faltou na entrada (sobra na devolução)")
+                                # Reverse check (Missing in Exit)
+                                if entry_items:
+                                    exit_uids = set(i['unitizador'].strip() for i in merged_exit_items)
+                                    for i in entry_items:
+                                        if i['unitizador'] not in exit_uids:
+                                            divergences.append(f"Unit {i['unitizador']}: Faltou na devolução")
 
-                                if divergences:
-                                    payload['status'] = "DIVERGENTE"
-                                    payload['divergencia'] = "; ".join(divergences)
-                                    debug_logs.append(f"   -> [RECONCILIACAO] Divergências encontradas: {len(divergences)}")
-                                else:
-                                    payload['status'] = "CONCLUIDO"
-                                    payload['divergencia'] = None
-                                    debug_logs.append(f"   -> [RECONCILIACAO] Sucesso! Nota conciliada.")
-
+                                # Determine Status
+                                new_status = "CONCLUIDO" if not divergences else "DIVERGENTE"
+                                if not entry_items: new_status = "DEVOLVED_ORPHAN" # Or keep existing if it was orphan
+                                
+                                # Calculate totals
+                                new_total_weight = sum(i['peso'] for i in merged_exit_items)
+                                
+                                # Increment Message Count (Exit)
+                                current_count = 0
+                                try:
+                                    if 'msgs_saida' in doc_data:
+                                        current_count = int(doc_data['msgs_saida'].get('integerValue', 0))
+                                    else:
+                                        # If field missing, assume 1 if exiting items exist, strictly 0 if not?
+                                        # Assume 0 or 1. Let's assume 1 if we are updating an existing exit note.
+                                        # If existing_exit_items is empty, likely 0.
+                                        current_count = 1 if existing_exit_items else 0
+                                except: pass
+                                
+                                new_msg_count = current_count + 1
+                                
+                                payload = {
+                                    "status": new_status,
+                                    "data_entrega": parsed_data['data_ocorrencia'] or date_header,
+                                    "divergencia": "; ".join(divergences) if divergences else None,
+                                    "itens_conferencia": merged_exit_items, # Save MERGED items
+                                    "qtde_unitizadores": len(merged_exit_items),
+                                    "peso_total_declarado": new_total_weight, 
+                                    "peso_total_calculado": new_total_weight, 
+                                    "last_updated": "SERVER_TIMESTAMP",
+                                    "msgs_saida": new_msg_count
+                                }
+                                
+                                db_client.update_document(COLLECTION_NAME, nota_id, payload)
+                                debug_logs.append(f"     -> [ATUALIZADO] Saída mesclada ({new_msg_count} e-mails). Status: {new_status}")
+                                
                             else:
-                                # Just a normal update of Entry data (no exit data yet)
-                                # Clear orphan status if it was set wrongly
-                                doc_status = existing_fields.get('status', {}).get('stringValue')
-                                if doc_status == 'DEVOLVED_ORPHAN':
-                                    payload['divergencia'] = None
-                                    payload['status'] = 'RECEBIDO' # Reset to valid state
-                            
-                            db_client.update_document(COLLECTION_NAME, nota_id, payload)
-                            debug_logs.append(f"   -> [ATUALIZADO] Dados de Entrada vinculados.")
+                                # Orphan Note (Devolved without Receipt)
+                                payload = {
+                                    "nota_despacho": nota_id,
+                                    "status": "DEVOLVED_ORPHAN",
+                                    "data_email": date_header,
+                                    "data_ocorrencia": parsed_data['data_ocorrencia'], 
+                                    "data_entrega": parsed_data['data_ocorrencia'],
+                                    "origem": parsed_data['origem'],
+                                    "destino": parsed_data['destino'],
+                                    "qtde_unitizadores": parsed_data['qtde_unitizadores'],
+                                    "peso_total_declarado": parsed_data['peso_total_declarado'],
+                                    "peso_total_calculado": parsed_data['peso_total_calculado'],
+                                    "itens_conferencia": parsed_data['itens'], # Save as conferência
+                                    "itens": [], # Empty entry items
+                                    "criado_em": "SERVER_TIMESTAMP",
+                                    "divergencia": "Nota de Devolução sem entrada prévia.",
+                                    "created_by": "ROBO",
+                                    "msgs_entrada": 0,
+                                    "msgs_saida": 1
+                                }
+                                db_client.create_document(COLLECTION_NAME, nota_id, payload)
+                                debug_logs.append(f"     -> [CRIADO-ORFAO] Devolução sem origem.")
 
-                    elif is_saida:
-                        parsed_data["tipo_movimento"] = "ENTREGA"
-                        existing_doc = db_client.get_document(COLLECTION_NAME, nota_id)
-
-                        if existing_doc:
-                            # Reconciliation Logic (V2) - Triggered by Exit Email
-                            doc_data = existing_doc.get('fields', {})
-                            
-                            # We need Entry data ('itens') to compare against this Exit email ('itens' -> save as 'itens_conferencia')
-                            # Extract Entry items from Firestore
-                            stored_units = {}
-                            try:
-                                # 'itens' in Firestore
-                                f_itens = doc_data.get('itens', {}).get('arrayValue', {}).get('values', [])
-                                for v in f_itens:
-                                    fdata = v.get('mapValue', {}).get('fields', {})
-                                    uid = fdata.get('unitizador', {}).get('stringValue', '').strip()
-                                    w = float(fdata.get('peso', {}).get('doubleValue', 0))
-                                    if uid: stored_units[uid] = w
-                            except: pass
-
-                            # Current Email is Exit
-                            exit_items = parsed_data['itens']
-                            
-                            divergences = []
-                            
-                            if not stored_units:
-                                # No entry data found (?) -> Should be Orphan but we are in "existing_doc" block
-                                # Verify status. If status is RECEBIDO, we should have items.
-                                # If status is DEVOLVED_ORPHAN, implies we are re-processing exit?
-                                pass
-
-                            for item in exit_items:
-                                uid = item['unitizador'].strip()
-                                w_exit = item['peso']
-                                
-                                if uid in stored_units:
-                                    w_entry = stored_units[uid]
-                                    if abs(w_entry - w_exit) > 0.1:
-                                        divergences.append(f"Unit {uid}: Peso Entrada {w_entry} != Saida {w_exit}")
-                                else:
-                                    divergences.append(f"Unit {uid}: Não consta na entrada")
-                            
-                            # Reverse check
-                            exit_uids = set(i['unitizador'].strip() for i in exit_items)
-                            for uid in stored_units:
-                                if uid not in exit_uids:
-                                    divergences.append(f"Unit {uid}: Faltou na devolução")
-
-                            # Determine Status
-                            new_status = "CONCLUIDO"
-                            divergencia_text = None
-                            
-                            if divergences:
-                                new_status = "DIVERGENTE"
-                                divergencia_text = "; ".join(divergences)
-                            
-                            # Update Payload
-                            payload = {
-                                "status": new_status,
-                                "data_entrega": parsed_data['data_ocorrencia'] or date_header,
-                                "divergencia": divergencia_text,
-                                "itens_conferencia": parsed_data['itens'], # Save exit items separately!
-                                "last_updated": "SERVER_TIMESTAMP"
-                            }
-                            
-                            db_client.update_document(COLLECTION_NAME, nota_id, payload)
-                            debug_logs.append(f"   -> [ATUALIZADO] Status: {new_status}. Div: {divergencia_text or 'Nenhuma'}")
-                            
                         else:
-                            # Orphan Note (Devolved without Receipt)
-                            payload = {
-                                "nota_despacho": nota_id,
-                                "status": "DEVOLVED_ORPHAN",
-                                "data_email": date_header,
-                                "data_ocorrencia": parsed_data['data_ocorrencia'], 
-                                "data_entrega": parsed_data['data_ocorrencia'],
-                                "origem": parsed_data['origem'],
-                                "destino": parsed_data['destino'],
-                                "qtde_unitizadores": parsed_data['qtde_unitizadores'],
-                                "peso_total_declarado": parsed_data['peso_total_declarado'],
-                                "peso_total_calculado": parsed_data['peso_total_calculado'],
-                                "itens_conferencia": parsed_data['itens'], # Save as conferência
-                                "itens": [], # Empty entry items
-                                "criado_em": "SERVER_TIMESTAMP",
-                                "divergencia": "Nota de Devolução sem entrada prévia.",
-                                "created_by": "ROBO"
-                            }
-                            db_client.create_document(COLLECTION_NAME, nota_id, payload)
-                            debug_logs.append(f"   -> [CRIADO-ORFAO] Nota de Devolução sem origem.")
+                            debug_logs.append(f"     -> [PULADO] Tipo (Subject) não reconhecido.")
 
-                    else:
-                        debug_logs.append(f"   -> [PULADO] Tipo de movimento não identificado no assunto.")
-                        continue # Skip label removal
-                    
-                    # Swap Label
+                    # Swap Label (Once per email, after all notes processed)
                     if label_processed_id:
                         mods = {
                             'ids': [msg['id']],

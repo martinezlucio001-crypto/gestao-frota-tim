@@ -5,13 +5,37 @@ import { Card, Button, Input, Select, Modal, ModalFooter } from '../../component
 import {
     FileText, Package, Truck, Calendar, Search, Filter,
     MoreVertical, CheckCircle2, AlertCircle, X, ChevronRight,
-    ArrowUp, ArrowDown, RefreshCw
+    ArrowUp, ArrowDown, RefreshCw, AlertTriangle
 } from 'lucide-react';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell, TableEmpty } from '../../components/ui/Table';
 import NotaDetalheModal from './modals/NotaDetalheModal';
 import DespachoModal from './modals/DespachoModal';
 import { formatCurrency } from '../../lib/utils';
 import { CITIES } from '../../lib/cities';
+
+// Helper to parse Excel serial dates like 46357.68 into DD/MM/YYYY
+const parseExcelDate = (excelDate) => {
+    if (!excelDate) return '';
+    // If it's already a string with a slash, it's already formatted
+    if (typeof excelDate === 'string' && excelDate.includes('/')) return excelDate;
+
+    const numericDate = Number(excelDate);
+    if (isNaN(numericDate)) return String(excelDate);
+
+    // Excel serial date epoch: Jan 1, 1900. (25569 = Jan 1, 1970)
+    // Excel incorrectly thinks 1900 is a leap year, so for dates after Feb 28, 1900, we subtract 1 day.
+    const unixTimestamp = (numericDate - 25569) * 86400 * 1000;
+    const dateObj = new Date(unixTimestamp);
+
+    // Convert to UTC day, month, year to avoid local offset shifting the day backwards
+    const utcDate = new Date(dateObj.getTime() + dateObj.getTimezoneOffset() * 60000);
+
+    const d = String(utcDate.getDate()).padStart(2, '0');
+    const m = String(utcDate.getMonth() + 1).padStart(2, '0');
+    const y = utcDate.getFullYear();
+
+    return `${d}/${m}/${y}`;
+};
 
 // Helper for Status Dots (Lights Style)
 const StatusLights = ({ nota }) => {
@@ -74,7 +98,7 @@ const NotaSection = ({ title, notas, icon: Icon, colorClass, onOpenNota, emptyMe
                     // Helper to convert DD/MM/YYYY HH:mm:ss to YYYY-MM-DD HH:mm:ss for string comparison
                     const parseDate = (val) => {
                         if (!val) return '';
-                        const cleanVal = val.toString().trim();
+                        const cleanVal = parseExcelDate(val).toString().trim();
 
                         // Handle DD/MM/YYYY or DD/MM/YYYY HH:mm:ss
                         if (cleanVal.includes('/')) {
@@ -203,10 +227,33 @@ const NotaSection = ({ title, notas, icon: Icon, colorClass, onOpenNota, emptyMe
                                         <TableCell className="text-slate-600">{nota.origem}</TableCell>
                                         <TableCell className="text-slate-600">{nota.destino}</TableCell>
                                         <TableCell className="text-slate-500 text-xs">
-                                            {nota.data_ocorrencia}
+                                            <div className="flex items-center gap-1">
+                                                {parseExcelDate(nota.data_ocorrencia)}
+                                                {/* Merge Indicator */}
+                                                {(nota.msgs_entrada > 1 || nota.msgs_saida > 1) && (
+                                                    <div
+                                                        className="flex items-center gap-0.5 bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded cursor-help"
+                                                        title={`${nota.msgs_entrada > 1 ? `${nota.msgs_entrada} E-mails de Entrada` : ''} ${nota.msgs_saida > 1 ? `${nota.msgs_saida} E-mails de Saída` : ''}`.trim()}
+                                                    >
+                                                        <AlertTriangle size={10} />
+                                                        <span className="text-[10px] font-bold">
+                                                            {Math.max(nota.msgs_entrada || 0, nota.msgs_saida || 0)}
+                                                        </span>
+                                                    </div>
+                                                )}
+                                            </div>
                                         </TableCell>
                                         <TableCell className="text-right font-medium">
-                                            {(nota.peso_total_declarado || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                            {(() => {
+                                                let totalWeight = nota.peso_total_declarado;
+                                                if (totalWeight === undefined || totalWeight === null || totalWeight === 0) {
+                                                    totalWeight = (nota.itens || []).reduce((sum, item) => {
+                                                        const p = parseFloat(String(item.peso || 0).replace(',', '.'));
+                                                        return sum + (isNaN(p) ? 0 : p);
+                                                    }, 0);
+                                                }
+                                                return totalWeight.toLocaleString('pt-BR', { minimumFractionDigits: 2 });
+                                            })()}
                                         </TableCell>
                                         <TableCell className="text-center">
                                             <StatusLights nota={nota} />
@@ -244,9 +291,26 @@ const NotaSection = ({ title, notas, icon: Icon, colorClass, onOpenNota, emptyMe
                                     <span>{nota.destino}</span>
                                 </div>
                                 <div className="flex items-center justify-between text-xs text-slate-400">
-                                    <span>{nota.data_ocorrencia}</span>
+                                    <div className="flex items-center gap-2">
+                                        <span>{parseExcelDate(nota.data_ocorrencia)}</span>
+                                        {(nota.msgs_entrada > 1 || nota.msgs_saida > 1) && (
+                                            <div className="flex items-center gap-0.5 bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded" title="E-mails mesclados">
+                                                <AlertTriangle size={10} />
+                                                <span className="font-bold">{Math.max(nota.msgs_entrada || 0, nota.msgs_saida || 0)}</span>
+                                            </div>
+                                        )}
+                                    </div>
                                     <span className="font-medium text-slate-600">
-                                        {(nota.peso_total_declarado || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })} kg
+                                        {(() => {
+                                            let totalWeight = nota.peso_total_declarado;
+                                            if (totalWeight === undefined || totalWeight === null || totalWeight === 0) {
+                                                totalWeight = (nota.itens || []).reduce((sum, item) => {
+                                                    const p = parseFloat(String(item.peso || 0).replace(',', '.'));
+                                                    return sum + (isNaN(p) ? 0 : p);
+                                                }, 0);
+                                            }
+                                            return totalWeight.toLocaleString('pt-BR', { minimumFractionDigits: 2 });
+                                        })()} kg
                                     </span>
                                 </div>
                             </div>
@@ -328,14 +392,14 @@ const NotasDespachoPage = () => {
             // Text Search (ID, Origin, Unitizers)
             if (searchTerm) {
                 const lowerTerm = searchTerm.toLowerCase();
-                const matchId = nota.nota_despacho?.toLowerCase().includes(lowerTerm);
-                const matchOrigem = nota.origem?.toLowerCase().includes(lowerTerm);
-                const matchDestino = nota.destino?.toLowerCase().includes(lowerTerm);
+                const matchId = String(nota.nota_despacho || '').toLowerCase().includes(lowerTerm);
+                const matchOrigem = String(nota.origem || '').toLowerCase().includes(lowerTerm);
+                const matchDestino = String(nota.destino || '').toLowerCase().includes(lowerTerm);
 
                 // Search in Items (Unitizers)
                 const matchItems = nota.itens?.some(item =>
-                    item.unitizador?.toLowerCase().includes(lowerTerm) ||
-                    item.lacre?.toLowerCase().includes(lowerTerm)
+                    String(item.unitizador || '').toLowerCase().includes(lowerTerm) ||
+                    String(item.lacre || '').toLowerCase().includes(lowerTerm)
                 );
 
                 if (!matchId && !matchOrigem && !matchDestino && !matchItems) return false;
@@ -343,9 +407,9 @@ const NotasDespachoPage = () => {
 
             // Date Range
             if (filterDateStart || filterDateEnd) {
-                const notaDateStr = nota.data_ocorrencia; // DD/MM/YYYY
+                const notaDateStr = parseExcelDate(nota.data_ocorrencia || ''); // DD/MM/YYYY
                 if (notaDateStr) {
-                    const [d, m, y] = notaDateStr.split('/');
+                    const [d, m, y] = notaDateStr.split(' ')[0].split('/');
                     const notaDate = new Date(`${y}-${m}-${d}`);
 
                     if (filterDateStart) {
@@ -369,16 +433,13 @@ const NotasDespachoPage = () => {
 
     // Sectioning Logic
     const sections = useMemo(() => {
-        // Helper: Treat undefined created_by as ROBO (Legacy compatibility)
-        const isRobo = (n) => n.created_by === 'ROBO' || !n.created_by;
-
         return {
-            recebidos: filteredNotas.filter(n => n.status === 'RECEBIDO' && isRobo(n)),
-            processados: filteredNotas.filter(n => n.status === 'PROCESSADA' && isRobo(n)),
-            concluidos: filteredNotas.filter(n => ['CONCLUIDO', 'ENTREGUE'].includes(n.status) && isRobo(n)),
-            divergentes: filteredNotas.filter(n => n.status === 'DIVERGENTE' && isRobo(n)),
-            orfas: filteredNotas.filter(n => n.status === 'DEVOLVED_ORPHAN' && isRobo(n)),
-            manuais: filteredNotas.filter(n => !isRobo(n))
+            recebidos: filteredNotas.filter(n => n.status === 'RECEBIDO' || n.status === 'IMPORTADO'),
+            processados: filteredNotas.filter(n => n.status === 'PROCESSADA'),
+            concluidos: filteredNotas.filter(n => ['CONCLUIDO', 'ENTREGUE'].includes(n.status)),
+            divergentes: filteredNotas.filter(n => n.status === 'DIVERGENTE'),
+            orfas: filteredNotas.filter(n => n.status === 'DEVOLVED_ORPHAN'),
+            manuais: [] // Removido, tratamos tudo como igual
         };
     }, [filteredNotas]);
 
@@ -410,8 +471,8 @@ const NotasDespachoPage = () => {
         const findAndUpdate = (list) => {
             const updatedList = [...(list || [])];
             const index = updatedList.findIndex(item => {
-                const u = (typeof item === 'string' ? item.split(' - ')[0] : item.unitizador) || '';
-                return u.trim() === unitizador.trim();
+                const u = String((typeof item === 'string' ? item.split(' - ')[0] : item.unitizador) || '');
+                return u.trim() === String(unitizador).trim();
             });
 
             if (index === -1) return null;
@@ -714,16 +775,6 @@ const NotasDespachoPage = () => {
                     />
                 )}
 
-                {/* 5. Manuais */}
-                {sections.manuais.length > 0 && (
-                    <NotaSection
-                        title="Notas Manuais"
-                        notas={sections.manuais}
-                        icon={FileText}
-                        colorClass="border-l-slate-400"
-                        onOpenNota={setSelectedNota}
-                    />
-                )}
             </div>
 
             {/* Modais */}

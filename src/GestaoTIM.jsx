@@ -4,8 +4,9 @@ import {
     onAuthStateChanged,
     signOut
 } from 'firebase/auth';
+import { doc, getDoc } from 'firebase/firestore';
 import { Loader2, Eye, EyeOff, Truck, Lock, Mail, Package } from 'lucide-react';
-import { auth } from './lib/firebase';
+import { auth, db } from './lib/firebase';
 import { Sidebar, Header } from './components/layout';
 
 // Módulos
@@ -17,11 +18,14 @@ import PagamentosPage from './modules/despacho/PagamentosPage';
 import UnitizadoresPage from './modules/despacho/UnitizadoresPage';
 import NotasDespachoPage from './modules/despacho/NotasDespachoPage';
 import AuditoriaPage from './modules/despacho/AuditoriaPage';
+import ImportExportPage from './modules/despacho/ImportExportPage';
 import ServidorModal from './modules/despacho/modals/ServidorModal';
 
 import ContratosPage from './modules/receita/ContratosPage';
 import NotasPage from './modules/receita/NotasPage';
 import ReceitaDashboard from './modules/receita/ReceitaDashboard';
+
+import UsuariosPage from './modules/sistema/UsuariosPage';
 
 // Componente de Login
 const LoginPage = ({ onLogin, isLoading, error }) => {
@@ -144,7 +148,15 @@ const GestaoTIM = () => {
         setIsLoggingIn(true);
         setLoginError('');
         try {
-            await signInWithEmailAndPassword(auth, email, password);
+            const userCredential = await signInWithEmailAndPassword(auth, email, password);
+
+            // Verificar acesso ao portal admin
+            const accessDoc = await getDoc(doc(db, 'portalAccess', userCredential.user.uid));
+            if (!accessDoc.exists() || !accessDoc.data().allowedPortals?.includes('admin')) {
+                await signOut(auth);
+                setLoginError('Você não tem permissão para acessar o painel administrativo.');
+                return;
+            }
         } catch (error) {
             console.error('Erro no login:', error);
             if (error.code === 'auth/invalid-credential' || error.code === 'auth/user-not-found') {
@@ -213,7 +225,7 @@ const GestaoTIM = () => {
             case 'despacho-notas': return <NotasDespachoPage />;
             case 'despacho-unitizadores': return <UnitizadoresPage />;
             case 'despacho-auditoria': return <AuditoriaPage />;
-            case 'despacho-servidores': return <ServidoresPage />;
+            case 'despacho-importar': return <ImportExportPage />;
 
             // Módulo Receita
             case 'receita-painel':
@@ -230,6 +242,10 @@ const GestaoTIM = () => {
                         <p className="text-slate-500">Configurações em desenvolvimento...</p>
                     </div>
                 );
+
+            // Módulo Sistema
+            case 'sistema-usuarios':
+                return <UsuariosPage />;
 
             // Módulo Financeiro
             case 'financeiro-painel':

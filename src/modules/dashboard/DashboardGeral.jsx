@@ -140,7 +140,7 @@ const DashboardGeral = ({ onNavigate }) => {
                     <h3 className="font-bold text-slate-800 mb-4">Atividade Recente</h3>
                     <div className="space-y-4">
                         {[
-                            { action: 'Novo despacho registrado', details: 'Santarém → Itaituba', time: '2 min atrás' },
+                            { action: 'Novo despacho registrado', details: 'CDD SANTAREM → AC ITAITUBA', time: '2 min atrás' },
                             { action: 'Pagamento efetuado', details: 'R$ 1.250,00 - Barco Amazônia', time: '1 hora atrás' },
                             { action: 'Abastecimento registrado', details: 'RXH6E81 - 200L', time: '3 horas atrás' },
                         ].map((item, index) => (

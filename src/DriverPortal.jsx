@@ -1,24 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Fuel, Camera, Check, Loader2, LogOut, History, AlertCircle, Eye, EyeOff, Plus, RefreshCw, ChevronLeft, User, Truck, Calendar, CheckCircle2, Wrench, AlertTriangle, Image } from 'lucide-react';
-import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getFirestore, collection, query, where, getDocs, addDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, addDoc, doc, getDoc } from 'firebase/firestore';
+import { signInWithEmailAndPassword, signOut as firebaseSignOut } from 'firebase/auth';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { auth, db, storage, appId } from './lib/firebase';
 import heic2any from 'heic2any';
-
-// Firebase config (MESMO do App.jsx)
-const firebaseConfig = {
-    apiKey: "AIzaSyB-pYZlzUNPuR30gn2cauYdpkDhMYGoHLQ",
-    authDomain: "gestao-frota-tim.firebaseapp.com",
-    projectId: "gestao-frota-tim",
-    storageBucket: "gestao-frota-tim.firebasestorage.app",
-    messagingSenderId: "455143595757",
-    appId: "1:455143595757:web:036dc514ad7f983ca336e4",
-    measurementId: "G-LDYRESTCTG"
-};
-
-// Evitar inicialização duplicada
-const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
-const db = getFirestore(app);
-const appId = "frota-tim-oficial";
 
 // Formatador de data BR
 const formatDateBR = (dateString) => {
@@ -487,6 +473,29 @@ const DriverPortal = () => {
 
         try {
             const cleanCpf = cpf.replace(/\D/g, '');
+            const fakeEmail = `${cleanCpf}@timtransportespa.com`;
+
+            // 1. Autenticar com Firebase Auth
+            let userCredential;
+            try {
+                userCredential = await signInWithEmailAndPassword(auth, fakeEmail, password);
+            } catch (authError) {
+                console.error('Erro no login Firebase Auth:', authError);
+                setLoginError('CPF ou senha incorretos');
+                setIsLoading(false);
+                return;
+            }
+
+            // 2. Verificar acesso ao portal do motorista
+            const accessDoc = await getDoc(doc(db, 'portalAccess', userCredential.user.uid));
+            if (!accessDoc.exists() || !accessDoc.data().allowedPortals?.includes('motorista')) {
+                await firebaseSignOut(auth);
+                setLoginError('Você não tem acesso ao Portal do Motorista.');
+                setIsLoading(false);
+                return;
+            }
+
+            // 3. Buscar dados do caminhão pelo CPF
             const q = query(
                 collection(db, 'artifacts', appId, 'public', 'data', 'trucks'),
                 where('driverCpf', '==', cleanCpf)
@@ -494,19 +503,14 @@ const DriverPortal = () => {
             const snapshot = await getDocs(q);
 
             if (snapshot.empty) {
-                setLoginError('CPF ou senha incorretos');
+                await firebaseSignOut(auth);
+                setLoginError('Nenhum veículo vinculado a este CPF.');
                 setIsLoading(false);
                 return;
             }
 
             const truckDoc = snapshot.docs[0];
             const truckData = { id: truckDoc.id, ...truckDoc.data() };
-
-            if (truckData.driverPassword !== password) {
-                setLoginError('CPF ou senha incorretos');
-                setIsLoading(false);
-                return;
-            }
 
             setTruck(truckData);
             setIsLoggedIn(true);
@@ -527,6 +531,7 @@ const DriverPortal = () => {
 
     // Logout
     const handleLogout = () => {
+        firebaseSignOut(auth);
         localStorage.removeItem('driverTruck');
         setTruck(null);
         setIsLoggedIn(false);
@@ -555,6 +560,21 @@ const DriverPortal = () => {
         confirmSave();
     };
 
+    // Upload base64 para Firebase Storage
+    const uploadBase64ToStorage = async (base64String, path) => {
+        if (!base64String) return null;
+        try {
+            const response = await fetch(base64String);
+            const blob = await response.blob();
+            const storageRef = ref(storage, path);
+            await uploadBytes(storageRef, blob, { contentType: 'image/jpeg' });
+            return await getDownloadURL(storageRef);
+        } catch (error) {
+            console.error('Erro no upload:', error);
+            return null;
+        }
+    };
+
     const confirmSave = async () => {
         setShowConfirmationModal(false);
         setIsSaving(true);
@@ -562,6 +582,15 @@ const DriverPortal = () => {
 
         try {
             const now = new Date();
+            const entryId = `driver-${Date.now()}`;
+
+            // Upload fotos para Firebase Storage
+            const [beforeUrl, afterUrl, receiptUrl] = await Promise.all([
+                uploadBase64ToStorage(odometerBeforePhoto, `entries/${entryId}/odometerBefore`),
+                uploadBase64ToStorage(odometerAfterPhoto, `entries/${entryId}/odometerAfter`),
+                uploadBase64ToStorage(receiptPhoto, `entries/${entryId}/receipt`)
+            ]);
+
             const entry = {
                 truckId: truck.id,
                 date: now.toISOString().split('T')[0],
@@ -569,9 +598,13 @@ const DriverPortal = () => {
                 liters: Number(formData.liters),
                 totalCost: Number(formData.totalCost),
                 newMileage: Number(formData.newMileage),
-                odometerBeforePhoto: odometerBeforePhoto || null,
-                odometerAfterPhoto: odometerAfterPhoto || null,
-                receiptPhoto: receiptPhoto,
+                odometerBeforePhoto: beforeUrl || null,
+                odometerAfterPhoto: afterUrl || null,
+                odometerUrl: beforeUrl || null,
+                receiptPhoto: receiptUrl || null,
+                receiptUrl: receiptUrl || null,
+                hasReceipt: !!receiptUrl,
+                hasOdometer: !!(beforeUrl || afterUrl),
                 registeredBy: 'driver',
                 createdAt: now.toISOString()
             };

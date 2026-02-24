@@ -1,0 +1,52 @@
+[
+  {
+    "id": "xIBUcRuNY770EgjfvmSG",
+    "nota": "NN17394442418",
+    "status": "IMPORTADO",
+    "origem": "CDD SANTAREM",
+    "destino": "AC PORTO TROMBETAS",
+    "data_ocorrencia": "23/12/2025 08:20",
+    "criado_em_type": "Timestamp",
+    "itens_count": 2
+  },
+  {
+    "id": "xH5Kt873bpCPjNOhXdlP",
+    "nota": "NN18098624674",
+    "status": "IMPORTADO",
+    "origem": "CDD SANTAREM",
+    "destino": "AC MOJUI DOS CAMPOS",
+    "data_ocorrencia": "23/12/2025 08:06",
+    "criado_em_type": "Timestamp",
+    "itens_count": 2
+  },
+  {
+    "id": "wE6wcdNECFWCiFpepVqJ",
+    "nota": "NN16597200853",
+    "status": "IMPORTADO",
+    "origem": "AC TRAIRAO",
+    "destino": "CDD SANTAREM",
+    "data_ocorrencia": "23/12/2025 14:12",
+    "criado_em_type": "Timestamp",
+    "itens_count": 2
+  },
+  {
+    "id": "wCmpGcUESS5WJKLLNFiw",
+    "nota": "NN15237741092",
+    "status": "IMPORTADO",
+    "origem": "CDD SANTAREM",
+    "destino": "AC ORIXIMINA",
+    "data_ocorrencia": "23/12/2025 08:35",
+    "criado_em_type": "Timestamp",
+    "itens_count": 11
+  },
+  {
+    "id": "ui49BLwiRtrcjfqG7x9X",
+    "nota": "NN13574890614",
+    "status": "IMPORTADO",
+    "origem": "CDD SANTAREM",
+    "destino": "AC JURUTI",
+    "data_ocorrencia": "23/12/2025 08:43",
+    "criado_em_type": "Timestamp",
+    "itens_count": 6
+  }
+]

@@ -61,7 +61,8 @@ import {
   deleteDoc,
   getDocs
 } from 'firebase/firestore';
-import { auth, db, appId } from './lib/firebase'; // Usando configuração centralizada
+import { auth, db, appId, storage } from './lib/firebase'; // Usando configuração centralizada
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 
 // --- URL DO SEU SCRIPT GOOGLE ---
 const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbw_mOblGA9apR8iX8lNWf2SD8scFuyMe0u-AtFxkSJ4OVUrWxks_srLuPlv_KVKcx9_uQ/exec";
@@ -73,6 +74,53 @@ const fileToBase64 = (file) => {
     const reader = new FileReader();
     reader.readAsDataURL(file);
     reader.onload = () => resolve(reader.result);
+    reader.onerror = error => reject(error);
+  });
+};
+
+// Comprime uma imagem e faz upload para o Firebase Storage, retornando a URL pública
+const uploadToStorage = (file, path) => {
+  return new Promise((resolve, reject) => {
+    if (!file) { resolve(null); return; }
+
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = (event) => {
+      const img = new Image();
+      img.src = event.target.result;
+      img.onload = () => {
+        const MAX_DIMENSION = 1600; // Boa resolução para visualização, mas controlada
+        let width = img.width;
+        let height = img.height;
+
+        if (width > height && width > MAX_DIMENSION) {
+          height = Math.round(height * (MAX_DIMENSION / width));
+          width = MAX_DIMENSION;
+        } else if (height > MAX_DIMENSION) {
+          width = Math.round(width * (MAX_DIMENSION / height));
+          height = MAX_DIMENSION;
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+
+        // Converte para Blob JPEG (80% de qualidade — bom equilíbrio)
+        canvas.toBlob(async (blob) => {
+          try {
+            const storageRef = ref(storage, path);
+            await uploadBytes(storageRef, blob, { contentType: 'image/jpeg' });
+            const url = await getDownloadURL(storageRef);
+            resolve(url);
+          } catch (err) {
+            reject(err);
+          }
+        }, 'image/jpeg', 0.8);
+      };
+      img.onerror = error => reject(error);
+    };
     reader.onerror = error => reject(error);
   });
 };
@@ -130,6 +178,10 @@ const globalStyles = `
     -moz-appearance: textfield;
   }
 `;
+
+const formatCurrency = (val) => {
+  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
+};
 
 // --- Componentes UI ---
 
@@ -261,7 +313,7 @@ const TruckModal = ({ isOpen, onClose, onSave, editingTruck = null }) => {
     plate: '',
     model: '',
     capacity: '',
-    expectedKml: '',
+    expectedKmlList: [],
     tankLevelGoal: '',
     expectedIntervalKm: '',
     pixKey: '',
@@ -270,6 +322,7 @@ const TruckModal = ({ isOpen, onClose, onSave, editingTruck = null }) => {
     driverCpf: '',
     driverPassword: ''
   });
+  const [kmlInput, setKmlInput] = useState('');
 
   useEffect(() => {
     if (isOpen) {
@@ -278,7 +331,7 @@ const TruckModal = ({ isOpen, onClose, onSave, editingTruck = null }) => {
           plate: editingTruck.plate || '',
           model: editingTruck.model || '',
           capacity: String(editingTruck.capacity || ''),
-          expectedKml: String(editingTruck.expectedKml || ''),
+          expectedKmlList: editingTruck.expectedKmlList || (editingTruck.expectedKml ? [Number(editingTruck.expectedKml)] : []),
           tankLevelGoal: String(editingTruck.tankLevelGoal || ''),
           expectedIntervalKm: String(editingTruck.expectedIntervalKm || ''),
           pixKey: editingTruck.pixKey || '',
@@ -288,8 +341,9 @@ const TruckModal = ({ isOpen, onClose, onSave, editingTruck = null }) => {
           driverPassword: editingTruck.driverPassword || ''
         });
       } else {
-        setFormData({ plate: '', model: '', capacity: '', expectedKml: '', tankLevelGoal: '', expectedIntervalKm: '', pixKey: '', vehicleType: '', driver: '', driverCpf: '', driverPassword: '' });
+        setFormData({ plate: '', model: '', capacity: '', expectedKmlList: [], tankLevelGoal: '', expectedIntervalKm: '', pixKey: '', vehicleType: '', driver: '', driverCpf: '', driverPassword: '' });
       }
+      setKmlInput('');
     }
   }, [isOpen, editingTruck]);
 
@@ -297,11 +351,16 @@ const TruckModal = ({ isOpen, onClose, onSave, editingTruck = null }) => {
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    if (formData.expectedKmlList.length === 0) {
+      alert("Adicione pelo menos uma eficiência prevista.");
+      return;
+    }
     onSave({
       ...(editingTruck ? { id: editingTruck.id } : {}),
       ...formData,
       capacity: Number(formData.capacity),
-      expectedKml: Number(formData.expectedKml),
+      expectedKmlList: formData.expectedKmlList,
+      expectedKml: formData.expectedKmlList[0], // Backwards compatibility
       tankLevelGoal: Number(formData.tankLevelGoal),
       expectedIntervalKm: Number(formData.expectedIntervalKm),
       initialFuel: editingTruck ? (editingTruck.initialFuel || 0) : 0,
@@ -330,7 +389,49 @@ const TruckModal = ({ isOpen, onClose, onSave, editingTruck = null }) => {
         <Input label="Modelo / Marca" placeholder="Ex: Volvo FH" required value={formData.model} onChange={e => setFormData({ ...formData, model: e.target.value })} />
         <div className="grid grid-cols-2 gap-6">
           <Input label="Capacidade Tanque (L)" type="number" required value={formData.capacity} onChange={e => setFormData({ ...formData, capacity: e.target.value })} />
-          <Input label="Eficiência Prevista Km/L" type="number" step="0.1" required value={formData.expectedKml} onChange={e => setFormData({ ...formData, expectedKml: e.target.value })} />
+          <div className="flex flex-col mb-4 relative">
+            <label className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">Eficiências Previstas (Km/L)</label>
+            <div className="flex gap-2">
+              <input
+                type="number"
+                step="0.1"
+                placeholder="Ex: 5.3"
+                value={kmlInput}
+                onChange={e => setKmlInput(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    if (kmlInput) {
+                      setFormData({ ...formData, expectedKmlList: [...formData.expectedKmlList, Number(kmlInput)] });
+                      setKmlInput('');
+                    }
+                  }
+                }}
+                className="w-full bg-slate-50 border border-slate-200 text-slate-800 rounded-xl px-4 py-3 outline-none focus:border-indigo-500 transition-colors"
+                style={{ height: '48px' }}
+              />
+              <Button type="button" variant="secondary" onClick={() => {
+                if (kmlInput) {
+                  setFormData({ ...formData, expectedKmlList: [...formData.expectedKmlList, Number(kmlInput)] });
+                  setKmlInput('');
+                }
+              }}>Adicionar</Button>
+            </div>
+            <div className="flex flex-wrap gap-2 mt-2">
+              {formData.expectedKmlList.map((kml, idx) => (
+                <div key={idx} className="flex items-center gap-1 bg-indigo-100 text-indigo-700 font-bold px-3 py-1 rounded-full text-sm">
+                  {kml} Km/L
+                  <button type="button" onClick={() => {
+                    const newList = [...formData.expectedKmlList];
+                    newList.splice(idx, 1);
+                    setFormData({ ...formData, expectedKmlList: newList });
+                  }} className="text-indigo-400 hover:text-indigo-800 ml-1">
+                    <X size={14} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
         <div className="grid grid-cols-2 gap-6">
           <Input label="Meta Nível Tanque (L)" type="number" placeholder="Ex: 500" value={formData.tankLevelGoal} onChange={e => setFormData({ ...formData, tankLevelGoal: e.target.value })} />
@@ -367,7 +468,8 @@ const EntryModal = ({ isOpen, onClose, onSave, truck, allTrucks = [], editingEnt
     initialFuel: ''
   });
   const [receiptFile, setReceiptFile] = useState(null);
-  const [odometerFile, setOdometerFile] = useState(null);
+  const [odometerBeforeFile, setOdometerBeforeFile] = useState(null);
+  const [odometerAfterFile, setOdometerAfterFile] = useState(null);
 
   const activeTruck = truck || allTrucks.find(t => t.id === localTruckId);
 
@@ -409,7 +511,8 @@ const EntryModal = ({ isOpen, onClose, onSave, truck, allTrucks = [], editingEnt
     if (isOpen) {
       // Resetar arquivos
       setReceiptFile(null);
-      setOdometerFile(null);
+      setOdometerBeforeFile(null);
+      setOdometerAfterFile(null);
 
       if (editingEntry) {
         setFormData({
@@ -501,7 +604,7 @@ const EntryModal = ({ isOpen, onClose, onSave, truck, allTrucks = [], editingEnt
       payload.initialFuel = Number(formData.initialFuel || 0);
     }
 
-    onSave(payload, { receiptFile, odometerFile });
+    onSave(payload, { receiptFile, odometerBeforeFile, odometerAfterFile });
   };
 
   return (
@@ -564,18 +667,41 @@ const EntryModal = ({ isOpen, onClose, onSave, truck, allTrucks = [], editingEnt
             </div>
           )}
 
-          <div className="grid grid-cols-2 gap-4 mb-8">
-            <label className={`flex flex-col items-center justify-center p-4 border-2 border-dashed rounded-xl cursor-pointer transition-all group ${odometerFile ? 'border-emerald-300 bg-emerald-50' : 'border-slate-200 hover:bg-slate-50'}`}>
-              <input type="file" accept="image/*" className="hidden" onChange={(e) => setOdometerFile(e.target.files[0])} />
-              {odometerFile ? <CheckCircle2 className="text-emerald-500 mb-2" size={24} /> : <Gauge className="mb-2 text-slate-400 group-hover:scale-110 transition-transform" size={24} />}
-              <span className={`text-xs font-medium ${odometerFile ? 'text-emerald-700' : 'text-slate-500'}`}>{odometerFile ? 'Odômetro OK' : 'Foto Odômetro'}</span>
-            </label>
+          <div className="mb-6">
+            <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3 flex items-center gap-2">
+              <Gauge size={14} /> Fotos do Registro
+            </p>
+            <div className="grid grid-cols-3 gap-4">
+              {/* Odômetro Antes */}
+              <label className={`flex flex-col items-center justify-center p-4 border-2 border-dashed rounded-xl cursor-pointer transition-all group ${odometerBeforeFile ? 'border-amber-300 bg-amber-50' : 'border-slate-200 hover:bg-amber-50/50'}`}>
+                <input type="file" accept="image/*" className="hidden" onChange={(e) => setOdometerBeforeFile(e.target.files[0])} />
+                {odometerBeforeFile ? <CheckCircle2 className="text-amber-500 mb-2" size={22} /> : <Gauge className="mb-2 text-amber-400 group-hover:scale-110 transition-transform" size={22} />}
+                <span className={`text-xs font-bold text-center leading-tight ${odometerBeforeFile ? 'text-amber-700' : 'text-slate-500'}`}>
+                  {odometerBeforeFile ? 'Odômetro\nAntes ✓' : 'Odômetro\nAntes'}
+                </span>
+                <span className="text-[10px] text-slate-400 mt-0.5">📍 Antes</span>
+              </label>
 
-            <label className={`flex flex-col items-center justify-center p-4 border-2 border-dashed rounded-xl cursor-pointer transition-all group ${receiptFile ? 'border-emerald-300 bg-emerald-50' : 'border-slate-200 hover:bg-slate-50'}`}>
-              <input type="file" accept="image/*" className="hidden" onChange={(e) => setReceiptFile(e.target.files[0])} />
-              {receiptFile ? <CheckCircle2 className="text-emerald-500 mb-2" size={24} /> : <FileText className="mb-2 text-slate-400 group-hover:scale-110 transition-transform" size={24} />}
-              <span className={`text-xs font-medium ${receiptFile ? 'text-emerald-700' : 'text-slate-500'}`}>{receiptFile ? 'Recibo OK' : 'Foto Recibo'}</span>
-            </label>
+              {/* Odômetro Depois */}
+              <label className={`flex flex-col items-center justify-center p-4 border-2 border-dashed rounded-xl cursor-pointer transition-all group ${odometerAfterFile ? 'border-emerald-300 bg-emerald-50' : 'border-slate-200 hover:bg-emerald-50/50'}`}>
+                <input type="file" accept="image/*" className="hidden" onChange={(e) => setOdometerAfterFile(e.target.files[0])} />
+                {odometerAfterFile ? <CheckCircle2 className="text-emerald-500 mb-2" size={22} /> : <Gauge className="mb-2 text-slate-400 group-hover:scale-110 transition-transform" size={22} />}
+                <span className={`text-xs font-bold text-center leading-tight ${odometerAfterFile ? 'text-emerald-700' : 'text-slate-500'}`}>
+                  {odometerAfterFile ? 'Odômetro\nDepois ✓' : 'Odômetro\nDepois'}
+                </span>
+                <span className="text-[10px] text-slate-400 mt-0.5">✅ Depois</span>
+              </label>
+
+              {/* Recibo */}
+              <label className={`flex flex-col items-center justify-center p-4 border-2 border-dashed rounded-xl cursor-pointer transition-all group ${receiptFile ? 'border-indigo-300 bg-indigo-50' : 'border-slate-200 hover:bg-slate-50'}`}>
+                <input type="file" accept="image/*" className="hidden" onChange={(e) => setReceiptFile(e.target.files[0])} />
+                {receiptFile ? <CheckCircle2 className="text-indigo-500 mb-2" size={22} /> : <FileText className="mb-2 text-slate-400 group-hover:scale-110 transition-transform" size={22} />}
+                <span className={`text-xs font-bold text-center leading-tight ${receiptFile ? 'text-indigo-700' : 'text-slate-500'}`}>
+                  {receiptFile ? 'Recibo ✓' : 'Foto Recibo'}
+                </span>
+                <span className="text-[10px] text-slate-400 mt-0.5">🧾 Nota</span>
+              </label>
+            </div>
           </div>
 
           <div className="flex gap-4">
@@ -677,11 +803,14 @@ const EntryDetailsModal = ({ isOpen, onClose, entry, truck, onSave, onDelete, is
   });
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [previewingImage, setPreviewingImage] = useState(null); // 'odometer' | 'receipt' | null
-  const [newOdometerFile, setNewOdometerFile] = useState(null);
+  const [newOdometerBeforeFile, setNewOdometerBeforeFile] = useState(null);
+  const [newOdometerAfterFile, setNewOdometerAfterFile] = useState(null);
   const [newReceiptFile, setNewReceiptFile] = useState(null);
-  const [removeOdometer, setRemoveOdometer] = useState(false);
+  const [removeOdometerBefore, setRemoveOdometerBefore] = useState(false);
+  const [removeOdometerAfter, setRemoveOdometerAfter] = useState(false);
   const [removeReceipt, setRemoveReceipt] = useState(false);
-  const odometerInputRef = useRef(null);
+  const odometerBeforeInputRef = useRef(null);
+  const odometerAfterInputRef = useRef(null);
   const receiptInputRef = useRef(null);
 
   // Determinar se este é o primeiro registro de uma seção (necessita input inicial)
@@ -723,9 +852,11 @@ const EntryDetailsModal = ({ isOpen, onClose, entry, truck, onSave, onDelete, is
       });
       setShowDeleteConfirm(false);
       setPreviewingImage(null);
-      setNewOdometerFile(null);
+      setNewOdometerBeforeFile(null);
+      setNewOdometerAfterFile(null);
       setNewReceiptFile(null);
-      setRemoveOdometer(false);
+      setRemoveOdometerBefore(false);
+      setRemoveOdometerAfter(false);
       setRemoveReceipt(false);
     }
   }, [isOpen, entry]);
@@ -758,15 +889,11 @@ const EntryDetailsModal = ({ isOpen, onClose, entry, truck, onSave, onDelete, is
     };
 
     // Gerenciar fotos (garantir null se undefined)
-    if (removeOdometer) {
-      payload.odometerUrl = null;
-      payload.odometerBeforePhoto = null;
-      payload.odometerAfterPhoto = null;
-    } else {
-      payload.odometerUrl = entry.odometerUrl || null;
-      payload.odometerBeforePhoto = entry.odometerBeforePhoto || null;
-      payload.odometerAfterPhoto = entry.odometerAfterPhoto || null;
-    }
+    payload.odometerBeforePhoto = removeOdometerBefore ? null : (entry.odometerBeforePhoto || entry.odometerUrl || null);
+    payload.odometerAfterPhoto = removeOdometerAfter ? null : (entry.odometerAfterPhoto || null);
+
+    // Se removeu o principal (odometerUrl) e não tem before, garantir que odometroUrl seja null
+    payload.odometerUrl = payload.odometerBeforePhoto;
 
     if (removeReceipt) {
       payload.receiptUrl = null;
@@ -777,7 +904,8 @@ const EntryDetailsModal = ({ isOpen, onClose, entry, truck, onSave, onDelete, is
     }
 
     onSave(payload, {
-      odometerFile: newOdometerFile,
+      odometerBeforeFile: newOdometerBeforeFile,
+      odometerAfterFile: newOdometerAfterFile,
       receiptFile: newReceiptFile
     });
   };
@@ -789,7 +917,7 @@ const EntryDetailsModal = ({ isOpen, onClose, entry, truck, onSave, onDelete, is
 
   const odometerPhoto = entry.odometerBeforePhoto || entry.odometerUrl;
   const receiptPhoto = entry.receiptPhoto || entry.receiptUrl;
-  const hasOdometer = odometerPhoto && odometerPhoto !== 'imported' && !removeOdometer;
+  const hasOdometer = odometerPhoto && odometerPhoto !== 'imported' && !removeOdometerBefore && !removeOdometerAfter;
   const hasReceipt = receiptPhoto && receiptPhoto !== 'imported' && !removeReceipt;
 
   return (
@@ -860,8 +988,31 @@ const EntryDetailsModal = ({ isOpen, onClose, entry, truck, onSave, onDelete, is
               <div className="space-y-3">
                 {/* Foto ANTES */}
                 <div className="bg-amber-50 border border-amber-200 rounded-lg p-2">
-                  <p className="text-[10px] font-bold text-amber-700 uppercase mb-1">📍 Antes do Abastecimento</p>
-                  {(entry.odometerBeforePhoto || entry.odometerUrl) && !removeOdometer ? (
+                  <div className="flex justify-between items-center mb-1">
+                    <p className="text-[10px] font-bold text-amber-700 uppercase">📍 Antes do Abastecimento</p>
+                    <div className="flex gap-1">
+                      {!removeOdometerBefore && (entry.odometerBeforePhoto || entry.odometerUrl) && (
+                        <button type="button" onClick={() => setRemoveOdometerBefore(true)} className="text-rose-500 hover:text-rose-700 p-0.5">
+                          <Trash2 size={12} />
+                        </button>
+                      )}
+                      {!removeOdometerBefore && !(entry.odometerBeforePhoto || entry.odometerUrl) && !newOdometerBeforeFile && (
+                        <button type="button" onClick={() => odometerBeforeInputRef.current?.click()} className="text-indigo-500 hover:text-indigo-700 p-0.5">
+                          <PlusCircle size={12} />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  <input ref={odometerBeforeInputRef} type="file" accept="image/*" className="hidden" onChange={(e) => setNewOdometerBeforeFile(e.target.files[0])} />
+
+                  {newOdometerBeforeFile && !removeOdometerBefore ? (
+                    <div className="flex items-center gap-2 p-1 bg-emerald-50 border border-emerald-100 rounded">
+                      <CheckCircle2 size={12} className="text-emerald-600" />
+                      <span className="text-[10px] text-emerald-700 flex-1 truncate">{newOdometerBeforeFile.name}</span>
+                      <button type="button" onClick={() => setNewOdometerBeforeFile(null)} className="text-rose-500"><X size={10} /></button>
+                    </div>
+                  ) : (entry.odometerBeforePhoto || entry.odometerUrl) && !removeOdometerBefore ? (
                     <div className="flex items-center gap-2">
                       <img
                         src={entry.odometerBeforePhoto || entry.odometerUrl}
@@ -869,21 +1020,42 @@ const EntryDetailsModal = ({ isOpen, onClose, entry, truck, onSave, onDelete, is
                         className="w-16 h-16 object-cover rounded cursor-pointer hover:opacity-80"
                         onClick={() => setPreviewingImage('odometer-before')}
                       />
-                      <div className="flex-1 flex gap-1">
-                        <button type="button" onClick={() => setPreviewingImage('odometer-before')} className="text-[10px] bg-indigo-100 text-indigo-700 px-2 py-1 rounded font-medium hover:bg-indigo-200">
-                          <Eye size={10} className="inline" /> Ver
-                        </button>
-                      </div>
+                      <button type="button" onClick={() => setPreviewingImage('odometer-before')} className="text-[10px] bg-indigo-100 text-indigo-700 px-2 py-1 rounded font-medium hover:bg-indigo-200">
+                        <Eye size={10} className="inline" /> Ver
+                      </button>
                     </div>
                   ) : (
-                    <p className="text-[10px] text-slate-400 italic">Sem foto</p>
+                    <p className="text-[10px] text-slate-400 italic">{removeOdometerBefore ? 'Será removida' : 'Sem foto'}</p>
                   )}
                 </div>
 
                 {/* Foto DEPOIS */}
                 <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-2">
-                  <p className="text-[10px] font-bold text-emerald-700 uppercase mb-1">✅ Depois do Abastecimento</p>
-                  {entry.odometerAfterPhoto && !removeOdometer ? (
+                  <div className="flex justify-between items-center mb-1">
+                    <p className="text-[10px] font-bold text-emerald-700 uppercase">✅ Depois do Abastecimento</p>
+                    <div className="flex gap-1">
+                      {!removeOdometerAfter && entry.odometerAfterPhoto && (
+                        <button type="button" onClick={() => setRemoveOdometerAfter(true)} className="text-rose-500 hover:text-rose-700 p-0.5">
+                          <Trash2 size={12} />
+                        </button>
+                      )}
+                      {!removeOdometerAfter && !entry.odometerAfterPhoto && !newOdometerAfterFile && (
+                        <button type="button" onClick={() => odometerAfterInputRef.current?.click()} className="text-indigo-500 hover:text-indigo-700 p-0.5">
+                          <PlusCircle size={12} />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  <input ref={odometerAfterInputRef} type="file" accept="image/*" className="hidden" onChange={(e) => setNewOdometerAfterFile(e.target.files[0])} />
+
+                  {newOdometerAfterFile && !removeOdometerAfter ? (
+                    <div className="flex items-center gap-2 p-1 bg-emerald-50 border border-emerald-100 rounded">
+                      <CheckCircle2 size={12} className="text-emerald-600" />
+                      <span className="text-[10px] text-emerald-700 flex-1 truncate">{newOdometerAfterFile.name}</span>
+                      <button type="button" onClick={() => setNewOdometerAfterFile(null)} className="text-rose-500"><X size={10} /></button>
+                    </div>
+                  ) : entry.odometerAfterPhoto && !removeOdometerAfter ? (
                     <div className="flex items-center gap-2">
                       <img
                         src={entry.odometerAfterPhoto}
@@ -891,55 +1063,14 @@ const EntryDetailsModal = ({ isOpen, onClose, entry, truck, onSave, onDelete, is
                         className="w-16 h-16 object-cover rounded cursor-pointer hover:opacity-80"
                         onClick={() => setPreviewingImage('odometer-after')}
                       />
-                      <div className="flex-1 flex gap-1">
-                        <button type="button" onClick={() => setPreviewingImage('odometer-after')} className="text-[10px] bg-indigo-100 text-indigo-700 px-2 py-1 rounded font-medium hover:bg-indigo-200">
-                          <Eye size={10} className="inline" /> Ver
-                        </button>
-                      </div>
+                      <button type="button" onClick={() => setPreviewingImage('odometer-after')} className="text-[10px] bg-indigo-100 text-indigo-700 px-2 py-1 rounded font-medium hover:bg-indigo-200">
+                        <Eye size={10} className="inline" /> Ver
+                      </button>
                     </div>
                   ) : (
-                    <p className="text-[10px] text-slate-400 italic">Sem foto</p>
+                    <p className="text-[10px] text-slate-400 italic">{removeOdometerAfter ? 'Será removida' : 'Sem foto'}</p>
                   )}
                 </div>
-
-                {/* Ações globais para odômetro */}
-                {hasOdometer && (
-                  <button type="button" onClick={() => setRemoveOdometer(true)} className="w-full text-xs bg-rose-100 text-rose-700 py-1.5 rounded-lg font-medium hover:bg-rose-200 transition-colors">
-                    <Trash2 size={12} className="inline mr-1" /> Remover Fotos do Odômetro
-                  </button>
-                )}
-                {removeOdometer && (
-                  <p className="text-xs text-rose-600 italic text-center">Fotos serão removidas ao salvar</p>
-                )}
-                {!hasOdometer && !removeOdometer && (
-                  <>
-                    <input
-                      ref={odometerInputRef}
-                      type="file"
-                      accept="image/*"
-                      className="hidden"
-                      onChange={(e) => setNewOdometerFile(e.target.files[0])}
-                    />
-                    {newOdometerFile ? (
-                      <div className="flex items-center gap-2 p-2 bg-emerald-50 border border-emerald-200 rounded-lg">
-                        <CheckCircle2 size={16} className="text-emerald-600" />
-                        <span className="text-xs text-emerald-700 flex-1 truncate">{newOdometerFile.name}</span>
-                        <button type="button" onClick={() => setNewOdometerFile(null)} className="text-rose-500 hover:text-rose-700">
-                          <X size={14} />
-                        </button>
-                      </div>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => odometerInputRef.current?.click()}
-                        className="w-full py-3 border-2 border-dashed border-slate-300 rounded-lg text-slate-500 hover:bg-white hover:border-indigo-300 transition-colors text-xs"
-                      >
-                        <Plus size={16} className="mx-auto mb-1" />
-                        Adicionar Nova Foto
-                      </button>
-                    )}
-                  </>
-                )}
               </div>
             </div>
 
@@ -1783,6 +1914,87 @@ const EfficiencyChart = ({ data, period, onPeriodChange }) => {
   );
 };
 
+const DashboardPieChart = ({ data, title }) => {
+  const total = data.reduce((sum, item) => sum + item.value, 0);
+  let currentAngle = 0;
+  const colors = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#ec4899', '#8b5cf6', '#06b6d4', '#f97316'];
+
+  return (
+    <Card className="h-full flex flex-col">
+      <h3 className="text-sm font-bold text-slate-700 uppercase mb-4">{title}</h3>
+      <div className="flex flex-1 items-center gap-6">
+        <div className="relative w-32 h-32 rounded-full overflow-hidden">
+          <svg viewBox="0 0 32 32" className="w-full h-full transform -rotate-90">
+            {total > 0 ? data.map((item, idx) => {
+              const percentage = (item.value / total) * 100;
+              const r = 8;
+              const C = 2 * Math.PI * r;
+              const dashValue = (percentage / 100) * C;
+              const dash = `${dashValue} ${C - dashValue}`;
+              const offset = (currentAngle / 100) * -C;
+              currentAngle += percentage;
+              return (
+                <circle
+                  key={idx}
+                  r={r}
+                  cx="16"
+                  cy="16"
+                  fill="transparent"
+                  stroke={colors[idx % colors.length]}
+                  strokeWidth={r * 2}
+                  strokeDasharray={dash}
+                  strokeDashoffset={offset}
+                />
+              );
+            }) : (
+              <circle r="16" cx="16" cy="16" fill="#f1f5f9" />
+            )}
+          </svg>
+        </div>
+        <div className="flex-1 space-y-2">
+          {data.map((item, idx) => (
+            <div key={idx} className="flex items-center justify-between text-xs">
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full" style={{ backgroundColor: colors[idx % colors.length] }}></div>
+                <span className="text-slate-600 truncate max-w-[100px]" title={item.label}>{item.label}</span>
+              </div>
+              <span className="font-bold text-slate-800">{((item.value / total) * 100).toFixed(0)}%</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </Card>
+  );
+};
+
+const DashboardBarChart = ({ data, title, unit = "" }) => {
+  const maxVal = Math.max(...data.map(d => d.value), 0.1);
+  const colors = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#ec4899', '#8b5cf6', '#06b6d4', '#f97316'];
+
+  return (
+    <Card className="h-full flex flex-col">
+      <h3 className="text-sm font-bold text-slate-700 uppercase mb-6">{title}</h3>
+      <div className="flex-1 flex items-end gap-3 pt-4">
+        {data.map((item, idx) => (
+          <div key={idx} className="flex-1 flex flex-col items-center group relative h-full justify-end">
+            <div className="absolute -top-4 opacity-0 group-hover:opacity-100 transition-opacity bg-slate-800 text-white text-[9px] py-1 px-2 rounded-md z-10 whitespace-nowrap">
+              {unit} {item.value.toFixed(2)}
+            </div>
+            <div
+              className="w-full rounded-t-lg transition-all opacity-80 group-hover:opacity-100"
+              style={{
+                height: `${(item.value / maxVal) * 80}%`,
+                backgroundColor: colors[idx % colors.length]
+              }}
+            ></div>
+            <span className="text-[9px] font-bold text-slate-400 mt-2 truncate w-full text-center" title={item.label}>{item.label}</span>
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
+};
+
 // --- Componente Principal ---
 
 export default function FleetManager({ embedded = false, externalView, onNavigate, user: externalUser }) {
@@ -1791,7 +2003,12 @@ export default function FleetManager({ embedded = false, externalView, onNavigat
   const [trucks, setTrucks] = useState([]);
   const [entries, setEntries] = useState([]);
   const [selectedTruck, setSelectedTruck] = useState(null);
+  const [activeKmlIndex, setActiveKmlIndex] = useState(0);
   const [editingEntry, setEditingEntry] = useState(null);
+
+  useEffect(() => {
+    setActiveKmlIndex(0);
+  }, [selectedTruck]);
   const [editingTruck, setEditingTruck] = useState(null);
   const [isTruckModalOpen, setIsTruckModalOpen] = useState(false);
   const [isEntryModalOpen, setIsEntryModalOpen] = useState(false);
@@ -1802,6 +2019,16 @@ export default function FleetManager({ embedded = false, externalView, onNavigat
   const [isSectionModalOpen, setIsSectionModalOpen] = useState(false);
   const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
   const [detailsEntry, setDetailsEntry] = useState(null);
+
+  // Filtro do Dashboard Geral
+  const [dashboardStartDate, setDashboardStartDate] = useState(() => {
+    const d = new Date();
+    return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().split('T')[0];
+  });
+  const [dashboardEndDate, setDashboardEndDate] = useState(() => {
+    const d = new Date();
+    return new Date(d.getFullYear(), d.getMonth() + 1, 0).toISOString().split('T')[0];
+  });
 
   // Sincronizar view externa (quando embarcado)
   useEffect(() => {
@@ -1973,14 +2200,28 @@ export default function FleetManager({ embedded = false, externalView, onNavigat
 
   const handleDeleteTruck = async (id, plate) => {
     if (!user) return;
-    if (!confirm(`Tem certeza que deseja excluir o caminhão ${plate}? Isso removerá o cadastro do sistema.`)) return;
+    if (!confirm(`Tem certeza que deseja excluir o caminhão ${plate}? Isso removerá permanentemente o caminhão e TODOS os seus registros de abastecimento e manutenção.`)) return;
 
     try {
+      // 1. Deletar o caminhão
       await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'trucks', id));
+
+      // 2. Deletar todos os abastecimentos (entries) associados
+      const truckEntries = entries.filter(e => e.truckId === id);
+      for (const entry of truckEntries) {
+        await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'entries', entry.id));
+      }
+
+      // 3. Deletar todos os registros de manutenção (maintenanceRecords) associados
+      const truckMaintenance = maintenanceRecords.filter(m => m.truckId === id);
+      for (const record of truckMaintenance) {
+        await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'maintenanceRecords', record.id));
+      }
+
       sendToGoogleSheets({ type: 'truck_delete', id });
     } catch (err) {
       console.error(err);
-      alert("Erro ao excluir caminhão.");
+      alert("Erro ao excluir caminhão e seus registros.");
     }
   };
 
@@ -2151,51 +2392,103 @@ export default function FleetManager({ embedded = false, externalView, onNavigat
       // Se existir registro anterior, calculamos a distância percorrida DELE até o ATUAL
       // E salvamos essa distância NO REGISTRO ANTERIOR.
       if (previousEntry) {
-        const dist = d.newMileage - previousEntry.newMileage;
+        const dist = Number(d.newMileage) - Number(previousEntry.newMileage);
 
-        // Atualiza o registro anterior com a distância calculada
-        await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'entries', previousEntry.id), {
-          distanceTraveled: dist
-        });
+        // Atualiza o registro anterior com a distância calculada se for um valor válido
+        if (!isNaN(dist)) {
+          await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'entries', previousEntry.id), {
+            distanceTraveled: dist
+          });
+        }
       }
 
-      // 3. Converter arquivos e enviar para Google Drive/Sheets
-      // 3. Converter arquivos e enviar para Google Drive/Sheets
-      const receiptBase64 = files.receiptFile ? await fileToBase64(files.receiptFile) : null;
-      const odometerBase64 = files.odometerFile ? await fileToBase64(files.odometerFile) : null;
+      // 3. Upload de fotos para Firebase Storage (retornam URLs, não Base64)
+      // O entryId é necessário para o path, então usamos d.id quando editó
+      const photoEntryId = d.id || `pending-${Date.now()}`;
+      const [odometerBeforeUrl, odometerAfterUrl, receiptUploadUrl] = await Promise.all([
+        uploadToStorage(files.odometerBeforeFile || files.odometerFile, `entries/${photoEntryId}/odometerBefore`),
+        uploadToStorage(files.odometerAfterFile, `entries/${photoEntryId}/odometerAfter`),
+        uploadToStorage(files.receiptFile, `entries/${photoEntryId}/receipt`)
+      ]);
 
-      // Remover 'id' do payload pois não deve ser salvo como campo no Firestore
-      const { id: _id, ...dataWithoutId } = d;
-
-      // Salva o registro atual (sempre com distância 0 ou pendente, pois só saberemos no próximo)
-      const payloadToSave = {
-        ...dataWithoutId,
-        distanceTraveled: 0,
-        receiptUrl: receiptBase64 || d.receiptUrl || null,
-        odometerUrl: odometerBase64 || d.odometerUrl || null,
-        hasReceipt: !!(receiptBase64 || d.receiptUrl),
-        hasOdometer: !!(odometerBase64 || d.odometerUrl)
-      };
+      // Payload genérico não é mais usado diretamente — ver ramificações abaixo
 
       // 1. Salvar no Firebase
       if (d.id) {
-        // Se estiver editando um registro de motorista, marcar como editado pelo gestor
+        // --- EDIÇÃO: Envia só os campos que mudaram, NUNCA re-envia fotos existentes ---
+        const editPayload = {
+          date: d.date,
+          time: d.time,
+          totalCost: d.totalCost,
+          liters: d.liters,
+          costPerLiter: d.costPerLiter,
+          newMileage: d.newMileage,
+          note: d.note ?? null,
+          distanceTraveled: d.distanceTraveled || 0,
+          initialFuel: d.initialFuel ?? null,
+        };
+
+        // Só inclui fotos se houve mudança explícita (nova foto ou remoção)
+        if (odometerBeforeUrl) {
+          editPayload.odometerBeforePhoto = odometerBeforeUrl;
+          editPayload.odometerUrl = odometerBeforeUrl;
+        } else if (d.odometerBeforePhoto === null) {
+          editPayload.odometerBeforePhoto = null;
+          editPayload.odometerUrl = null;
+        }
+
+        if (odometerAfterUrl) {
+          editPayload.odometerAfterPhoto = odometerAfterUrl;
+        } else if (d.odometerAfterPhoto === null) {
+          editPayload.odometerAfterPhoto = null;
+        }
+
+        if (receiptUploadUrl) {
+          editPayload.receiptUrl = receiptUploadUrl;
+          editPayload.receiptPhoto = receiptUploadUrl;
+        } else if (d.receiptUrl === null) {
+          editPayload.receiptUrl = null;
+          editPayload.receiptPhoto = null;
+        }
+
+        editPayload.hasReceipt = receiptUploadUrl ? true : !!(d.receiptUrl);
+        editPayload.hasOdometer = odometerBeforeUrl || odometerAfterUrl ? true : !!(d.odometerUrl);
+
         const originalEntry = entries.find(e => e.id === d.id);
         if (originalEntry && originalEntry.registeredBy === 'driver') {
-          payloadToSave.editedByController = true;
-          payloadToSave.registeredBy = 'driver'; // Manter como registro original do motorista
+          editPayload.editedByController = true;
+          editPayload.registeredBy = 'driver';
         }
-        await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'entries', d.id), payloadToSave);
+
+        await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'entries', d.id), editPayload);
       } else {
-        const docRef = await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'entries'), payloadToSave);
+        // --- NOVO REGISTRO: Cria primeiro o doc para obter o ID, então atualiza com as URLs ---
+        const { id: _id2, ...dataForNew } = d;
+        const newPayload = {
+          ...dataForNew,
+          distanceTraveled: 0,
+          receiptUrl: receiptUploadUrl || null,
+          receiptPhoto: receiptUploadUrl || null,
+          odometerUrl: odometerBeforeUrl || null,
+          odometerBeforePhoto: odometerBeforeUrl || null,
+          odometerAfterPhoto: odometerAfterUrl || null,
+          hasReceipt: !!receiptUploadUrl,
+          hasOdometer: !!(odometerBeforeUrl || odometerAfterUrl)
+        };
+        const docRef = await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'entries'), newPayload);
         entryId = docRef.id;
       }
 
       // 2. Atualizar parâmetros do Caminhão
       const truck = trucks.find(t => t.id === d.truckId);
       if (truck) {
-        // Obter histórico atualizado (incluindo o que acabamos de salvar)
-        const currentEntryForCalcs = { ...payloadToSave, id: entryId };
+        const dummyPayload = {
+          ...d,
+          receiptUrl: receiptUploadUrl || d.receiptUrl || null,
+          odometerBeforePhoto: odometerBeforeUrl || d.odometerBeforePhoto || null,
+          odometerAfterPhoto: odometerAfterUrl || d.odometerAfterPhoto || null,
+        };
+        const currentEntryForCalcs = { ...dummyPayload, id: entryId };
         const otherEntries = entries.filter(e => e.truckId === d.truckId && e.id !== entryId);
         const truckEntries = [...otherEntries, currentEntryForCalcs];
 
@@ -2225,8 +2518,9 @@ export default function FleetManager({ embedded = false, externalView, onNavigat
           totalCost: d.totalCost,
           liters: d.liters,
           newMileage: d.newMileage,
-          receiptBase64,
-          odometerBase64
+          receiptUrl: receiptUploadUrl || null,
+          odometerBeforeUrl: odometerBeforeUrl || null,
+          odometerAfterUrl: odometerAfterUrl || null
         });
       }
 
@@ -2387,14 +2681,129 @@ export default function FleetManager({ embedded = false, externalView, onNavigat
   }, [entries]);
 
   const renderDashboard = () => {
+    // --- NOVOS CÁLCULOS DO DASHBOARD FILTRADO ---
+    const filteredEntries = entries.filter(e => {
+      const truckExists = trucks.some(t => t.id === e.truckId);
+      return truckExists && e.date >= dashboardStartDate && e.date <= dashboardEndDate;
+    });
+
+    const totalPeriodCost = filteredEntries.reduce((sum, e) => sum + (e.totalCost || 0), 0);
+
+    // Gasto por motorista (Pizza)
+    const driverCosts = {};
+    filteredEntries.forEach(entry => {
+      const truck = trucks.find(t => t.id === entry.truckId);
+      const driverName = truck ? truck.driver || 'Não Identificado' : 'Não Identificado';
+      driverCosts[driverName] = (driverCosts[driverName] || 0) + (entry.totalCost || 0);
+    });
+    const pieData = Object.entries(driverCosts)
+      .map(([label, value]) => ({ label, value }))
+      .sort((a, b) => b.value - a.value);
+
+    // Média de Custo do Km Rodado por Tipo de Veículo (Barras)
+    const typeKmCosts = {};
+    trucks.forEach(truck => {
+      const allTruckEntries = entries
+        .filter(e => e.truckId === truck.id)
+        .sort((a, b) => new Date(a.date) - new Date(b.date));
+
+      const absoluteLatest = allTruckEntries[allTruckEntries.length - 1];
+
+      const periodEntries = allTruckEntries.filter(e => e.date >= dashboardStartDate && e.date <= dashboardEndDate);
+
+      if (periodEntries.length >= 2) {
+        const first = periodEntries[0];
+        const last = periodEntries[periodEntries.length - 1];
+        const dist = last.newMileage - first.newMileage;
+
+        if (dist > 0) {
+          let sumCost = periodEntries.reduce((sum, e) => sum + (e.totalCost || 0), 0);
+
+          // Excluir o último registro se for o absoluto mais recente do sistema (conforme solicitado)
+          if (last.id === absoluteLatest.id) {
+            sumCost -= (last.totalCost || 0);
+          }
+
+          const costPerKm = sumCost / dist;
+          const type = truck.vehicleType || 'Outros';
+          if (!typeKmCosts[type]) typeKmCosts[type] = [];
+          typeKmCosts[type].push(costPerKm);
+        }
+      }
+    });
+
+    const barData = Object.entries(typeKmCosts).map(([label, values]) => ({
+      label,
+      value: values.reduce((s, v) => s + v, 0) / values.length
+    })).sort((a, b) => b.value - a.value);
+
     return (
       <div className="space-y-8 animate-in fade-in">
-        <div className="flex justify-between items-center mb-6">
-          <h1 className="text-3xl font-bold text-slate-900">Painel Geral da Frota</h1>
-          <div className="flex gap-4">
-            <Button variant="success" onClick={() => { setSelectedTruck(null); setEditingEntry(null); setIsEntryModalOpen(true); }}><Plus size={20} /> Novo Abastecimento</Button>
-            <Button variant="primary" onClick={() => { setEditingTruck(null); setIsTruckModalOpen(true); }}><Truck size={20} /> Novo Veículo</Button>
+        <div className="flex flex-col md:flex-row justify-between items-start gap-6 mb-8">
+          <div className="flex-1">
+            <h1 className="text-3xl font-bold text-slate-900">Painel Geral da Frota</h1>
+            <p className="text-sm text-slate-500">Gestão operacional de combustível e performance</p>
           </div>
+
+          <div className="flex-1 flex justify-center w-full md:w-auto">
+            <div className="flex items-center gap-4 bg-white p-4 rounded-2xl border border-slate-100 shadow-sm">
+              <div className="flex items-center gap-2">
+                <label className="text-[10px] font-bold text-slate-400 uppercase">De</label>
+                <input
+                  type="date"
+                  className="bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-sm outline-none focus:border-indigo-500"
+                  value={dashboardStartDate}
+                  onChange={(e) => setDashboardStartDate(e.target.value)}
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <label className="text-[10px] font-bold text-slate-400 uppercase">Até</label>
+                <input
+                  type="date"
+                  className="bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-sm outline-none focus:border-indigo-500"
+                  value={dashboardEndDate}
+                  onChange={(e) => setDashboardEndDate(e.target.value)}
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-2 w-full md:w-auto">
+            <Button
+              variant="primary"
+              className="w-full md:w-48 justify-start text-xs font-bold gap-3 py-2.5 shadow-sm"
+              onClick={() => { setEditingTruck(null); setIsTruckModalOpen(true); }}
+            >
+              <Truck size={18} /> Novo Caminhão
+            </Button>
+            <Button
+              variant="success"
+              className="w-full md:w-48 justify-start text-xs font-bold gap-3 py-2.5 shadow-sm"
+              onClick={() => { setSelectedTruck(null); setEditingEntry(null); setIsEntryModalOpen(true); }}
+            >
+              <Fuel size={18} /> Novo Registro
+            </Button>
+          </div>
+        </div>
+
+        {/* Mini Dashboard Stats */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <StatCard
+            title="Gasto Total no Período"
+            value={formatCurrency(totalPeriodCost)}
+            icon={DollarSign}
+            color="rose"
+            subtext={`${filteredEntries.length} registros no período`}
+          />
+          <DashboardPieChart
+            title="Gasto (R$) por Motorista"
+            data={pieData}
+          />
+          <DashboardBarChart
+            title="Média Custo/Km por Tipo"
+            data={barData}
+            unit="R$"
+          />
         </div>
 
         <div className="grid gap-6">
@@ -2449,7 +2858,7 @@ export default function FleetManager({ embedded = false, externalView, onNavigat
               chronologicalEntries.forEach(entry => {
                 const dist = entry.newMileage - previousMile;
                 const consumed = dist / (truck.expectedKml || 1);
-                const remaining = Math.max(0, currentTank - consumed);
+                const remaining = currentTank - consumed;
                 const newTank = Math.min(truck.capacity || 0, remaining + entry.liters);
 
                 currentTank = newTank;
@@ -2458,8 +2867,8 @@ export default function FleetManager({ embedded = false, externalView, onNavigat
               });
 
               if (truck.expectedIntervalKm && truck.tankLevelGoal) {
-                const estimatedConsumption = truck.expectedIntervalKm / (truck.expectedKml || 1);
-                const estimatedRemaining = Math.max(0, calculatedLastNewTank - estimatedConsumption);
+                const estimatedConsumption = truck.expectedIntervalKm / (truck.expectedKmlList?.[0] || truck.expectedKml || 1);
+                const estimatedRemaining = calculatedLastNewTank - estimatedConsumption;
                 const suggestion = Math.max(0, truck.tankLevelGoal - estimatedRemaining);
 
                 suggestionDisplay = `${suggestion.toFixed(2)} L`;
@@ -2474,9 +2883,50 @@ export default function FleetManager({ embedded = false, externalView, onNavigat
               }
             }
 
+            // --- NOVOS CÁLCULOS PARA O PAINEL ---
+            const now = new Date();
+            const currentMonth = now.getMonth();
+            const currentYear = now.getFullYear();
+
+            // Registros do mês atual
+            const monthEntries = allTruckEntries.filter(e => {
+              const d = new Date(e.date);
+              return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
+            });
+
+            const mtdCost = monthEntries.reduce((sum, e) => sum + (e.totalCost || 0), 0);
+
+            // Quilometragem percorrida no mês
+            let mtdDistance = 0;
+            if (monthEntries.length > 0) {
+              const maxKm = Math.max(...monthEntries.map(e => e.newMileage));
+              const minDateEntry = [...monthEntries].sort((a, b) => new Date(a.date) - new Date(b.date))[0];
+
+              // Encontrar o registro IMEDIATAMENTE ANTERIOR ao primeiro do mês para saber de onde partiu
+              const priorEntry = allTruckEntries
+                .filter(e => new Date(e.date) < new Date(minDateEntry.date))
+                .sort((a, b) => new Date(b.date) - new Date(a.date))[0];
+
+              const startKm = priorEntry ? priorEntry.newMileage : (truck.initialMileage || 0);
+              mtdDistance = Math.max(0, maxKm - startKm);
+            }
+
+            // Custo por Km Realizado (do mês)
+            const realizedCostPerKm = mtdDistance > 0 ? mtdCost / mtdDistance : 0;
+
+            // Custo por Km Previsto (baseado no último preço carregado ou fixo)
+            const lastEntryForPrice = allTruckEntries[0];
+            const fuelPrice = lastEntryForPrice && lastEntryForPrice.liters > 0 ? lastEntryForPrice.totalCost / lastEntryForPrice.liters : 0;
+            const expectedKml = truck.expectedKmlList?.[0] || truck.expectedKml || 1;
+            const predictedCostPerKm = expectedKml > 0 ? fuelPrice / expectedKml : 0;
+
+            const isPerformanceGood = predictedCostPerKm > 0 && realizedCostPerKm <= predictedCostPerKm;
+            const performanceColor = isPerformanceGood ? 'text-emerald-600' : 'text-rose-600';
+
+
             return (
               <Card key={truck.id} className="p-6 transition-all hover:shadow-md border-l-4 border-l-indigo-500 cursor-pointer" onClick={() => { setSelectedTruck(truck); setView('truck-detail'); }}>
-                <div className="grid md:grid-cols-4 gap-6 items-center">
+                <div className="grid md:grid-cols-5 gap-6 items-center">
 
                   {/* Identificação */}
                   <div className="md:col-span-1">
@@ -2522,17 +2972,28 @@ export default function FleetManager({ embedded = false, externalView, onNavigat
                     )}
                   </div>
 
-                  {/* Planejamento */}
+                  {/* Performance */}
                   <div className="md:col-span-1 border-l border-slate-100 pl-0 md:pl-6">
-                    <p className="text-[10px] font-bold text-slate-400 uppercase mb-2">Planejamento</p>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase mb-2">Performance</p>
+                    <div className="flex flex-col">
+                      <span className={`text-lg font-black ${performanceColor}`}>
+                        {realizedCostPerKm > 0 ? `R$ ${realizedCostPerKm.toFixed(2)}` : '---'}
+                      </span>
+                      <span className="text-[9px] font-bold text-slate-400 uppercase">Km Realizado</span>
+                    </div>
+                  </div>
+
+                  {/* Estatísticas Mensais */}
+                  <div className="md:col-span-1 border-l border-slate-100 pl-0 md:pl-6">
+                    <p className="text-[10px] font-bold text-slate-400 uppercase mb-2">Este Mês</p>
                     <div className="space-y-1">
-                      <div className="flex justify-between items-center bg-indigo-50/50 p-1.5 rounded-lg">
-                        <span className="text-xs font-semibold text-indigo-700">Sugestão</span>
-                        <span className="font-bold text-indigo-900">{suggestionDisplay || '-'}</span>
+                      <div className="flex justify-between items-center bg-slate-50 p-1.5 rounded-lg">
+                        <span className="text-[10px] font-bold text-slate-500 uppercase">Gasto</span>
+                        <span className="text-xs font-bold text-slate-800">R$ {mtdCost.toFixed(2)}</span>
                       </div>
-                      <div className="flex justify-between items-center bg-blue-50/50 p-1.5 rounded-lg">
-                        <span className="text-xs font-semibold text-blue-700">Custo Est.</span>
-                        <span className="font-bold text-blue-900">{costDisplay || '-'}</span>
+                      <div className="flex justify-between items-center bg-slate-50 p-1.5 rounded-lg">
+                        <span className="text-[10px] font-bold text-slate-500 uppercase">Km Rodado</span>
+                        <span className="text-xs font-bold text-slate-800">{mtdDistance.toLocaleString()} km</span>
                       </div>
                     </div>
                   </div>
@@ -2578,12 +3039,16 @@ export default function FleetManager({ embedded = false, externalView, onNavigat
             <button onClick={(e) => { e.stopPropagation(); handleDeleteTruck(t.id, t.plate); }} className="p-1.5 hover:bg-white rounded-lg shadow-sm border border-transparent hover:border-slate-200 transition-all text-rose-600" title="Excluir"><Trash2 size={18} /></button>
           </div>
         </div>
-        <h3 className="font-bold mb-1">{t.model}</h3><p className="text-xs text-slate-400 mb-6 font-medium">{t.driver}</p><div className="grid grid-cols-2 gap-4 mb-6"><div className="bg-slate-50 p-2 rounded text-center"><p className="text-[10px] text-slate-400 font-bold uppercase">KM Atual</p><p className="text-sm font-bold">{t.currentMileage}</p></div><div className="bg-emerald-50 p-2 rounded text-center"><p className="text-[10px] text-emerald-600 font-bold uppercase">Meta</p><p className="text-sm font-bold">{t.expectedKml}</p></div></div><Button variant="secondary" className="w-full justify-between" onClick={(e) => { e.stopPropagation(); setSelectedTruck(t); setView('truck-detail'); }}><span>Mostrar histórico</span><ChevronLeft className="rotate-180" size={16} /></Button></div></Card>))}</div>
+        <h3 className="font-bold mb-1">{t.model}</h3><p className="text-xs text-slate-400 mb-6 font-medium">{t.driver}</p><div className="grid grid-cols-2 gap-4 mb-6"><div className="bg-slate-50 p-2 rounded text-center"><p className="text-[10px] text-slate-400 font-bold uppercase">KM Atual</p><p className="text-sm font-bold">{t.currentMileage}</p></div><div className="bg-emerald-50 p-2 rounded text-center"><p className="text-[10px] text-emerald-600 font-bold uppercase">Meta</p><p className="text-sm font-bold">{t.expectedKmlList?.length > 0 ? t.expectedKmlList[0] : t.expectedKml}</p></div></div><Button variant="secondary" className="w-full justify-between" onClick={(e) => { e.stopPropagation(); setSelectedTruck(t); setView('truck-detail'); }}><span>Mostrar histórico</span><ChevronLeft className="rotate-180" size={16} /></Button></div></Card>))}</div>
     </div>
   );
 
   const renderTruckDetail = () => {
     if (!selectedTruck) return null;
+
+    const kmlList = selectedTruck.expectedKmlList?.length > 0 ? selectedTruck.expectedKmlList : [selectedTruck.expectedKml || 1];
+    const currentExpectedKml = kmlList[activeKmlIndex] || kmlList[0];
+
     // Todos os registros (para exibição completa)
     const allHistory = entries
       .filter(e => e.truckId === selectedTruck?.id)
@@ -2652,7 +3117,7 @@ export default function FleetManager({ embedded = false, externalView, onNavigat
         dist = Math.max(0, entry.newMileage - previousMileage);
       }
 
-      const consumido = dist > 0 ? dist / (selectedTruck.expectedKml || 1) : 0;
+      const consumido = dist > 0 ? dist / currentExpectedKml : 0;
 
       let remaining = 0;
       // Se é o PRIMEIRO registro da seção, usamos o initialFuel dele se houver, ou assumimos tanque cheio?
@@ -2665,7 +3130,7 @@ export default function FleetManager({ embedded = false, externalView, onNavigat
       } else if (index === 0 && entry.initialFuel !== undefined) {
         remaining = Number(entry.initialFuel);
       } else {
-        remaining = Math.max(0, previousNewTank - consumido);
+        remaining = previousNewTank - consumido;
       }
 
       const newTank = remaining + entry.liters;
@@ -2759,7 +3224,7 @@ export default function FleetManager({ embedded = false, externalView, onNavigat
           // Custo por Km Previsto
           const lastEntry = calculatedHistory[0];
           const fuelPrice = lastEntry && lastEntry.liters > 0 ? lastEntry.totalCost / lastEntry.liters : 0;
-          const costPerKmPrevisto = selectedTruck.expectedKml > 0 ? fuelPrice / selectedTruck.expectedKml : 0;
+          const costPerKmPrevisto = currentExpectedKml > 0 ? fuelPrice / currentExpectedKml : 0;
 
           // Custo por Km Realizado
           let costPerKmRealizado = 0;
@@ -2786,9 +3251,14 @@ export default function FleetManager({ embedded = false, externalView, onNavigat
           return (
             <>
               {/* Eficiência Prevista */}
-              <InfoCard className="text-center bg-white" tooltip="Quantos km o veículo deve percorrer por litro de combustível, conforme meta cadastrada. Use para comparar com o realizado.">
+              <InfoCard className="text-center bg-white" tooltip="Quantos km o veículo deve percorrer por litro de combustível, conforme metas cadastradas. Use as setas para simular.">
                 <p className="text-[10px] font-bold text-indigo-600 uppercase mb-1">Eficiência Prevista</p>
-                <p className="text-xl font-bold text-slate-800">{selectedTruck.expectedKml.toFixed(2)} Km/L</p>
+                <div className="flex items-center justify-center gap-2">
+                  <button onClick={() => setActiveKmlIndex(prev => Math.max(0, prev - 1))} disabled={activeKmlIndex === 0} className="p-1 text-slate-400 hover:text-indigo-600 disabled:opacity-30 disabled:hover:text-slate-400 transition-colors"><ChevronLeft size={16} /></button>
+                  <p className="text-xl font-bold text-slate-800 w-24">{currentExpectedKml.toFixed(2)} Km/L</p>
+                  <button onClick={() => setActiveKmlIndex(prev => Math.min((kmlList.length - 1), prev + 1))} disabled={activeKmlIndex === kmlList.length - 1} className="p-1 text-slate-400 hover:text-indigo-600 disabled:opacity-30 disabled:hover:text-slate-400 transition-colors"><ChevronRight size={16} /></button>
+                </div>
+                {kmlList.length > 1 && <p className="text-[9px] text-slate-400 font-medium mt-1">META {activeKmlIndex + 1} DE {kmlList.length}</p>}
               </InfoCard>
 
               {/* Custo do Km Previsto */}
@@ -2817,8 +3287,8 @@ export default function FleetManager({ embedded = false, externalView, onNavigat
           (() => {
             const lastEntry = calculatedHistory[0];
             const lastNewTank = lastEntry.calculatedNewTank || 0;
-            const estimatedConsumption = selectedTruck.expectedIntervalKm / selectedTruck.expectedKml;
-            const estimatedRemaining = Math.max(0, lastNewTank - estimatedConsumption);
+            const estimatedConsumption = selectedTruck.expectedIntervalKm / currentExpectedKml;
+            const estimatedRemaining = lastNewTank - estimatedConsumption;
             const suggestion = Math.max(0, selectedTruck.tankLevelGoal - estimatedRemaining);
 
             return (
@@ -2844,7 +3314,7 @@ export default function FleetManager({ embedded = false, externalView, onNavigat
             const lastEntry = calculatedHistory[0];
             const lastNewTank = lastEntry.calculatedNewTank || 0;
             const estimatedConsumption = selectedTruck.expectedIntervalKm / selectedTruck.expectedKml;
-            const estimatedRemaining = Math.max(0, lastNewTank - estimatedConsumption);
+            const estimatedRemaining = lastNewTank - estimatedConsumption;
             const suggestion = Math.max(0, selectedTruck.tankLevelGoal - estimatedRemaining);
 
             // Calcular preço do combustível a partir do último registro
@@ -2966,7 +3436,7 @@ export default function FleetManager({ embedded = false, externalView, onNavigat
                       // Comparar com custo por km previsto
                       const lastEntry = calculatedHistory[0];
                       const fuelPrice = lastEntry && lastEntry.liters > 0 ? lastEntry.totalCost / lastEntry.liters : 0;
-                      const costPerKmPrevisto = selectedTruck.expectedKml > 0 ? fuelPrice / selectedTruck.expectedKml : 0;
+                      const costPerKmPrevisto = currentExpectedKml > 0 ? fuelPrice / currentExpectedKml : 0;
 
                       // Verde se <= previsto, vermelho se > previsto
                       const isGood = costPerKmPrevisto > 0 && costPerKm <= costPerKmPrevisto;

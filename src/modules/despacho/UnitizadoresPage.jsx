@@ -118,9 +118,14 @@ const UnitizadorSection = ({ title, unitizadores, icon: Icon, colorClass, emptyM
                 <div className="flex items-center gap-2">
                     <Icon size={18} className="text-slate-500" />
                     <h3 className="font-bold text-slate-700 text-sm sm:text-base">{title}</h3>
-                    <span className="bg-slate-200 text-slate-600 text-xs px-2 py-0.5 rounded-full font-bold">
-                        {unitizadores.length}
-                    </span>
+                    <div className="flex items-center gap-2">
+                        <span className="bg-slate-200 text-slate-600 text-xs px-2 py-0.5 rounded-full font-bold">
+                            {unitizadores.length}
+                        </span>
+                        {unitizadores.length > 500 && (
+                            <span className="text-[10px] text-slate-400 italic">Exibindo 500</span>
+                        )}
+                    </div>
                 </div>
             </div>
 
@@ -154,7 +159,7 @@ const UnitizadorSection = ({ title, unitizadores, icon: Icon, colorClass, emptyM
                             {sortedList.length === 0 ? (
                                 <TableEmpty message={emptyMessage || "Nenhum unitizador nesta seção."} />
                             ) : (
-                                sortedList.map((u, idx) => (
+                                sortedList.slice(0, 500).map((u, idx) => (
                                     <TableRow key={`${u.id}-${idx}`} className="hover:bg-slate-50">
                                         <TableCell className="font-medium text-indigo-600 text-xs">
                                             {u.id}
@@ -186,7 +191,7 @@ const UnitizadorSection = ({ title, unitizadores, icon: Icon, colorClass, emptyM
                             {emptyMessage || "Vazio."}
                         </div>
                     ) : (
-                        sortedList.map((u, idx) => (
+                        sortedList.slice(0, 200).map((u, idx) => (
                             <div key={`${u.id}-${idx}`} className="px-4 py-3">
                                 <div className="flex items-center justify-between mb-1">
                                     <span className="font-bold text-indigo-600 text-xs">{u.id}</span>
@@ -222,6 +227,32 @@ const UnitizadoresPage = () => {
     const [filterDateStart, setFilterDateStart] = useState('');
     const [filterDateEnd, setFilterDateEnd] = useState('');
 
+    // helper to parse Excel serial dates like 46357.68 into DD/MM/YYYY
+    const parseExcelDate = (excelDate) => {
+        if (!excelDate) return '';
+        // If it's already a string with a slash, it's already formatted
+        if (typeof excelDate === 'string' && excelDate.includes('/')) return excelDate;
+
+        const numericDate = Number(excelDate);
+        if (isNaN(numericDate)) return String(excelDate);
+
+        // Excel serial date epoch: Jan 1, 1900. (25569 = Jan 1, 1970)
+        // Excel incorrectly thinks 1900 is a leap year, so for dates after Feb 28, 1900, we subtract 1 day.
+        // Javascript dates are in milliseconds since 1970.
+        const unixTimestamp = (numericDate - 25569) * 86400 * 1000;
+        // The timezone offset is required to avoid being off by hours leading to wrong day
+        const dateObj = new Date(unixTimestamp);
+
+        // Convert to UTC day, month, year to avoid local offset shifting the day backwards
+        const utcDate = new Date(dateObj.getTime() + dateObj.getTimezoneOffset() * 60000);
+
+        const d = String(utcDate.getDate()).padStart(2, '0');
+        const m = String(utcDate.getMonth() + 1).padStart(2, '0');
+        const y = utcDate.getFullYear();
+
+        return `${d}/${m}/${y}`;
+    };
+
     useEffect(() => {
         const q = query(collection(db, 'tb_despachos_conferencia'), orderBy('criado_em', 'desc'));
 
@@ -251,7 +282,7 @@ const UnitizadoresPage = () => {
 
                     if (!uData.unitizador) return;
 
-                    const id = uData.unitizador.trim();
+                    const id = String(uData.unitizador).trim();
                     if (!unitizerMap.has(id)) {
                         unitizerMap.set(id, { id, entries: [], exits: [] });
                     }
@@ -280,7 +311,7 @@ const UnitizadoresPage = () => {
 
                     if (!uData.unitizador) return;
 
-                    const id = uData.unitizador.trim();
+                    const id = String(uData.unitizador).trim();
                     if (!unitizerMap.has(id)) {
                         unitizerMap.set(id, { id, entries: [], exits: [] });
                     }
@@ -321,7 +352,7 @@ const UnitizadoresPage = () => {
                     nota_origem: entry?.notaId || exit?.notaId || '?',
                     origem: entry?.origem || exit?.origem || '?', // FIXED: Fallback to Exit origin
                     destino: entry?.destino || exit?.destino || '?', // FIXED: Fallback to Exit destination
-                    data_entrada: entry?.data || exit?.data || '',
+                    data_entrada: parseExcelDate(entry?.data || exit?.data || ''),
                     peso: entry?.peso || exit?.peso || '0',
                     lacre: entry?.lacre || exit?.lacre || '-',
                     status: 'UNKNOWN',
@@ -365,9 +396,9 @@ const UnitizadoresPage = () => {
             if (searchTerm) {
                 const lower = searchTerm.toLowerCase();
                 const match =
-                    u.id.toLowerCase().includes(lower) ||
-                    u.nota_origem?.toLowerCase().includes(lower) ||
-                    u.lacre?.toLowerCase().includes(lower);
+                    String(u.id || '').toLowerCase().includes(lower) ||
+                    String(u.nota_origem || '').toLowerCase().includes(lower) ||
+                    String(u.lacre || '').toLowerCase().includes(lower);
                 if (!match) return false;
             }
 
@@ -379,7 +410,7 @@ const UnitizadoresPage = () => {
             if (filterDateStart || filterDateEnd) {
                 // Parse DD/MM/YYYY
                 if (!u.data_entrada) return false;
-                const parts = u.data_entrada.split(' ')[0].split('/');
+                const parts = String(u.data_entrada).split(' ')[0].split('/');
                 if (parts.length !== 3) return false;
                 const uDate = new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
                 if (filterDateStart) {
@@ -403,11 +434,11 @@ const UnitizadoresPage = () => {
 
     const sections = useMemo(() => {
         return {
-            recebidos: filteredList.filter(u => u.status === 'RECEBIDO').sort((a, b) => b.data_entrada.localeCompare(a.data_entrada)),
-            processados: filteredList.filter(u => u.status === 'PROCESSADA').sort((a, b) => b.data_entrada.localeCompare(a.data_entrada)),
-            entregues: filteredList.filter(u => u.status === 'ENTREGUE').sort((a, b) => b.data_entrada.localeCompare(a.data_entrada)),
-            orfaos: filteredList.filter(u => u.status === 'ORPHAN').sort((a, b) => b.data_entrada.localeCompare(a.data_entrada)),
-            divergentes: filteredList.filter(u => u.status === 'DIVERGENTE').sort((a, b) => b.data_entrada.localeCompare(a.data_entrada)),
+            recebidos: filteredList.filter(u => u.status === 'RECEBIDO').sort((a, b) => String(b.data_entrada || '').localeCompare(String(a.data_entrada || ''))),
+            processados: filteredList.filter(u => u.status === 'PROCESSADA').sort((a, b) => String(b.data_entrada || '').localeCompare(String(a.data_entrada || ''))),
+            entregues: filteredList.filter(u => u.status === 'ENTREGUE').sort((a, b) => String(b.data_entrada || '').localeCompare(String(a.data_entrada || ''))),
+            orfaos: filteredList.filter(u => u.status === 'ORPHAN').sort((a, b) => String(b.data_entrada || '').localeCompare(String(a.data_entrada || ''))),
+            divergentes: filteredList.filter(u => u.status === 'DIVERGENTE').sort((a, b) => String(b.data_entrada || '').localeCompare(String(a.data_entrada || ''))),
         };
     }, [filteredList]);
 

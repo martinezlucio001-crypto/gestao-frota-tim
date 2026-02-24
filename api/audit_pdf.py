@@ -6,11 +6,11 @@ import re
 from datetime import datetime
 import io
 
-# Third-party
-import pdfplumber
-import requests
-from google.oauth2 import service_account
-from google.auth.transport.requests import Request
+# Third-party imports moved inside functions to allow error catching
+# import pdfplumber
+# import requests
+# from google.oauth2 import service_account
+# from google.auth.transport.requests import Request
 
 # -------------------------------------------------------------------------
 # FIRESTORE CLIENT (Simplified from sync_emails.py)
@@ -108,6 +108,12 @@ class handler(BaseHTTPRequestHandler):
     
     def do_POST(self):
         try:
+            # Lazy Import to catch deployment errors
+            import pdfplumber
+            import requests
+            from google.oauth2 import service_account
+            from google.auth.transport.requests import Request
+            
             # 1. Parse Multipart Form Data
             ctype, pdict = cgi.parse_header(self.headers.get('content-type'))
             if ctype != 'multipart/form-data':

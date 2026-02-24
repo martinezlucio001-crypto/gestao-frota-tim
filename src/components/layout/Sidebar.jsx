@@ -14,7 +14,8 @@ import {
     Menu,
     X,
     DollarSign,
-    Package
+    Package,
+    Shield
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 
@@ -29,7 +30,7 @@ const menuItems = [
     {
         id: 'financeiro',
         label: 'Financeiro',
-        icon: DollarSign, // Using DollarSign
+        icon: DollarSign,
         module: 'financeiro',
         submenu: [
             { id: 'financeiro-painel', label: 'Visão Geral', view: 'financeiro-painel' },
@@ -56,6 +57,7 @@ const menuItems = [
             { id: 'despacho-notas', label: 'Notas de Despacho', view: 'despacho-notas' },
             { id: 'despacho-unitizadores', label: 'Unitizadores', view: 'despacho-unitizadores' },
             { id: 'despacho-auditoria', label: 'Auditoria', view: 'despacho-auditoria' },
+            { id: 'despacho-importar', label: 'Importar/Exportar', view: 'despacho-importar' },
             { id: 'despacho-servidores', label: 'Servidores', view: 'despacho-servidores' },
             { id: 'despacho-pagamentos', label: 'Pagamentos', view: 'despacho-pagamentos' },
         ]
@@ -76,6 +78,15 @@ const menuItems = [
             { id: 'combustivel-frota', label: 'Frota', view: 'combustivel-trucks' },
             { id: 'combustivel-manutencao', label: 'Manutenção', view: 'combustivel-maintenance' },
             { id: 'combustivel-dados', label: 'Dados', view: 'combustivel-data' },
+        ]
+    },
+    {
+        id: 'sistema',
+        label: 'Sistema',
+        icon: Shield,
+        module: 'sistema',
+        submenu: [
+            { id: 'sistema-usuarios', label: 'Usuários', view: 'sistema-usuarios' },
         ]
     }
 ];

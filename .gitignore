@@ -26,5 +26,7 @@ dist-ssr
 # Security
 credentials.json
 token.json
+serviceAccountKey.json
+firestore_token.json
 .venv/
 .vercel

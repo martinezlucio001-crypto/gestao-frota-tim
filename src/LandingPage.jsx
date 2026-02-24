@@ -22,7 +22,7 @@ const LandingPage = () => {
         },
         {
             title: 'Portal de Despachos STM',
-            description: 'Controle de envio e recebimento de cargas (Santarém)',
+            description: 'Controle de envio e recebimento de cargas (CDD SANTAREM)',
             icon: ClipboardList,
             color: 'bg-blue-500',
             href: '#', // Placeholder
