@@ -23,10 +23,25 @@ dist-ssr
 *.sln
 *.sw?
 
-# Security
+# Security & Credentials
 credentials.json
 token.json
 serviceAccountKey.json
 firestore_token.json
+
+# Utility & Migration scripts (local only)
+*.bat
+migrate_*.py
+migrar_*.py
+migrar_*.mjs
+clear_*.py
+debug_*.py
+debug_*.json
+test_*.py
+setup_google.py
+comparar_*.js
+run_audit.bat
+
+# Environment
 .venv/
 .vercel
