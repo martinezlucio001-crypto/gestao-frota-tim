@@ -63,6 +63,7 @@ const UnitizadorSection = ({ title, unitizadores, icon: Icon, colorClass, emptyM
     const [sortConfig, setSortConfig] = useState({ key: 'data_entrada', direction: 'desc' });
     const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
     const sentinelRef = useRef(null);
+    const scrollContainerRef = useRef(null);
 
     // Reset visible count when data or sort changes
     useEffect(() => {
@@ -134,7 +135,7 @@ const UnitizadorSection = ({ title, unitizadores, icon: Icon, colorClass, emptyM
                     setVisibleCount(prev => Math.min(prev + PAGE_SIZE, sortedList.length));
                 }
             },
-            { threshold: 0.1 }
+            { threshold: 0.1, root: scrollContainerRef.current }
         );
         observer.observe(sentinelRef.current);
         return () => observer.disconnect();
@@ -150,14 +151,14 @@ const UnitizadorSection = ({ title, unitizadores, icon: Icon, colorClass, emptyM
                         <span className="bg-slate-200 text-slate-600 text-xs px-2 py-0.5 rounded-full font-bold">
                             {unitizadores.length}
                         </span>
-                        {unitizadores.length > 500 && (
-                            <span className="text-[10px] text-slate-400 italic">Exibindo 500</span>
+                        {hasMore && (
+                            <span className="text-[10px] text-slate-400 italic">Exibindo {visibleCount}</span>
                         )}
                     </div>
                 </div>
             </div>
 
-            <div className="max-h-[500px] overflow-y-auto custom-scrollbar">
+            <div ref={scrollContainerRef} className="max-h-[500px] overflow-y-auto custom-scrollbar">
                 <div className="hidden sm:block">
                     <Table>
                         <TableHeader className="sticky top-0 bg-white shadow-sm z-10">

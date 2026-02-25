@@ -89,6 +89,7 @@ const NotaSection = ({ title, notas, icon: Icon, colorClass, onOpenNota, emptyMe
     const [sortConfig, setSortConfig] = useState({ key: 'data_ocorrencia', direction: 'desc' });
     const [visibleCount, setVisibleCount] = useState(NOTES_PAGE_SIZE);
     const sentinelRef = useRef(null);
+    const scrollContainerRef = useRef(null);
 
     // Reset visible count when data or sort changes
     useEffect(() => {
@@ -184,7 +185,7 @@ const NotaSection = ({ title, notas, icon: Icon, colorClass, onOpenNota, emptyMe
                     setVisibleCount(prev => Math.min(prev + NOTES_PAGE_SIZE, sortedNotas.length));
                 }
             },
-            { threshold: 0.1 }
+            { threshold: 0.1, root: scrollContainerRef.current }
         );
         observer.observe(sentinelRef.current);
         return () => observer.disconnect();
@@ -199,10 +200,13 @@ const NotaSection = ({ title, notas, icon: Icon, colorClass, onOpenNota, emptyMe
                     <span className="bg-slate-200 text-slate-600 text-xs px-2 py-0.5 rounded-full font-bold">
                         {notas.length}
                     </span>
+                    {hasMore && (
+                        <span className="text-[10px] text-slate-400 italic">Exibindo {visibleCount}</span>
+                    )}
                 </div>
             </div>
 
-            <div className="max-h-[600px] overflow-y-auto custom-scrollbar">
+            <div ref={scrollContainerRef} className="max-h-[600px] overflow-y-auto custom-scrollbar">
                 {/* Desktop Table */}
                 <div className="hidden sm:block">
                     <Table>
