@@ -226,6 +226,7 @@ const UnitizadoresPage = () => {
     const [selectedNota, setSelectedNota] = useState(null);
     const [availableNotas, setAvailableNotas] = useState([]);
     const [selectedNotaIndex, setSelectedNotaIndex] = useState(0);
+    const [divergenceReasons, setDivergenceReasons] = useState([]);
 
     // Filters
     const [searchTerm, setSearchTerm] = useState('');
@@ -563,13 +564,46 @@ const UnitizadoresPage = () => {
                         icon={AlertCircle}
                         colorClass="border-l-rose-500"
                         onRowClick={(u) => {
+                            // Compute divergence reasons
+                            const reasons = [];
+                            if (u.divergenceType) reasons.push(u.divergenceType);
+                            const entryIds = u.entryNoteIds || [];
+                            const exitIds = u.exitNoteIds || [];
+                            if (entryIds.length > 0 && exitIds.length > 0) {
+                                const differentNotes = !entryIds.some(id => exitIds.includes(id));
+                                if (differentNotes) reasons.push(`Notas de Despacho diferentes (Recebimento: ${entryIds.join(', ')} | Devolu\u00e7\u00e3o: ${exitIds.join(', ')})`);
+                            }
+                            setDivergenceReasons(reasons);
+
                             // Collect all associated notes (entry + exit)
-                            const allNoteIds = [...new Set([...(u.entryNoteIds || []), ...(u.exitNoteIds || [])])];
-                            const notas = allNoteIds.map(id => rawNotesMap[id]).filter(Boolean);
-                            if (notas.length === 0) return;
-                            setAvailableNotas(notas);
+                            const allNoteIds = [...new Set([...entryIds, ...exitIds])];
+                            const notasRaw = allNoteIds.map(id => rawNotesMap[id]).filter(Boolean);
+                            if (notasRaw.length === 0) return;
+
+                            // Separate into Recebimento (has itens) and Devolu\u00e7\u00e3o (has itens_conferencia)
+                            // A note can be both; classify by where the unitizer lives
+                            const recNotas = entryIds.map(id => rawNotesMap[id]).filter(Boolean);
+                            const devNotas = exitIds.map(id => rawNotesMap[id]).filter(Boolean);
+
+                            // Build labeled list sorted by date (oldest first)
+                            const labeled = [];
+                            recNotas.forEach((n, i) => {
+                                labeled.push({ ...n, _switchLabel: `Recebimento ${i + 1}`, _type: 'rec', _order: i });
+                            });
+                            devNotas.forEach((n, i) => {
+                                // Avoid duplicate if same nota is in both lists
+                                const already = labeled.find(l => l.nota_despacho === n.nota_despacho);
+                                if (!already) {
+                                    labeled.push({ ...n, _switchLabel: `Devolu\u00e7\u00e3o ${i + 1}`, _type: 'dev', _order: i });
+                                } else {
+                                    // Update label to show both
+                                    already._switchLabel = `Recebimento ${recNotas.indexOf(n) + 1}`;
+                                }
+                            });
+
+                            setAvailableNotas(labeled);
                             setSelectedNotaIndex(0);
-                            setSelectedNota(notas[0]);
+                            setSelectedNota(labeled[0]);
                         }}
                     />
                 )}
@@ -582,10 +616,6 @@ const UnitizadoresPage = () => {
                     {availableNotas.length > 1 && (
                         <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[60] flex items-center bg-white rounded-full shadow-xl border border-slate-200 p-1 gap-1">
                             {availableNotas.map((nota, idx) => {
-                                // Determine if this note has entry items (Recebimento) or exit items (Devolução)
-                                const hasEntry = (nota.itens || []).length > 0;
-                                const hasExit = (nota.itens_conferencia || []).length > 0;
-                                const label = hasEntry && hasExit ? `Nota ${idx + 1}` : hasEntry ? 'Recebimento' : 'Devolução';
                                 const isActive = idx === selectedNotaIndex;
                                 return (
                                     <button
@@ -596,11 +626,11 @@ const UnitizadoresPage = () => {
                                             setSelectedNota(availableNotas[idx]);
                                         }}
                                         className={`px-4 py-2 rounded-full text-sm font-bold transition-all ${isActive
-                                                ? 'bg-indigo-600 text-white shadow-md'
-                                                : 'text-slate-600 hover:bg-slate-100'
+                                            ? 'bg-indigo-600 text-white shadow-md'
+                                            : 'text-slate-600 hover:bg-slate-100'
                                             }`}
                                     >
-                                        {label}
+                                        {nota._switchLabel || `Nota ${idx + 1}`}
                                     </button>
                                 );
                             })}
@@ -608,10 +638,12 @@ const UnitizadoresPage = () => {
                     )}
                     <NotaDetalheModal
                         nota={selectedNota}
-                        onClose={() => { setSelectedNota(null); setAvailableNotas([]); setSelectedNotaIndex(0); }}
+                        onClose={() => { setSelectedNota(null); setAvailableNotas([]); setSelectedNotaIndex(0); setDivergenceReasons([]); }}
                         onProcessar={() => { }}
                         onToggleItem={() => { }}
                         onToggleAll={() => { }}
+                        readOnly={true}
+                        divergenceAlert={divergenceReasons.length > 0 ? divergenceReasons : null}
                     />
                 </div>
             )}

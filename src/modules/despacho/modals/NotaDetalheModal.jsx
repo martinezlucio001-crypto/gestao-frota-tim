@@ -28,7 +28,7 @@ const formatDate = (val) => {
     return String(val);
 };
 
-const NotaDetalheModal = ({ nota, onClose, onProcessar, onToggleItem, onToggleAll }) => {
+const NotaDetalheModal = ({ nota, onClose, onProcessar, onToggleItem, onToggleAll, readOnly = false, divergenceAlert = null }) => {
     if (!nota) return null;
 
     const itens = nota.itens || [];
@@ -187,24 +187,41 @@ const NotaDetalheModal = ({ nota, onClose, onProcessar, onToggleItem, onToggleAl
                         </span>
                     </h4>
 
+                    {/* Divergence Alert from Unitizadores Page */}
+                    {divergenceAlert && (
+                        <div className="mb-4 bg-amber-50 border border-amber-200 p-3 rounded-lg flex items-start gap-3">
+                            <AlertTriangle className="text-amber-500 mt-0.5 min-w-[18px]" size={18} />
+                            <div className="flex-1">
+                                <h4 className="font-bold text-amber-700 text-sm mb-1">Motivo da Divergência</h4>
+                                <div className="space-y-1 text-xs sm:text-sm text-amber-700">
+                                    {divergenceAlert.map((reason, i) => (
+                                        <p key={i}>{reason}</p>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
                     {/* Bulk Actions */}
-                    <div className="flex justify-end mb-2">
-                        <button
-                            onClick={() => {
-                                const allChecked = allUnitizadores.every(u => {
+                    {!readOnly && (
+                        <div className="flex justify-end mb-2">
+                            <button
+                                onClick={() => {
+                                    const allChecked = allUnitizadores.every(u => {
+                                        const item = listaRecebimento.find(i => i.unitizador === u) || listaDevolucao.find(i => i.unitizador === u);
+                                        return item && item.conferido;
+                                    });
+                                    onToggleAll(!allChecked);
+                                }}
+                                className="text-xs sm:text-sm font-medium text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 px-2 py-1 rounded transition-colors"
+                            >
+                                {allUnitizadores.every(u => {
                                     const item = listaRecebimento.find(i => i.unitizador === u) || listaDevolucao.find(i => i.unitizador === u);
                                     return item && item.conferido;
-                                });
-                                onToggleAll(!allChecked);
-                            }}
-                            className="text-xs sm:text-sm font-medium text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 px-2 py-1 rounded transition-colors"
-                        >
-                            {allUnitizadores.every(u => {
-                                const item = listaRecebimento.find(i => i.unitizador === u) || listaDevolucao.find(i => i.unitizador === u);
-                                return item && item.conferido;
-                            }) ? 'Desmarcar Todos' : 'Marcar Todos'}
-                        </button>
-                    </div>
+                                }) ? 'Desmarcar Todos' : 'Marcar Todos'}
+                            </button>
+                        </div>
+                    )}
 
                     {/* Desktop Table */}
                     <div className="hidden sm:block border border-slate-200 rounded-lg overflow-hidden max-h-60 overflow-y-auto">
@@ -215,7 +232,7 @@ const NotaDetalheModal = ({ nota, onClose, onProcessar, onToggleItem, onToggleAl
                                     <th className="px-4 py-2">Unitizador</th>
                                     <th className="px-4 py-2">Lacre</th>
                                     <th className="px-4 py-2 text-right">Peso</th>
-                                    <th className="px-4 py-2 text-center w-[50px]">Conf.</th>
+                                    {!readOnly && <th className="px-4 py-2 text-center w-[50px]">Conf.</th>}
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100 bg-white">
@@ -248,14 +265,16 @@ const NotaDetalheModal = ({ nota, onClose, onProcessar, onToggleItem, onToggleAl
                                                 <td className="px-4 py-2 text-slate-700 font-medium">{unitizador}</td>
                                                 <td className="px-4 py-2 text-slate-500">{displayItem.lacre}</td>
                                                 <td className="px-4 py-2 text-right text-slate-700">{displayItem.peso}</td>
-                                                <td className="px-4 py-2 text-center">
-                                                    <input
-                                                        type="checkbox"
-                                                        checked={!!displayItem.conferido}
-                                                        onChange={() => onToggleItem && onToggleItem(unitizador, !displayItem.conferido)}
-                                                        className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500 cursor-pointer"
-                                                    />
-                                                </td>
+                                                {!readOnly && (
+                                                    <td className="px-4 py-2 text-center">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={!!displayItem.conferido}
+                                                            onChange={() => onToggleItem && onToggleItem(unitizador, !displayItem.conferido)}
+                                                            className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500 cursor-pointer"
+                                                        />
+                                                    </td>
+                                                )}
                                             </tr>
                                         );
                                     })
@@ -289,12 +308,14 @@ const NotaDetalheModal = ({ nota, onClose, onProcessar, onToggleItem, onToggleAl
                                                         <span title="Devolução" className="text-rose-500 font-bold text-base">↓</span>
                                                     )}
                                                 </div>
-                                                <input
-                                                    type="checkbox"
-                                                    checked={!!displayItem.conferido}
-                                                    onChange={() => onToggleItem && onToggleItem(unitizador, !displayItem.conferido)}
-                                                    className="w-5 h-5 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500 cursor-pointer"
-                                                />
+                                                {!readOnly && (
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={!!displayItem.conferido}
+                                                        onChange={() => onToggleItem && onToggleItem(unitizador, !displayItem.conferido)}
+                                                        className="w-5 h-5 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500 cursor-pointer"
+                                                    />
+                                                )}
                                             </div>
                                         </div>
                                         <div className="flex items-center gap-3 text-sm text-slate-500">
@@ -312,16 +333,18 @@ const NotaDetalheModal = ({ nota, onClose, onProcessar, onToggleItem, onToggleAl
                     </div>
                 </div>
 
-                <ModalFooter className="flex-col sm:flex-row">
-                    <Button variant="ghost" onClick={onClose} className="w-full sm:w-auto">
-                        Fechar
-                    </Button>
-                    {nota.status !== 'PROCESSADA' && (
-                        <Button variant="primary" onClick={handleProcessarPreCheck} className="w-full sm:w-auto">
-                            Realizar Despacho
+                {!readOnly && (
+                    <ModalFooter className="flex-col sm:flex-row">
+                        <Button variant="ghost" onClick={onClose} className="w-full sm:w-auto">
+                            Fechar
                         </Button>
-                    )}
-                </ModalFooter>
+                        {nota.status !== 'PROCESSADA' && (
+                            <Button variant="primary" onClick={handleProcessarPreCheck} className="w-full sm:w-auto">
+                                Realizar Despacho
+                            </Button>
+                        )}
+                    </ModalFooter>
+                )}
             </Modal>
 
             {/* Warning Modal Overlay */}
