@@ -1,11 +1,11 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { collection, query, orderBy, onSnapshot, doc, updateDoc, getDoc } from 'firebase/firestore';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { collection, query, orderBy, onSnapshot, doc, updateDoc, getDoc, getDocs, limit, startAfter, writeBatch, where } from 'firebase/firestore';
 import { db, appId } from '../../lib/firebase';
 import { Card, Button, Input, Select, Modal, ModalFooter } from '../../components/ui';
 import {
     FileText, Package, Truck, Calendar, Search, Filter,
     MoreVertical, CheckCircle2, AlertCircle, X, ChevronRight,
-    ArrowUp, ArrowDown, RefreshCw, AlertTriangle
+    ArrowUp, ArrowDown, RefreshCw, AlertTriangle, Loader2, DatabaseZap
 } from 'lucide-react';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell, TableEmpty } from '../../components/ui/Table';
 import NotaDetalheModal from './modals/NotaDetalheModal';
@@ -361,6 +361,8 @@ const NotaSection = ({ title, notas, icon: Icon, colorClass, onOpenNota, emptyMe
     );
 };
 
+const FIRESTORE_PAGE_SIZE = 50;
+
 const NotasDespachoPage = () => {
     const [notas, setNotas] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -369,6 +371,13 @@ const NotasDespachoPage = () => {
 
     const [selectedNota, setSelectedNota] = useState(null);
     const [isDespachoModalOpen, setIsDespachoModalOpen] = useState(false);
+
+    // Pagination state
+    const [lastDocSnapshot, setLastDocSnapshot] = useState(null);
+    const [hasMoreDocs, setHasMoreDocs] = useState(true);
+    const [loadingMore, setLoadingMore] = useState(false);
+    const [reconciling, setReconciling] = useState(false);
+    const pageSentinelRef = useRef(null);
 
     // Filters
     const [filterDateStart, setFilterDateStart] = useState('');
@@ -384,7 +393,7 @@ const NotasDespachoPage = () => {
             const snap = await getDoc(docRef);
             if (snap.exists()) {
                 const data = snap.data();
-                if (data.last_sync && data.last_sync.seconds) { // Firestore Timestamp
+                if (data.last_sync && data.last_sync.seconds) {
                     setLastUpdate(new Date(data.last_sync.seconds * 1000).toLocaleString());
                 } else if (data.last_sync) {
                     setLastUpdate(new Date(data.last_sync).toLocaleString());
@@ -392,26 +401,171 @@ const NotasDespachoPage = () => {
             }
         };
         fetchMeta();
-        // Poll every minute
         const interval = setInterval(fetchMeta, 60000);
         return () => clearInterval(interval);
     }, []);
 
-    // Load Notes
+    // Load Notes - PAGINATED: onSnapshot for first page (live), getDocs for scroll
     useEffect(() => {
         const q = query(
             collection(db, 'tb_despachos_conferencia'),
-            orderBy('criado_em', 'desc') // Load by creation time to get newest
+            orderBy('criado_em', 'desc'),
+            limit(FIRESTORE_PAGE_SIZE)
         );
 
         const unsubscribe = onSnapshot(q, (snapshot) => {
-            const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            setNotas(data);
+            const liveData = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+            // Merge: replace first page with live data, keep scroll-loaded data
+            setNotas(prev => {
+                const scrollLoaded = prev.filter(p => !liveData.find(l => l.id === p.id));
+                return [...liveData, ...scrollLoaded];
+            });
+            // Store last doc from live snapshot for cursor pagination
+            if (snapshot.docs.length > 0) {
+                setLastDocSnapshot(snapshot.docs[snapshot.docs.length - 1]);
+            }
+            setHasMoreDocs(snapshot.docs.length >= FIRESTORE_PAGE_SIZE);
             setLoading(false);
         });
 
         return () => unsubscribe();
     }, []);
+
+    // Load more notes (scroll pagination)
+    const loadMore = useCallback(async () => {
+        if (loadingMore || !hasMoreDocs || !lastDocSnapshot) return;
+        setLoadingMore(true);
+        try {
+            const nextQ = query(
+                collection(db, 'tb_despachos_conferencia'),
+                orderBy('criado_em', 'desc'),
+                startAfter(lastDocSnapshot),
+                limit(FIRESTORE_PAGE_SIZE)
+            );
+            const snapshot = await getDocs(nextQ);
+            if (snapshot.docs.length > 0) {
+                const newData = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+                setNotas(prev => {
+                    const existingIds = new Set(prev.map(p => p.id));
+                    const unique = newData.filter(n => !existingIds.has(n.id));
+                    return [...prev, ...unique];
+                });
+                setLastDocSnapshot(snapshot.docs[snapshot.docs.length - 1]);
+            }
+            setHasMoreDocs(snapshot.docs.length >= FIRESTORE_PAGE_SIZE);
+        } catch (error) {
+            console.error('Erro ao carregar mais notas:', error);
+        } finally {
+            setLoadingMore(false);
+        }
+    }, [loadingMore, hasMoreDocs, lastDocSnapshot]);
+
+    // Page-level IntersectionObserver for loading more from Firestore
+    useEffect(() => {
+        if (!pageSentinelRef.current || !hasMoreDocs) return;
+        const observer = new IntersectionObserver(
+            (entries) => {
+                if (entries[0].isIntersecting) {
+                    loadMore();
+                }
+            },
+            { threshold: 0.1 }
+        );
+        observer.observe(pageSentinelRef.current);
+        return () => observer.disconnect();
+    }, [hasMoreDocs, loadMore]);
+
+    // "Atualizar Status" - Full reconciliation
+    const handleReconcileStatus = async () => {
+        if (reconciling) return;
+        setReconciling(true);
+        try {
+            // Load ALL notes
+            const allQ = query(collection(db, 'tb_despachos_conferencia'), orderBy('criado_em', 'desc'));
+            const allSnapshot = await getDocs(allQ);
+            const allNotes = allSnapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+
+            // Build unitizer map: unitizer ID → { entryNoteIds, exitNoteIds }
+            const unitizerMap = new Map();
+            allNotes.forEach(nota => {
+                const itensEntrada = Array.isArray(nota.itens) ? nota.itens : [];
+                const itensSaida = Array.isArray(nota.itens_conferencia) ? nota.itens_conferencia : [];
+
+                itensEntrada.forEach(item => {
+                    const u = typeof item === 'string' ? item.split(' - ')[0] : item?.unitizador;
+                    if (!u) return;
+                    const id = String(u).trim();
+                    if (!unitizerMap.has(id)) unitizerMap.set(id, { entryNoteIds: new Set(), exitNoteIds: new Set() });
+                    unitizerMap.get(id).entryNoteIds.add(nota.id);
+                });
+
+                itensSaida.forEach(item => {
+                    const u = typeof item === 'string' ? item.split(' - ')[0] : item?.unitizador;
+                    if (!u) return;
+                    const id = String(u).trim();
+                    if (!unitizerMap.has(id)) unitizerMap.set(id, { entryNoteIds: new Set(), exitNoteIds: new Set() });
+                    unitizerMap.get(id).exitNoteIds.add(nota.id);
+                });
+            });
+
+            // Determine note-level status from unitizer cross-reference
+            const noteStatusUpdates = new Map(); // noteId → newStatus
+
+            allNotes.forEach(nota => {
+                if (nota.status === 'PROCESSADA' || nota.processado_em) return; // Dont overwrite manually processed
+
+                const itensEntrada = Array.isArray(nota.itens) ? nota.itens : [];
+                const itensSaida = Array.isArray(nota.itens_conferencia) ? nota.itens_conferencia : [];
+                const hasEntry = itensEntrada.length > 0;
+                const hasExit = itensSaida.length > 0;
+
+                if (hasEntry && !hasExit) {
+                    // Check if ALL entry unitizers have exits in other notes
+                    const allResolved = itensEntrada.every(item => {
+                        const u = typeof item === 'string' ? item.split(' - ')[0] : item?.unitizador;
+                        if (!u) return true;
+                        const data = unitizerMap.get(String(u).trim());
+                        return data && data.exitNoteIds.size > 0;
+                    });
+                    if (allResolved && nota.status !== 'CONCLUIDO') {
+                        noteStatusUpdates.set(nota.id, 'CONCLUIDO');
+                    }
+                } else if (hasExit && !hasEntry) {
+                    if (nota.status !== 'DEVOLVED_ORPHAN') {
+                        noteStatusUpdates.set(nota.id, 'DEVOLVED_ORPHAN');
+                    }
+                } else if (hasEntry && hasExit) {
+                    // Check divergence
+                    const entryUnitizers = itensEntrada.map(i => typeof i === 'string' ? i.split(' - ')[0] : i?.unitizador).filter(Boolean).map(u => String(u).trim());
+                    const exitUnitizers = itensSaida.map(i => typeof i === 'string' ? i.split(' - ')[0] : i?.unitizador).filter(Boolean).map(u => String(u).trim());
+                    const mismatch = entryUnitizers.some(u => !exitUnitizers.includes(u)) || exitUnitizers.some(u => !entryUnitizers.includes(u));
+                    if (mismatch && nota.status !== 'DIVERGENTE') {
+                        noteStatusUpdates.set(nota.id, 'DIVERGENTE');
+                    } else if (!mismatch && nota.status !== 'CONCLUIDO') {
+                        noteStatusUpdates.set(nota.id, 'CONCLUIDO');
+                    }
+                }
+            });
+
+            // Write updates in batches (Firestore limit: 500 per batch)
+            const entries = [...noteStatusUpdates.entries()];
+            for (let i = 0; i < entries.length; i += 450) {
+                const batch = writeBatch(db);
+                const chunk = entries.slice(i, i + 450);
+                chunk.forEach(([noteId, newStatus]) => {
+                    batch.update(doc(db, 'tb_despachos_conferencia', noteId), { status: newStatus });
+                });
+                await batch.commit();
+            }
+
+            alert(`Status atualizado! ${entries.length} notas foram reconciliadas.`);
+        } catch (error) {
+            console.error('Erro na reconcilia\u00e7\u00e3o:', error);
+            alert('Erro ao atualizar status. Verifique o console.');
+        } finally {
+            setReconciling(false);
+        }
+    };
 
     // Load Servers for Modal
     useEffect(() => {
@@ -646,35 +800,50 @@ const NotasDespachoPage = () => {
                                 Última atualização: {lastUpdate}
                             </span>
                         )}
+                        <span className="bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded text-xs border border-indigo-200 font-medium">
+                            {notas.length} notas carregadas
+                        </span>
                     </div>
                 </div>
 
-                <Button
-                    variant="outline"
-                    className="flex items-center gap-2"
-                    onClick={async () => {
-                        try {
-                            setLoading(true);
-                            const response = await fetch(`https://gestao-frota-tim.vercel.app/api/sync_emails?key=${import.meta.env.VITE_SYNC_KEY || 'timbelem2025*'}`);
-                            const data = await response.json();
+                <div className="flex items-center gap-2">
 
-                            if (response.ok) {
-                                alert(`Sucesso: ${data.message || 'Notas atualizadas!'}`);
-                            } else {
-                                alert(`Erro: ${data.error || 'Falha na atualização'}`);
+                    <Button
+                        variant="outline"
+                        className="flex items-center gap-2"
+                        onClick={async () => {
+                            try {
+                                setLoading(true);
+                                const response = await fetch(`https://gestao-frota-tim.vercel.app/api/sync_emails?key=${import.meta.env.VITE_SYNC_KEY || 'timbelem2025*'}`);
+                                const data = await response.json();
+
+                                if (response.ok) {
+                                    alert(`Sucesso: ${data.message || 'Notas atualizadas!'}`);
+                                } else {
+                                    alert(`Erro: ${data.error || 'Falha na atualização'}`);
+                                }
+                            } catch (error) {
+                                alert('Erro de conexão ao tentar atualizar.');
+                                console.error(error);
+                            } finally {
+                                setLoading(false);
                             }
-                        } catch (error) {
-                            alert('Erro de conexão ao tentar atualizar.');
-                            console.error(error);
-                        } finally {
-                            setLoading(false);
-                        }
-                    }}
-                    disabled={loading}
-                >
-                    <RefreshCw size={16} className={loading ? "animate-spin" : ""} />
-                    {loading ? "Atualizando..." : "Atualizar Notas"}
-                </Button>
+                        }}
+                        disabled={loading}
+                    >
+                        <RefreshCw size={16} className={loading ? "animate-spin" : ""} />
+                        {loading ? "Atualizando..." : "Atualizar Notas"}
+                    </Button>
+                    <Button
+                        variant="outline"
+                        className="flex items-center gap-2"
+                        onClick={handleReconcileStatus}
+                        disabled={reconciling}
+                    >
+                        {reconciling ? <Loader2 size={16} className="animate-spin" /> : <DatabaseZap size={16} />}
+                        {reconciling ? "Reconciliando..." : "Atualizar Status"}
+                    </Button>
+                </div>
             </div>
 
             {/* Search Bar */}
@@ -815,6 +984,19 @@ const NotasDespachoPage = () => {
                 )}
 
             </div>
+
+            {/* Page-level Firestore pagination sentinel */}
+            {hasMoreDocs && (
+                <div ref={pageSentinelRef} className="flex items-center justify-center gap-2 py-6 text-slate-400">
+                    <div className="w-5 h-5 border-2 border-slate-300 border-t-indigo-500 rounded-full animate-spin" />
+                    <span className="text-sm font-medium">Carregando mais notas...</span>
+                </div>
+            )}
+            {!hasMoreDocs && notas.length > 0 && (
+                <div className="text-center py-4 text-xs text-slate-400 italic">
+                    Todas as {notas.length} notas foram carregadas.
+                </div>
+            )}
 
             {/* Modais */}
             {selectedNota && !isDespachoModalOpen && (

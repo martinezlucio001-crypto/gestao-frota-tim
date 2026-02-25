@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { collection, query, orderBy, onSnapshot } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, getDocs, limit, startAfter, writeBatch, doc, updateDoc } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { Card, Button } from '../../components/ui';
 import {
     Package, Truck, CheckCircle2, AlertCircle, Search,
-    ArrowUp, ArrowDown, Filter, X
+    ArrowUp, ArrowDown, Filter, X, Loader2, DatabaseZap
 } from 'lucide-react';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell, TableEmpty } from '../../components/ui/Table';
 import NotaDetalheModal from './modals/NotaDetalheModal';
@@ -251,12 +251,20 @@ const UnitizadorSection = ({ title, unitizadores, icon: Icon, colorClass, emptyM
     );
 };
 
-// --- Main Page Component ---
+const FIRESTORE_PAGE_SIZE = 50;
 
 const UnitizadoresPage = () => {
     const [unitizadores, setUnitizadores] = useState([]);
     const [loading, setLoading] = useState(true);
     const [rawNotesMap, setRawNotesMap] = useState({});
+    const [accumulatedNotes, setAccumulatedNotes] = useState([]);
+
+    // Pagination state
+    const [lastDocSnapshot, setLastDocSnapshot] = useState(null);
+    const [hasMoreDocs, setHasMoreDocs] = useState(true);
+    const [loadingMore, setLoadingMore] = useState(false);
+    const [reconciling, setReconciling] = useState(false);
+    const pageSentinelRef = useRef(null);
 
     // Dispatch note modal state
     const [selectedNota, setSelectedNota] = useState(null);
@@ -275,176 +283,244 @@ const UnitizadoresPage = () => {
     // helper to parse Excel serial dates like 46357.68 into DD/MM/YYYY
     const parseExcelDate = (excelDate) => {
         if (!excelDate) return '';
-        // If it's already a string with a slash, it's already formatted
         if (typeof excelDate === 'string' && excelDate.includes('/')) return excelDate;
-
         const numericDate = Number(excelDate);
         if (isNaN(numericDate)) return String(excelDate);
-
-        // Excel serial date epoch: Jan 1, 1900. (25569 = Jan 1, 1970)
-        // Excel incorrectly thinks 1900 is a leap year, so for dates after Feb 28, 1900, we subtract 1 day.
-        // Javascript dates are in milliseconds since 1970.
         const unixTimestamp = (numericDate - 25569) * 86400 * 1000;
-        // The timezone offset is required to avoid being off by hours leading to wrong day
         const dateObj = new Date(unixTimestamp);
-
-        // Convert to UTC day, month, year to avoid local offset shifting the day backwards
         const utcDate = new Date(dateObj.getTime() + dateObj.getTimezoneOffset() * 60000);
-
         const d = String(utcDate.getDate()).padStart(2, '0');
         const m = String(utcDate.getMonth() + 1).padStart(2, '0');
         const y = utcDate.getFullYear();
-
         return `${d}/${m}/${y}`;
     };
 
+    // Extract unitizer transformation into reusable function
+    const transformNotesToUnitizers = useCallback((rawNotes) => {
+        const notesLookup = {};
+        rawNotes.forEach(n => { notesLookup[n.nota_despacho || n.id] = n; });
+        setRawNotesMap(notesLookup);
+
+        const unitizerMap = new Map();
+
+        rawNotes.forEach(nota => {
+            const itensEntrada = Array.isArray(nota.itens) ? nota.itens : [];
+            const itensSaida = Array.isArray(nota.itens_conferencia) ? nota.itens_conferencia : [];
+
+            itensEntrada.forEach(item => {
+                let uData = typeof item === 'string'
+                    ? { unitizador: item.split(' - ')[0], lacre: item.split(' - ')[1], peso: item.split(' - ')[2] }
+                    : item;
+                if (!uData.unitizador) return;
+                const id = String(uData.unitizador).trim();
+                if (!unitizerMap.has(id)) unitizerMap.set(id, { id, entries: [], exits: [] });
+                unitizerMap.get(id).entries.push({
+                    notaId: nota.nota_despacho, origem: nota.origem, destino: nota.destino,
+                    data: nota.data_ocorrencia, peso: uData.peso, lacre: uData.lacre,
+                    statusNota: nota.status, correiosMatch: uData.correios_match
+                });
+            });
+
+            itensSaida.forEach(item => {
+                let uData = typeof item === 'string'
+                    ? { unitizador: item.split(' - ')[0], lacre: item.split(' - ')[1], peso: item.split(' - ')[2] }
+                    : item;
+                if (!uData.unitizador) return;
+                const id = String(uData.unitizador).trim();
+                if (!unitizerMap.has(id)) unitizerMap.set(id, { id, entries: [], exits: [] });
+                unitizerMap.get(id).exits.push({
+                    notaId: nota.nota_despacho, peso: uData.peso, lacre: uData.lacre,
+                    data: nota.data_ocorrencia, statusNota: nota.status,
+                    origem: nota.origem, destino: nota.destino, correiosMatch: uData.correios_match
+                });
+            });
+        });
+
+        const processedList = [];
+        unitizerMap.forEach((data, id) => {
+            const entry = data.entries[0];
+            const exit = data.exits[0];
+            const hasEntry = !!entry;
+            const hasExit = !!exit;
+            const isProcessed = entry?.statusNota === 'PROCESSADA' || entry?.statusNota === 'ENTREGUE';
+            const entryNoteIds = [...new Set(data.entries.map(e => e.notaId).filter(Boolean))];
+            const exitNoteIds = [...new Set(data.exits.map(e => e.notaId).filter(Boolean))];
+
+            const uObj = {
+                id, flagEntry: hasEntry, flagProcessed: isProcessed, flagExit: hasExit,
+                nota_origem: entry?.notaId || exit?.notaId || '?',
+                origem: entry?.origem || exit?.origem || '?',
+                destino: entry?.destino || exit?.destino || '?',
+                data_entrada: parseExcelDate(entry?.data || exit?.data || ''),
+                peso: entry?.peso || exit?.peso || '0',
+                lacre: entry?.lacre || exit?.lacre || '-',
+                status: 'UNKNOWN', divergenceType: null,
+                correiosMatch: entry?.correiosMatch || exit?.correiosMatch || false,
+                entryNoteIds, exitNoteIds
+            };
+
+            if (hasEntry && !hasExit) {
+                uObj.status = isProcessed ? 'PROCESSADA' : 'RECEBIDO';
+            } else if (hasExit && !hasEntry) {
+                uObj.status = 'ORPHAN';
+                uObj.divergenceType = 'Unitizador não encontrado na entrada';
+            } else if (hasEntry && hasExit) {
+                if (entry.peso === exit.peso) {
+                    uObj.status = 'ENTREGUE';
+                } else {
+                    uObj.status = 'DIVERGENTE';
+                    uObj.divergenceType = `Peso divergente (Entrada: ${entry.peso} vs Saída: ${exit.peso})`;
+                }
+            }
+            processedList.push(uObj);
+        });
+
+        return processedList;
+    }, []);
+
+    // Load Notes - PAGINATED
     useEffect(() => {
-        const q = query(collection(db, 'tb_despachos_conferencia'), orderBy('criado_em', 'desc'));
+        const q = query(
+            collection(db, 'tb_despachos_conferencia'),
+            orderBy('criado_em', 'desc'),
+            limit(FIRESTORE_PAGE_SIZE)
+        );
 
         const unsubscribe = onSnapshot(q, (snapshot) => {
-            const rawNotes = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-
-            // Store raw notes in a map for quick lookup by nota_despacho
-            const notesLookup = {};
-            rawNotes.forEach(n => { notesLookup[n.nota_despacho || n.id] = n; });
-            setRawNotesMap(notesLookup);
-
-            // --- DATA TRANSFORMATION LOGIC ---
-            // Extract Entry (itens) and Exit (itens_conferencia e devolvidos)
-            // Group by Unitizer ID
-            const unitizerMap = new Map();
-
-            rawNotes.forEach(nota => {
-                // Ensure array format for robust iteration
-                const itensEntrada = Array.isArray(nota.itens) ? nota.itens : [];
-                const itensSaida = Array.isArray(nota.itens_conferencia) ? nota.itens_conferencia : [];
-
-                // 1. Process ENTRIES (Recebidos)
-                itensEntrada.forEach(item => {
-                    // Normalize item structure (handle legacy string format)
-                    let uData = {};
-                    if (typeof item === 'string') {
-                        const parts = item.split(' - ');
-                        uData = { unitizador: parts[0], lacre: parts[1], peso: parts[2] };
-                    } else {
-                        uData = item;
-                    }
-
-                    if (!uData.unitizador) return;
-
-                    const id = String(uData.unitizador).trim();
-                    if (!unitizerMap.has(id)) {
-                        unitizerMap.set(id, { id, entries: [], exits: [] });
-                    }
-
-                    unitizerMap.get(id).entries.push({
-                        notaId: nota.nota_despacho,
-                        origem: nota.origem,
-                        destino: nota.destino,
-                        data: nota.data_ocorrencia,
-                        peso: uData.peso,
-                        lacre: uData.lacre,
-                        statusNota: nota.status, // RECEBIDO, PROCESSADA, etc.
-                        correiosMatch: uData.correios_match
-                    });
-                });
-
-                // 2. Process EXITS (Conferidos via App/Retorno)
-                itensSaida.forEach(item => {
-                    let uData = {};
-                    if (typeof item === 'string') {
-                        const parts = item.split(' - ');
-                        uData = { unitizador: parts[0], lacre: parts[1], peso: parts[2] };
-                    } else {
-                        uData = item;
-                    }
-
-                    if (!uData.unitizador) return;
-
-                    const id = String(uData.unitizador).trim();
-                    if (!unitizerMap.has(id)) {
-                        unitizerMap.set(id, { id, entries: [], exits: [] });
-                    }
-
-                    unitizerMap.get(id).exits.push({
-                        notaId: nota.nota_despacho,
-                        peso: uData.peso,
-                        lacre: uData.lacre,
-                        data: nota.data_ocorrencia, // Often same or later date
-                        statusNota: nota.status,
-                        // Orphans fetch location from here
-                        origem: nota.origem,
-                        destino: nota.destino,
-                        correiosMatch: uData.correios_match
-                    });
-                });
+            const liveNotes = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+            // Merge live data with scroll-loaded data
+            setAccumulatedNotes(prev => {
+                const scrollLoaded = prev.filter(p => !liveNotes.find(l => l.id === p.id));
+                const merged = [...liveNotes, ...scrollLoaded];
+                setUnitizadores(transformNotesToUnitizers(merged));
+                return merged;
             });
-
-            // 3. Flatten and Categorize
-            const processedList = [];
-
-            unitizerMap.forEach((data, id) => {
-                const entry = data.entries[0]; // Assume most recent?
-                const exit = data.exits[0];   // Simplified
-
-                // Logic flags
-                const hasEntry = !!entry;
-                const hasExit = !!exit;
-                const isProcessed = entry?.statusNota === 'PROCESSADA' || entry?.statusNota === 'ENTREGUE';
-
-                // Base Object
-                // Collect all unique note IDs for entry and exit
-                const entryNoteIds = [...new Set(data.entries.map(e => e.notaId).filter(Boolean))];
-                const exitNoteIds = [...new Set(data.exits.map(e => e.notaId).filter(Boolean))];
-
-                const uObj = {
-                    id: id,
-                    flagEntry: hasEntry,
-                    flagProcessed: isProcessed,
-                    flagExit: hasExit,
-                    // Prefer Entry data, fallback to Exit data for Orphans
-                    nota_origem: entry?.notaId || exit?.notaId || '?',
-                    origem: entry?.origem || exit?.origem || '?',
-                    destino: entry?.destino || exit?.destino || '?',
-                    data_entrada: parseExcelDate(entry?.data || exit?.data || ''),
-                    peso: entry?.peso || exit?.peso || '0',
-                    lacre: entry?.lacre || exit?.lacre || '-',
-                    status: 'UNKNOWN',
-                    divergenceType: null,
-                    correiosMatch: entry?.correiosMatch || exit?.correiosMatch || false,
-                    entryNoteIds,
-                    exitNoteIds
-                };
-
-                // Section Categorization Logic (Mutually Exclusive for Lists)
-                if (hasEntry && !hasExit) {
-                    if (isProcessed) {
-                        uObj.status = 'PROCESSADA'; // Blue List
-                    } else {
-                        uObj.status = 'RECEBIDO'; // Yellow List
-                    }
-                } else if (hasExit && !hasEntry) {
-                    uObj.status = 'ORPHAN'; // Orange List
-                    uObj.divergenceType = 'Unitizador não encontrado na entrada';
-                } else if (hasEntry && hasExit) {
-                    const weightMatch = entry.peso === exit.peso;
-                    if (weightMatch) {
-                        uObj.status = 'ENTREGUE'; // Green List
-                    } else {
-                        uObj.status = 'DIVERGENTE'; // Red List
-                        uObj.divergenceType = `Peso divergente (Entrada: ${entry.peso} vs Saída: ${exit.peso})`;
-                    }
-                }
-
-                processedList.push(uObj);
-            });
-
-            setUnitizadores(processedList);
+            if (snapshot.docs.length > 0) {
+                setLastDocSnapshot(snapshot.docs[snapshot.docs.length - 1]);
+            }
+            setHasMoreDocs(snapshot.docs.length >= FIRESTORE_PAGE_SIZE);
             setLoading(false);
         });
 
         return () => unsubscribe();
-    }, []);
+    }, [transformNotesToUnitizers]);
+
+    // Load more notes (scroll pagination)
+    const loadMore = useCallback(async () => {
+        if (loadingMore || !hasMoreDocs || !lastDocSnapshot) return;
+        setLoadingMore(true);
+        try {
+            const nextQ = query(
+                collection(db, 'tb_despachos_conferencia'),
+                orderBy('criado_em', 'desc'),
+                startAfter(lastDocSnapshot),
+                limit(FIRESTORE_PAGE_SIZE)
+            );
+            const snapshot = await getDocs(nextQ);
+            if (snapshot.docs.length > 0) {
+                const newNotes = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+                setAccumulatedNotes(prev => {
+                    const existingIds = new Set(prev.map(p => p.id));
+                    const unique = newNotes.filter(n => !existingIds.has(n.id));
+                    const merged = [...prev, ...unique];
+                    setUnitizadores(transformNotesToUnitizers(merged));
+                    return merged;
+                });
+                setLastDocSnapshot(snapshot.docs[snapshot.docs.length - 1]);
+            }
+            setHasMoreDocs(snapshot.docs.length >= FIRESTORE_PAGE_SIZE);
+        } catch (error) {
+            console.error('Erro ao carregar mais notas:', error);
+        } finally {
+            setLoadingMore(false);
+        }
+    }, [loadingMore, hasMoreDocs, lastDocSnapshot, transformNotesToUnitizers]);
+
+    // Page-level IntersectionObserver for loading more from Firestore
+    useEffect(() => {
+        if (!pageSentinelRef.current || !hasMoreDocs) return;
+        const observer = new IntersectionObserver(
+            (entries) => {
+                if (entries[0].isIntersecting) loadMore();
+            },
+            { threshold: 0.1 }
+        );
+        observer.observe(pageSentinelRef.current);
+        return () => observer.disconnect();
+    }, [hasMoreDocs, loadMore]);
+
+    // "Atualizar Status" - Full reconciliation
+    const handleReconcileStatus = async () => {
+        if (reconciling) return;
+        setReconciling(true);
+        try {
+            const allQ = query(collection(db, 'tb_despachos_conferencia'), orderBy('criado_em', 'desc'));
+            const allSnapshot = await getDocs(allQ);
+            const allNotes = allSnapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+
+            // Build unitizer map
+            const unitizerMap = new Map();
+            allNotes.forEach(nota => {
+                (Array.isArray(nota.itens) ? nota.itens : []).forEach(item => {
+                    const u = typeof item === 'string' ? item.split(' - ')[0] : item?.unitizador;
+                    if (!u) return;
+                    const id = String(u).trim();
+                    if (!unitizerMap.has(id)) unitizerMap.set(id, { entryNoteIds: new Set(), exitNoteIds: new Set() });
+                    unitizerMap.get(id).entryNoteIds.add(nota.id);
+                });
+                (Array.isArray(nota.itens_conferencia) ? nota.itens_conferencia : []).forEach(item => {
+                    const u = typeof item === 'string' ? item.split(' - ')[0] : item?.unitizador;
+                    if (!u) return;
+                    const id = String(u).trim();
+                    if (!unitizerMap.has(id)) unitizerMap.set(id, { entryNoteIds: new Set(), exitNoteIds: new Set() });
+                    unitizerMap.get(id).exitNoteIds.add(nota.id);
+                });
+            });
+
+            const noteStatusUpdates = new Map();
+            allNotes.forEach(nota => {
+                if (nota.status === 'PROCESSADA' || nota.processado_em) return;
+                const itensEntrada = Array.isArray(nota.itens) ? nota.itens : [];
+                const itensSaida = Array.isArray(nota.itens_conferencia) ? nota.itens_conferencia : [];
+                const hasEntry = itensEntrada.length > 0;
+                const hasExit = itensSaida.length > 0;
+
+                if (hasEntry && !hasExit) {
+                    const allResolved = itensEntrada.every(item => {
+                        const u = typeof item === 'string' ? item.split(' - ')[0] : item?.unitizador;
+                        if (!u) return true;
+                        const data = unitizerMap.get(String(u).trim());
+                        return data && data.exitNoteIds.size > 0;
+                    });
+                    if (allResolved && nota.status !== 'CONCLUIDO') noteStatusUpdates.set(nota.id, 'CONCLUIDO');
+                } else if (hasExit && !hasEntry) {
+                    if (nota.status !== 'DEVOLVED_ORPHAN') noteStatusUpdates.set(nota.id, 'DEVOLVED_ORPHAN');
+                } else if (hasEntry && hasExit) {
+                    const entryU = itensEntrada.map(i => typeof i === 'string' ? i.split(' - ')[0] : i?.unitizador).filter(Boolean).map(u => String(u).trim());
+                    const exitU = itensSaida.map(i => typeof i === 'string' ? i.split(' - ')[0] : i?.unitizador).filter(Boolean).map(u => String(u).trim());
+                    const mismatch = entryU.some(u => !exitU.includes(u)) || exitU.some(u => !entryU.includes(u));
+                    if (mismatch && nota.status !== 'DIVERGENTE') noteStatusUpdates.set(nota.id, 'DIVERGENTE');
+                    else if (!mismatch && nota.status !== 'CONCLUIDO') noteStatusUpdates.set(nota.id, 'CONCLUIDO');
+                }
+            });
+
+            const entries = [...noteStatusUpdates.entries()];
+            for (let i = 0; i < entries.length; i += 450) {
+                const batch = writeBatch(db);
+                entries.slice(i, i + 450).forEach(([noteId, newStatus]) => {
+                    batch.update(doc(db, 'tb_despachos_conferencia', noteId), { status: newStatus });
+                });
+                await batch.commit();
+            }
+
+            alert(`Status atualizado! ${entries.length} notas foram reconciliadas.`);
+        } catch (error) {
+            console.error('Erro na reconciliação:', error);
+            alert('Erro ao atualizar status. Verifique o console.');
+        } finally {
+            setReconciling(false);
+        }
+    };
 
     const filteredList = useMemo(() => {
         return unitizadores.filter(u => {
@@ -503,9 +579,25 @@ const UnitizadoresPage = () => {
 
     return (
         <div className="space-y-6 pb-20">
-            <div>
-                <h1 className="text-2xl font-bold text-slate-800">Gerenciamento de Unitizadores</h1>
-                <p className="text-sm text-slate-500 mt-1">Rastreamento de volumes</p>
+            <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+                <div>
+                    <h1 className="text-2xl font-bold text-slate-800">Gerenciamento de Unitizadores</h1>
+                    <div className="flex items-center gap-2 mt-1">
+                        <p className="text-sm text-slate-500">Rastreamento de volumes</p>
+                        <span className="bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded text-xs border border-indigo-200 font-medium">
+                            {unitizadores.length} unitizadores ({accumulatedNotes.length} notas)
+                        </span>
+                    </div>
+                </div>
+                <Button
+                    variant="outline"
+                    className="flex items-center gap-2"
+                    onClick={handleReconcileStatus}
+                    disabled={reconciling}
+                >
+                    {reconciling ? <Loader2 size={16} className="animate-spin" /> : <DatabaseZap size={16} />}
+                    {reconciling ? "Reconciliando..." : "Atualizar Status"}
+                </Button>
             </div>
 
             {/* Controls */}
@@ -684,6 +776,19 @@ const UnitizadoresPage = () => {
                         divergenceAlert={divergenceReasons.length > 0 ? divergenceReasons : null}
                         subtitle={selectedUnitizerId ? `Unitizador: ${selectedUnitizerId}` : null}
                     />
+                </div>
+            )}
+
+            {/* Page-level Firestore pagination sentinel */}
+            {hasMoreDocs && (
+                <div ref={pageSentinelRef} className="flex items-center justify-center gap-2 py-6 text-slate-400">
+                    <div className="w-5 h-5 border-2 border-slate-300 border-t-indigo-500 rounded-full animate-spin" />
+                    <span className="text-sm font-medium">Carregando mais notas...</span>
+                </div>
+            )}
+            {!hasMoreDocs && unitizadores.length > 0 && (
+                <div className="text-center py-4 text-xs text-slate-400 italic">
+                    Todas as {accumulatedNotes.length} notas foram carregadas ({unitizadores.length} unitizadores).
                 </div>
             )}
         </div>
