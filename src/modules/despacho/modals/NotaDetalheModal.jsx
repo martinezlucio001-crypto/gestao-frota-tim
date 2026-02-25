@@ -28,7 +28,7 @@ const formatDate = (val) => {
     return String(val);
 };
 
-const NotaDetalheModal = ({ nota, onClose, onProcessar, onToggleItem, onToggleAll, readOnly = false, divergenceAlert = null }) => {
+const NotaDetalheModal = ({ nota, onClose, onProcessar, onToggleItem, onToggleAll, readOnly = false, divergenceAlert = null, subtitle = null }) => {
     if (!nota) return null;
 
     const itens = nota.itens || [];
@@ -109,7 +109,7 @@ const NotaDetalheModal = ({ nota, onClose, onProcessar, onToggleItem, onToggleAl
                 isOpen={true}
                 onClose={onClose}
                 title={`Nota ${nota.nota_despacho}`}
-                subtitle="Detalhes recebidos via e-mail"
+                subtitle={subtitle || "Detalhes recebidos via e-mail"}
                 icon={FileText}
                 maxWidth="max-w-2xl"
             >

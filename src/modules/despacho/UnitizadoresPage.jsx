@@ -227,6 +227,7 @@ const UnitizadoresPage = () => {
     const [availableNotas, setAvailableNotas] = useState([]);
     const [selectedNotaIndex, setSelectedNotaIndex] = useState(0);
     const [divergenceReasons, setDivergenceReasons] = useState([]);
+    const [selectedUnitizerId, setSelectedUnitizerId] = useState(null);
 
     // Filters
     const [searchTerm, setSearchTerm] = useState('');
@@ -601,6 +602,7 @@ const UnitizadoresPage = () => {
                                 }
                             });
 
+                            setSelectedUnitizerId(u.id);
                             setAvailableNotas(labeled);
                             setSelectedNotaIndex(0);
                             setSelectedNota(labeled[0]);
@@ -638,12 +640,13 @@ const UnitizadoresPage = () => {
                     )}
                     <NotaDetalheModal
                         nota={selectedNota}
-                        onClose={() => { setSelectedNota(null); setAvailableNotas([]); setSelectedNotaIndex(0); setDivergenceReasons([]); }}
+                        onClose={() => { setSelectedNota(null); setAvailableNotas([]); setSelectedNotaIndex(0); setDivergenceReasons([]); setSelectedUnitizerId(null); }}
                         onProcessar={() => { }}
                         onToggleItem={() => { }}
                         onToggleAll={() => { }}
                         readOnly={true}
                         divergenceAlert={divergenceReasons.length > 0 ? divergenceReasons : null}
+                        subtitle={selectedUnitizerId ? `Unitizador: ${selectedUnitizerId}` : null}
                     />
                 </div>
             )}
