@@ -7,6 +7,7 @@ import {
     ArrowUp, ArrowDown, Filter, X
 } from 'lucide-react';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell, TableEmpty } from '../../components/ui/Table';
+import NotaDetalheModal from './modals/NotaDetalheModal';
 
 // --- Helper Components ---
 
@@ -56,7 +57,7 @@ const StatusLights = ({ unitizador }) => {
     );
 };
 
-const UnitizadorSection = ({ title, unitizadores, icon: Icon, colorClass, emptyMessage }) => {
+const UnitizadorSection = ({ title, unitizadores, icon: Icon, colorClass, emptyMessage, onRowClick }) => {
     const [sortConfig, setSortConfig] = useState({ key: 'data_entrada', direction: 'desc' });
 
     const sortedList = useMemo(() => {
@@ -160,7 +161,7 @@ const UnitizadorSection = ({ title, unitizadores, icon: Icon, colorClass, emptyM
                                 <TableEmpty message={emptyMessage || "Nenhum unitizador nesta seção."} />
                             ) : (
                                 sortedList.slice(0, 500).map((u, idx) => (
-                                    <TableRow key={`${u.id}-${idx}`} className="hover:bg-slate-50">
+                                    <TableRow key={`${u.id}-${idx}`} className={`hover:bg-slate-50 ${onRowClick ? 'cursor-pointer' : ''}`} onClick={() => onRowClick && onRowClick(u)}>
                                         <TableCell className="font-medium text-indigo-600 text-xs">
                                             {u.id}
                                             {u.lacre && u.lacre !== '-' && (
@@ -192,7 +193,7 @@ const UnitizadorSection = ({ title, unitizadores, icon: Icon, colorClass, emptyM
                         </div>
                     ) : (
                         sortedList.slice(0, 200).map((u, idx) => (
-                            <div key={`${u.id}-${idx}`} className="px-4 py-3">
+                            <div key={`${u.id}-${idx}`} className={`px-4 py-3 ${onRowClick ? 'cursor-pointer' : ''}`} onClick={() => onRowClick && onRowClick(u)}>
                                 <div className="flex items-center justify-between mb-1">
                                     <span className="font-bold text-indigo-600 text-xs">{u.id}</span>
                                     <StatusLights unitizador={u} />
@@ -219,6 +220,12 @@ const UnitizadorSection = ({ title, unitizadores, icon: Icon, colorClass, emptyM
 const UnitizadoresPage = () => {
     const [unitizadores, setUnitizadores] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [rawNotesMap, setRawNotesMap] = useState({});
+
+    // Dispatch note modal state
+    const [selectedNota, setSelectedNota] = useState(null);
+    const [availableNotas, setAvailableNotas] = useState([]);
+    const [selectedNotaIndex, setSelectedNotaIndex] = useState(0);
 
     // Filters
     const [searchTerm, setSearchTerm] = useState('');
@@ -258,6 +265,11 @@ const UnitizadoresPage = () => {
 
         const unsubscribe = onSnapshot(q, (snapshot) => {
             const rawNotes = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+            // Store raw notes in a map for quick lookup by nota_despacho
+            const notesLookup = {};
+            rawNotes.forEach(n => { notesLookup[n.nota_despacho || n.id] = n; });
+            setRawNotesMap(notesLookup);
 
             // --- DATA TRANSFORMATION LOGIC ---
             // Extract Entry (itens) and Exit (itens_conferencia e devolvidos)
@@ -343,6 +355,10 @@ const UnitizadoresPage = () => {
                 const isProcessed = entry?.statusNota === 'PROCESSADA' || entry?.statusNota === 'ENTREGUE';
 
                 // Base Object
+                // Collect all unique note IDs for entry and exit
+                const entryNoteIds = [...new Set(data.entries.map(e => e.notaId).filter(Boolean))];
+                const exitNoteIds = [...new Set(data.exits.map(e => e.notaId).filter(Boolean))];
+
                 const uObj = {
                     id: id,
                     flagEntry: hasEntry,
@@ -350,14 +366,16 @@ const UnitizadoresPage = () => {
                     flagExit: hasExit,
                     // Prefer Entry data, fallback to Exit data for Orphans
                     nota_origem: entry?.notaId || exit?.notaId || '?',
-                    origem: entry?.origem || exit?.origem || '?', // FIXED: Fallback to Exit origin
-                    destino: entry?.destino || exit?.destino || '?', // FIXED: Fallback to Exit destination
+                    origem: entry?.origem || exit?.origem || '?',
+                    destino: entry?.destino || exit?.destino || '?',
                     data_entrada: parseExcelDate(entry?.data || exit?.data || ''),
                     peso: entry?.peso || exit?.peso || '0',
                     lacre: entry?.lacre || exit?.lacre || '-',
                     status: 'UNKNOWN',
                     divergenceType: null,
-                    correiosMatch: entry?.correiosMatch || exit?.correiosMatch || false
+                    correiosMatch: entry?.correiosMatch || exit?.correiosMatch || false,
+                    entryNoteIds,
+                    exitNoteIds
                 };
 
                 // Section Categorization Logic (Mutually Exclusive for Lists)
@@ -544,9 +562,59 @@ const UnitizadoresPage = () => {
                         unitizadores={sections.divergentes}
                         icon={AlertCircle}
                         colorClass="border-l-rose-500"
+                        onRowClick={(u) => {
+                            // Collect all associated notes (entry + exit)
+                            const allNoteIds = [...new Set([...(u.entryNoteIds || []), ...(u.exitNoteIds || [])])];
+                            const notas = allNoteIds.map(id => rawNotesMap[id]).filter(Boolean);
+                            if (notas.length === 0) return;
+                            setAvailableNotas(notas);
+                            setSelectedNotaIndex(0);
+                            setSelectedNota(notas[0]);
+                        }}
                     />
                 )}
             </div>
+
+            {/* Dispatch Note Modal with Switch */}
+            {selectedNota && (
+                <div className="relative">
+                    {/* Switch between notes if multiple */}
+                    {availableNotas.length > 1 && (
+                        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[60] flex items-center bg-white rounded-full shadow-xl border border-slate-200 p-1 gap-1">
+                            {availableNotas.map((nota, idx) => {
+                                // Determine if this note has entry items (Recebimento) or exit items (Devolução)
+                                const hasEntry = (nota.itens || []).length > 0;
+                                const hasExit = (nota.itens_conferencia || []).length > 0;
+                                const label = hasEntry && hasExit ? `Nota ${idx + 1}` : hasEntry ? 'Recebimento' : 'Devolução';
+                                const isActive = idx === selectedNotaIndex;
+                                return (
+                                    <button
+                                        key={nota.nota_despacho || idx}
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            setSelectedNotaIndex(idx);
+                                            setSelectedNota(availableNotas[idx]);
+                                        }}
+                                        className={`px-4 py-2 rounded-full text-sm font-bold transition-all ${isActive
+                                                ? 'bg-indigo-600 text-white shadow-md'
+                                                : 'text-slate-600 hover:bg-slate-100'
+                                            }`}
+                                    >
+                                        {label}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    )}
+                    <NotaDetalheModal
+                        nota={selectedNota}
+                        onClose={() => { setSelectedNota(null); setAvailableNotas([]); setSelectedNotaIndex(0); }}
+                        onProcessar={() => { }}
+                        onToggleItem={() => { }}
+                        onToggleAll={() => { }}
+                    />
+                </div>
+            )}
         </div>
     );
 };

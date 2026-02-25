@@ -1258,6 +1258,10 @@ const EntryDetailsModal = ({ isOpen, onClose, entry, truck, onSave, onDelete, is
                     setZoom(1.25);
                   } else if (zoom === 1.25) {
                     setZoom(1.50);
+                  } else if (zoom === 1.50) {
+                    setZoom(1.75);
+                  } else if (zoom === 1.75) {
+                    setZoom(2.00);
                   } else {
                     setZoom(1);
                     setTimeout(() => setZoomOrigin('center center'), 200); // Reseta após a transição
@@ -1267,7 +1271,7 @@ const EntryDetailsModal = ({ isOpen, onClose, entry, truck, onSave, onDelete, is
                   transform: `scale(${zoom})`,
                   transformOrigin: zoomOrigin,
                   transition: 'transform 0.2s ease-out',
-                  cursor: zoom >= 1.5 ? 'zoom-out' : 'zoom-in'
+                  cursor: zoom >= 2.0 ? 'zoom-out' : 'zoom-in'
                 }}
                 alt="Preview"
                 className="max-w-full max-h-full object-contain"

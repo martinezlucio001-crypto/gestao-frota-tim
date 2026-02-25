@@ -2,6 +2,32 @@ import React, { useState } from 'react';
 import { Modal, ModalFooter, Button } from '../../../components/ui';
 import { FileText, Package, AlertTriangle } from 'lucide-react';
 
+// Helper: format date that may be an Excel serial number, a string, or a Firestore Timestamp
+const formatDate = (val) => {
+    if (!val) return '-';
+    // Firestore Timestamp
+    if (val.toDate) {
+        const d = val.toDate();
+        return d.toLocaleString('pt-BR');
+    }
+    // Already formatted string (contains /)
+    if (typeof val === 'string' && val.includes('/')) return val;
+    // Excel serial number
+    const num = Number(val);
+    if (!isNaN(num) && num > 10000) {
+        const ms = (num - 25569) * 86400 * 1000;
+        const d = new Date(ms);
+        const utc = new Date(d.getTime() + d.getTimezoneOffset() * 60000);
+        const dd = String(utc.getDate()).padStart(2, '0');
+        const mm = String(utc.getMonth() + 1).padStart(2, '0');
+        const yy = utc.getFullYear();
+        const hh = String(utc.getHours()).padStart(2, '0');
+        const mi = String(utc.getMinutes()).padStart(2, '0');
+        return `${dd}/${mm}/${yy} ${hh}:${mi}`;
+    }
+    return String(val);
+};
+
 const NotaDetalheModal = ({ nota, onClose, onProcessar, onToggleItem, onToggleAll }) => {
     if (!nota) return null;
 
@@ -91,7 +117,7 @@ const NotaDetalheModal = ({ nota, onClose, onProcessar, onToggleItem, onToggleAl
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 mb-4 sm:mb-6 bg-slate-50 p-3 sm:p-4 rounded-lg border border-slate-100">
                     <div>
                         <span className="text-xs text-slate-500 uppercase font-bold block mb-1">Data</span>
-                        <p className="font-medium text-slate-700 text-sm sm:text-base">{nota.data_ocorrencia}</p>
+                        <p className="font-medium text-slate-700 text-sm sm:text-base">{formatDate(nota.data_ocorrencia)}</p>
                     </div>
                     <div>
                         <span className="text-xs text-slate-500 uppercase font-bold block mb-1">Origem</span>

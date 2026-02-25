@@ -34,6 +34,35 @@ const ImportExportPage = () => {
         return cityName; // Keep original if no match found
     };
 
+    // Helper: convert Excel serial date to DD/MM/YYYY HH:mm string
+    const parseExcelDate = (val) => {
+        if (!val) return '';
+        // Already a formatted string (contains /)
+        if (typeof val === 'string' && val.includes('/')) return val;
+        const num = Number(val);
+        if (isNaN(num)) return String(val);
+        // Excel epoch: day 1 = Jan 1 1900; JS epoch offset = 25569 days
+        const ms = (num - 25569) * 86400 * 1000;
+        const d = new Date(ms);
+        // Adjust for local timezone so the day doesn't shift
+        const utc = new Date(d.getTime() + d.getTimezoneOffset() * 60000);
+        const dd = String(utc.getDate()).padStart(2, '0');
+        const mm = String(utc.getMonth() + 1).padStart(2, '0');
+        const yy = utc.getFullYear();
+        const hh = String(utc.getHours()).padStart(2, '0');
+        const mi = String(utc.getMinutes()).padStart(2, '0');
+        return `${dd}/${mm}/${yy} ${hh}:${mi}`;
+    };
+
+    // Helper: normalize peso value from Excel
+    // Excel may deliver 22,45 as number 22.45 or string "22,45"
+    const parsePeso = (raw) => {
+        if (raw === undefined || raw === null || raw === '') return '0';
+        if (typeof raw === 'number') return raw.toString();
+        // String: replace comma decimal separator
+        return raw.replace(',', '.');
+    };
+
     // --- IMPORT LOGIC ---
 
     const handleFileChange = async (e) => {
@@ -84,15 +113,13 @@ const ImportExportPage = () => {
                     batches[notaOrigem] = {
                         origem: findClosestCity(row['Origem']),
                         destino: findClosestCity(row['Destino']),
-                        data: row['Data'] || '',
+                        data: parseExcelDate(row['Data']),
                         itens: [],
                         itens_conferencia: []
                     };
                 }
 
-                const pesoRaw = row['Peso'] || '0';
-                // Normalize peso: 12,8 -> 12.8
-                const peso = typeof pesoRaw === 'string' ? pesoRaw.replace(',', '.') : pesoRaw;
+                const peso = parsePeso(row['Peso']);
 
                 const itemData = {
                     unitizador: row['Unitizador'],

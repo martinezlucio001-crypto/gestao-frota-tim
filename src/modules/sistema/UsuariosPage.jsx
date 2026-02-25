@@ -49,8 +49,8 @@ const PORTALS = [
     },
     {
         id: 'portal_4',
-        label: 'Portal 4',
-        description: 'Portal futuro (em desenvolvimento)',
+        label: 'Portal de Controle BEL',
+        description: 'Gestão de controle BEL (em desenvolvimento)',
         icon: Monitor,
         color: 'purple'
     },
