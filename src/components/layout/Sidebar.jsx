@@ -92,7 +92,7 @@ const menuItems = [
 ];
 
 export const Sidebar = ({ currentView, onNavigate, isCollapsed, onToggleCollapse }) => {
-    const [expandedMenus, setExpandedMenus] = useState(['combustivel', 'despacho', 'receita', 'financeiro']);
+    const [expandedMenus, setExpandedMenus] = useState([]);
     const [isMobileOpen, setIsMobileOpen] = useState(false);
 
     const toggleSubmenu = (menuId) => {

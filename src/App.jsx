@@ -19,6 +19,8 @@ import {
   BarChart3,
   ChevronRight,
   Download,
+  ZoomIn,
+  ZoomOut,
   Upload,
   FileSpreadsheet,
   FileCode,
@@ -803,6 +805,7 @@ const EntryDetailsModal = ({ isOpen, onClose, entry, truck, onSave, onDelete, is
   });
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [previewingImage, setPreviewingImage] = useState(null); // 'odometer' | 'receipt' | null
+  const [zoom, setZoom] = useState(1);
   const [newOdometerBeforeFile, setNewOdometerBeforeFile] = useState(null);
   const [newOdometerAfterFile, setNewOdometerAfterFile] = useState(null);
   const [newReceiptFile, setNewReceiptFile] = useState(null);
@@ -1193,27 +1196,54 @@ const EntryDetailsModal = ({ isOpen, onClose, entry, truck, onSave, onDelete, is
 
       {/* Modal de Preview de Imagem (interno) */}
       {previewingImage && (
-        <div className="fixed inset-0 bg-slate-900/95 backdrop-blur-lg flex items-center justify-center z-[110] p-4" onClick={() => setPreviewingImage(null)}>
-          <div className="relative max-w-3xl w-full" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 bg-slate-900/95 backdrop-blur-lg flex items-center justify-center z-[110] p-4" onClick={() => { setPreviewingImage(null); setZoom(1); }}>
+          <div className="relative max-w-4xl w-full h-full flex flex-col" onClick={e => e.stopPropagation()}>
             <div className="flex justify-between items-center mb-4">
               <p className="text-white font-bold text-lg">
                 {previewingImage === 'odometer-before' && 'Odômetro - Antes do Abastecimento'}
                 {previewingImage === 'odometer-after' && 'Odômetro - Depois do Abastecimento'}
                 {previewingImage === 'receipt' && 'Foto do Recibo'}
               </p>
-              <button onClick={() => setPreviewingImage(null)} className="bg-rose-500/20 hover:bg-rose-500 text-rose-500 hover:text-white p-2 rounded-xl transition-all">
-                <X size={20} />
-              </button>
+              <div className="flex gap-2 items-center">
+                <button onClick={() => setZoom(z => Math.max(z - 0.25, 0.5))} className="bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white p-2 rounded-xl transition-all" title="Reduzir Zoom">
+                  <ZoomOut size={20} />
+                </button>
+                <span className="text-white font-mono text-sm w-12 text-center">{Math.round(zoom * 100)}%</span>
+                <button onClick={() => setZoom(z => Math.min(z + 0.5, 4))} className="bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white p-2 rounded-xl transition-all" title="Aumentar Zoom">
+                  <ZoomIn size={20} />
+                </button>
+                <div className="w-px h-6 bg-slate-700 mx-1"></div>
+                <button
+                  onClick={() => {
+                    const src = previewingImage === 'odometer-before' ? (entry.odometerBeforePhoto || entry.odometerUrl) : previewingImage === 'odometer-after' ? entry.odometerAfterPhoto : receiptPhoto;
+                    // Abrir em nova aba (download direto costuma ser bloqueado pelo CORS)
+                    if (src) window.open(src, '_blank');
+                  }}
+                  className="bg-indigo-500 hover:bg-indigo-600 text-white p-2 rounded-xl transition-all ml-1" title="Baixar/Ver Original"
+                >
+                  <Download size={20} />
+                </button>
+                <button onClick={() => { setPreviewingImage(null); setZoom(1); }} className="bg-rose-500/20 hover:bg-rose-500 text-rose-500 hover:text-white p-2 rounded-xl transition-all ml-2" title="Fechar">
+                  <X size={20} />
+                </button>
+              </div>
             </div>
-            <img
-              src={
-                previewingImage === 'odometer-before' ? (entry.odometerBeforePhoto || entry.odometerUrl) :
-                  previewingImage === 'odometer-after' ? entry.odometerAfterPhoto :
-                    receiptPhoto
-              }
-              alt="Preview"
-              className="max-w-full max-h-[70vh] object-contain rounded-2xl mx-auto bg-white p-2"
-            />
+            <div className="flex-1 overflow-auto flex items-center justify-center relative bg-black/50 rounded-2xl border border-slate-700/50 custom-scrollbar p-0">
+              <img
+                src={
+                  previewingImage === 'odometer-before' ? (entry.odometerBeforePhoto || entry.odometerUrl) :
+                    previewingImage === 'odometer-after' ? entry.odometerAfterPhoto :
+                      receiptPhoto
+                }
+                style={{
+                  transform: `scale(${zoom})`,
+                  transformOrigin: 'center center',
+                  transition: 'transform 0.2s ease-out'
+                }}
+                alt="Preview"
+                className="max-w-full max-h-full object-contain cursor-move"
+              />
+            </div>
           </div>
         </div>
       )}

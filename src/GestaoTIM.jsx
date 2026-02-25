@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
     signInWithEmailAndPassword,
     onAuthStateChanged,
@@ -132,6 +132,23 @@ const GestaoTIM = () => {
     const [currentView, setCurrentView] = useState('dashboard');
     const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
     const [currentUser, setCurrentUser] = useState(null);
+    const scrollPositions = useRef({});
+
+    const handleNavigateView = (newView) => {
+        if (newView === currentView) return;
+        scrollPositions.current[currentView] = window.scrollY;
+        setCurrentView(newView);
+    };
+
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            window.scrollTo({
+                top: scrollPositions.current[currentView] || 0,
+                behavior: 'instant'
+            });
+        }, 10);
+        return () => clearTimeout(timer);
+    }, [currentView]);
 
     // Verificar autenticação
     useEffect(() => {
@@ -208,7 +225,7 @@ const GestaoTIM = () => {
     const renderContent = () => {
         switch (currentView) {
             case 'dashboard':
-                return <DashboardGeral onNavigate={setCurrentView} />;
+                return <DashboardGeral onNavigate={handleNavigateView} />;
 
             // Módulo Combustível
             case 'combustivel-dashboard':
@@ -268,7 +285,7 @@ const GestaoTIM = () => {
                 );
 
             default:
-                return <DashboardGeral onNavigate={setCurrentView} />;
+                return <DashboardGeral onNavigate={handleNavigateView} />;
         }
     };
 
@@ -277,7 +294,7 @@ const GestaoTIM = () => {
             {/* Sidebar */}
             <Sidebar
                 currentView={currentView}
-                onNavigate={setCurrentView}
+                onNavigate={handleNavigateView}
                 isCollapsed={isSidebarCollapsed}
                 onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
             />
