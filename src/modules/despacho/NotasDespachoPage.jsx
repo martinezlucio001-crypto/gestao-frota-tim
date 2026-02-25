@@ -85,7 +85,7 @@ const StatusLights = ({ nota }) => {
 const NOTES_PAGE_SIZE = 50;
 
 // Section Component
-const NotaSection = ({ title, notas, icon: Icon, colorClass, onOpenNota, emptyMessage }) => {
+const NotaSection = ({ title, notas, icon: Icon, colorClass, onOpenNota, emptyMessage, hasMoreFirestoreDocs, onLoadMore }) => {
     const [sortConfig, setSortConfig] = useState({ key: 'data_ocorrencia', direction: 'desc' });
     const [visibleCount, setVisibleCount] = useState(NOTES_PAGE_SIZE);
     const sentinelRef = useRef(null);
@@ -349,11 +349,21 @@ const NotaSection = ({ title, notas, icon: Icon, colorClass, onOpenNota, emptyMe
                     )}
                 </div>
 
-                {/* Infinite scroll sentinel + loader */}
+                {/* Infinite scroll sentinel + loader (client-side) */}
                 {hasMore && (
                     <div ref={sentinelRef} className="flex items-center justify-center gap-2 py-4 text-slate-400">
                         <div className="w-4 h-4 border-2 border-slate-300 border-t-indigo-500 rounded-full animate-spin" />
                         <span className="text-xs font-medium">Carregando...</span>
+                    </div>
+                )}
+                {/* Firestore loading sentinel - when section items are exhausted but more exist in DB */}
+                {!hasMore && hasMoreFirestoreDocs && notas.length > 0 && (
+                    <div
+                        className="flex items-center justify-center gap-2 py-4 text-indigo-400 cursor-pointer hover:bg-indigo-50 transition-colors"
+                        onClick={onLoadMore}
+                    >
+                        <div className="w-4 h-4 border-2 border-indigo-200 border-t-indigo-500 rounded-full animate-spin" />
+                        <span className="text-xs font-medium">Carregando mais notas do servidor...</span>
                     </div>
                 )}
             </div>
@@ -941,6 +951,8 @@ const NotasDespachoPage = () => {
                     colorClass="border-l-yellow-400"
                     onOpenNota={setSelectedNota}
                     emptyMessage="Nenhuma nota pendente."
+                    hasMoreFirestoreDocs={hasMoreDocs}
+                    onLoadMore={loadMore}
                 />
 
                 {/* 2. Processado - Amarelo + Azul */}
@@ -950,6 +962,8 @@ const NotasDespachoPage = () => {
                     icon={Truck}
                     colorClass="border-l-blue-500"
                     onOpenNota={setSelectedNota}
+                    hasMoreFirestoreDocs={hasMoreDocs}
+                    onLoadMore={loadMore}
                 />
 
                 {/* 3. Concluído - 3 Bolinhas */}
@@ -959,6 +973,8 @@ const NotasDespachoPage = () => {
                     icon={CheckCircle2}
                     colorClass="border-l-emerald-500"
                     onOpenNota={setSelectedNota}
+                    hasMoreFirestoreDocs={hasMoreDocs}
+                    onLoadMore={loadMore}
                 />
 
                 {/* 4. Notas Órfãs (Entregues sem Entrada) */}
@@ -969,6 +985,8 @@ const NotasDespachoPage = () => {
                         icon={AlertCircle}
                         colorClass="border-l-orange-400"
                         onOpenNota={setSelectedNota}
+                        hasMoreFirestoreDocs={hasMoreDocs}
+                        onLoadMore={loadMore}
                     />
                 )}
 
@@ -980,23 +998,13 @@ const NotasDespachoPage = () => {
                         icon={AlertCircle}
                         colorClass="border-l-rose-500"
                         onOpenNota={setSelectedNota}
+                        hasMoreFirestoreDocs={hasMoreDocs}
+                        onLoadMore={loadMore}
                     />
                 )}
 
             </div>
 
-            {/* Page-level Firestore pagination sentinel */}
-            {hasMoreDocs && (
-                <div ref={pageSentinelRef} className="flex items-center justify-center gap-2 py-6 text-slate-400">
-                    <div className="w-5 h-5 border-2 border-slate-300 border-t-indigo-500 rounded-full animate-spin" />
-                    <span className="text-sm font-medium">Carregando mais notas...</span>
-                </div>
-            )}
-            {!hasMoreDocs && notas.length > 0 && (
-                <div className="text-center py-4 text-xs text-slate-400 italic">
-                    Todas as {notas.length} notas foram carregadas.
-                </div>
-            )}
 
             {/* Modais */}
             {selectedNota && !isDespachoModalOpen && (

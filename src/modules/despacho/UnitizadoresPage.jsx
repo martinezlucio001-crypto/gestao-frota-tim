@@ -59,7 +59,7 @@ const StatusLights = ({ unitizador }) => {
 
 const PAGE_SIZE = 50;
 
-const UnitizadorSection = ({ title, unitizadores, icon: Icon, colorClass, emptyMessage, onRowClick }) => {
+const UnitizadorSection = ({ title, unitizadores, icon: Icon, colorClass, emptyMessage, onRowClick, hasMoreFirestoreDocs, onLoadMore }) => {
     const [sortConfig, setSortConfig] = useState({ key: 'data_entrada', direction: 'desc' });
     const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
     const sentinelRef = useRef(null);
@@ -239,11 +239,21 @@ const UnitizadorSection = ({ title, unitizadores, icon: Icon, colorClass, emptyM
                     )}
                 </div>
 
-                {/* Infinite scroll sentinel + loader */}
+                {/* Infinite scroll sentinel + loader (client-side) */}
                 {hasMore && (
                     <div ref={sentinelRef} className="flex items-center justify-center gap-2 py-4 text-slate-400">
                         <div className="w-4 h-4 border-2 border-slate-300 border-t-indigo-500 rounded-full animate-spin" />
                         <span className="text-xs font-medium">Carregando...</span>
+                    </div>
+                )}
+                {/* Firestore loading sentinel */}
+                {!hasMore && hasMoreFirestoreDocs && unitizadores.length > 0 && (
+                    <div
+                        className="flex items-center justify-center gap-2 py-4 text-indigo-400 cursor-pointer hover:bg-indigo-50 transition-colors"
+                        onClick={onLoadMore}
+                    >
+                        <div className="w-4 h-4 border-2 border-indigo-200 border-t-indigo-500 rounded-full animate-spin" />
+                        <span className="text-xs font-medium">Carregando mais dados do servidor...</span>
                     </div>
                 )}
             </div>
@@ -659,6 +669,8 @@ const UnitizadoresPage = () => {
                     icon={Package}
                     colorClass="border-l-yellow-400"
                     emptyMessage="Nenhum unitizador em estoque."
+                    hasMoreFirestoreDocs={hasMoreDocs}
+                    onLoadMore={loadMore}
                 />
 
                 <UnitizadorSection
@@ -667,6 +679,8 @@ const UnitizadoresPage = () => {
                     icon={Truck}
                     colorClass="border-l-blue-500"
                     emptyMessage="Nenhum unitizador em trânsito."
+                    hasMoreFirestoreDocs={hasMoreDocs}
+                    onLoadMore={loadMore}
                 />
 
                 <UnitizadorSection
@@ -675,6 +689,8 @@ const UnitizadoresPage = () => {
                     icon={CheckCircle2}
                     colorClass="border-l-emerald-500"
                     emptyMessage="Nenhum unitizador finalizado."
+                    hasMoreFirestoreDocs={hasMoreDocs}
+                    onLoadMore={loadMore}
                 />
 
                 {sections.orfaos.length > 0 && (
@@ -683,6 +699,8 @@ const UnitizadoresPage = () => {
                         unitizadores={sections.orfaos}
                         icon={AlertCircle}
                         colorClass="border-l-orange-400"
+                        hasMoreFirestoreDocs={hasMoreDocs}
+                        onLoadMore={loadMore}
                     />
                 )}
 
@@ -735,6 +753,8 @@ const UnitizadoresPage = () => {
                             setSelectedNotaIndex(0);
                             setSelectedNota(labeled[0]);
                         }}
+                        hasMoreFirestoreDocs={hasMoreDocs}
+                        onLoadMore={loadMore}
                     />
                 )}
             </div>
@@ -776,19 +796,6 @@ const UnitizadoresPage = () => {
                         divergenceAlert={divergenceReasons.length > 0 ? divergenceReasons : null}
                         subtitle={selectedUnitizerId ? `Unitizador: ${selectedUnitizerId}` : null}
                     />
-                </div>
-            )}
-
-            {/* Page-level Firestore pagination sentinel */}
-            {hasMoreDocs && (
-                <div ref={pageSentinelRef} className="flex items-center justify-center gap-2 py-6 text-slate-400">
-                    <div className="w-5 h-5 border-2 border-slate-300 border-t-indigo-500 rounded-full animate-spin" />
-                    <span className="text-sm font-medium">Carregando mais notas...</span>
-                </div>
-            )}
-            {!hasMoreDocs && unitizadores.length > 0 && (
-                <div className="text-center py-4 text-xs text-slate-400 italic">
-                    Todas as {accumulatedNotes.length} notas foram carregadas ({unitizadores.length} unitizadores).
                 </div>
             )}
         </div>
