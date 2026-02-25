@@ -932,7 +932,16 @@ const DriverPortal = () => {
                                     inputMode="numeric"
                                     pattern="[0-9]*"
                                     value={formData.newMileage}
-                                    onChange={(e) => setFormData({ ...formData, newMileage: e.target.value.replace(/\D/g, '') })}
+                                    onKeyDown={(e) => {
+                                        if (e.key === ',' || e.key === '.' || e.key === '-' || e.key === ' ') {
+                                            e.preventDefault();
+                                        }
+                                    }}
+                                    onChange={(e) => {
+                                        const cleanValue = e.target.value.replace(/\D/g, '');
+                                        e.target.value = cleanValue; // Força atualização imediata no DOM para teclados de celular
+                                        setFormData({ ...formData, newMileage: cleanValue });
+                                    }}
                                     placeholder="Ex: 125000"
                                     required
                                     className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none"
