@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { collection, query, orderBy, onSnapshot, doc, updateDoc, getDoc } from 'firebase/firestore';
 import { db, appId } from '../../lib/firebase';
 import { Card, Button, Input, Select, Modal, ModalFooter } from '../../components/ui';
@@ -82,9 +82,18 @@ const StatusLights = ({ nota }) => {
     );
 };
 
+const NOTES_PAGE_SIZE = 50;
+
 // Section Component
 const NotaSection = ({ title, notas, icon: Icon, colorClass, onOpenNota, emptyMessage }) => {
     const [sortConfig, setSortConfig] = useState({ key: 'data_ocorrencia', direction: 'desc' });
+    const [visibleCount, setVisibleCount] = useState(NOTES_PAGE_SIZE);
+    const sentinelRef = useRef(null);
+
+    // Reset visible count when data or sort changes
+    useEffect(() => {
+        setVisibleCount(NOTES_PAGE_SIZE);
+    }, [notas, sortConfig]);
 
     const sortedNotas = useMemo(() => {
         let sortable = [...notas];
@@ -163,6 +172,24 @@ const NotaSection = ({ title, notas, icon: Icon, colorClass, onOpenNota, emptyMe
         return sortConfig.direction === 'asc' ? <ArrowUp size={14} /> : <ArrowDown size={14} />;
     };
 
+    const visibleNotas = sortedNotas.slice(0, visibleCount);
+    const hasMore = visibleCount < sortedNotas.length;
+
+    // IntersectionObserver for infinite scroll
+    useEffect(() => {
+        if (!sentinelRef.current || !hasMore) return;
+        const observer = new IntersectionObserver(
+            (entries) => {
+                if (entries[0].isIntersecting) {
+                    setVisibleCount(prev => Math.min(prev + NOTES_PAGE_SIZE, sortedNotas.length));
+                }
+            },
+            { threshold: 0.1 }
+        );
+        observer.observe(sentinelRef.current);
+        return () => observer.disconnect();
+    }, [hasMore, sortedNotas.length, visibleCount]);
+
     return (
         <Card className={`overflow-hidden border-l-4 ${colorClass}`}>
             <div className="bg-slate-50 px-4 py-3 border-b border-slate-100 flex justify-between items-center">
@@ -215,7 +242,7 @@ const NotaSection = ({ title, notas, icon: Icon, colorClass, onOpenNota, emptyMe
                             {sortedNotas.length === 0 ? (
                                 <TableEmpty message={emptyMessage || "Nenhuma nota nesta seção."} />
                             ) : (
-                                sortedNotas.map(nota => (
+                                visibleNotas.map(nota => (
                                     <TableRow
                                         key={nota.id}
                                         className="cursor-pointer hover:bg-slate-50 transition-colors"
@@ -275,7 +302,7 @@ const NotaSection = ({ title, notas, icon: Icon, colorClass, onOpenNota, emptyMe
                             {emptyMessage || "Nenhuma nota nesta seção."}
                         </div>
                     ) : (
-                        sortedNotas.map(nota => (
+                        visibleNotas.map(nota => (
                             <div
                                 key={nota.id}
                                 className="px-4 py-3 active:bg-slate-50 transition-colors cursor-pointer"
@@ -317,6 +344,14 @@ const NotaSection = ({ title, notas, icon: Icon, colorClass, onOpenNota, emptyMe
                         ))
                     )}
                 </div>
+
+                {/* Infinite scroll sentinel + loader */}
+                {hasMore && (
+                    <div ref={sentinelRef} className="flex items-center justify-center gap-2 py-4 text-slate-400">
+                        <div className="w-4 h-4 border-2 border-slate-300 border-t-indigo-500 rounded-full animate-spin" />
+                        <span className="text-xs font-medium">Carregando...</span>
+                    </div>
+                )}
             </div>
         </Card>
     );

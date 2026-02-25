@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { collection, query, orderBy, onSnapshot } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { Card, Button } from '../../components/ui';
@@ -57,8 +57,17 @@ const StatusLights = ({ unitizador }) => {
     );
 };
 
+const PAGE_SIZE = 50;
+
 const UnitizadorSection = ({ title, unitizadores, icon: Icon, colorClass, emptyMessage, onRowClick }) => {
     const [sortConfig, setSortConfig] = useState({ key: 'data_entrada', direction: 'desc' });
+    const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+    const sentinelRef = useRef(null);
+
+    // Reset visible count when data or sort changes
+    useEffect(() => {
+        setVisibleCount(PAGE_SIZE);
+    }, [unitizadores, sortConfig]);
 
     const sortedList = useMemo(() => {
         let sortable = [...unitizadores];
@@ -113,6 +122,24 @@ const UnitizadorSection = ({ title, unitizadores, icon: Icon, colorClass, emptyM
         return sortConfig.direction === 'asc' ? <ArrowUp size={14} /> : <ArrowDown size={14} />;
     };
 
+    const visibleList = sortedList.slice(0, visibleCount);
+    const hasMore = visibleCount < sortedList.length;
+
+    // IntersectionObserver for infinite scroll
+    useEffect(() => {
+        if (!sentinelRef.current || !hasMore) return;
+        const observer = new IntersectionObserver(
+            (entries) => {
+                if (entries[0].isIntersecting) {
+                    setVisibleCount(prev => Math.min(prev + PAGE_SIZE, sortedList.length));
+                }
+            },
+            { threshold: 0.1 }
+        );
+        observer.observe(sentinelRef.current);
+        return () => observer.disconnect();
+    }, [hasMore, sortedList.length, visibleCount]);
+
     return (
         <Card className={`overflow-hidden border-l-4 ${colorClass}`}>
             <div className="bg-slate-50 px-4 py-3 border-b border-slate-100 flex justify-between items-center">
@@ -160,7 +187,7 @@ const UnitizadorSection = ({ title, unitizadores, icon: Icon, colorClass, emptyM
                             {sortedList.length === 0 ? (
                                 <TableEmpty message={emptyMessage || "Nenhum unitizador nesta seção."} />
                             ) : (
-                                sortedList.slice(0, 500).map((u, idx) => (
+                                visibleList.map((u, idx) => (
                                     <TableRow key={`${u.id}-${idx}`} className={`hover:bg-slate-50 ${onRowClick ? 'cursor-pointer' : ''}`} onClick={() => onRowClick && onRowClick(u)}>
                                         <TableCell className="font-medium text-indigo-600 text-xs">
                                             {u.id}
@@ -192,7 +219,7 @@ const UnitizadorSection = ({ title, unitizadores, icon: Icon, colorClass, emptyM
                             {emptyMessage || "Vazio."}
                         </div>
                     ) : (
-                        sortedList.slice(0, 200).map((u, idx) => (
+                        visibleList.map((u, idx) => (
                             <div key={`${u.id}-${idx}`} className={`px-4 py-3 ${onRowClick ? 'cursor-pointer' : ''}`} onClick={() => onRowClick && onRowClick(u)}>
                                 <div className="flex items-center justify-between mb-1">
                                     <span className="font-bold text-indigo-600 text-xs">{u.id}</span>
@@ -210,6 +237,14 @@ const UnitizadorSection = ({ title, unitizadores, icon: Icon, colorClass, emptyM
                         ))
                     )}
                 </div>
+
+                {/* Infinite scroll sentinel + loader */}
+                {hasMore && (
+                    <div ref={sentinelRef} className="flex items-center justify-center gap-2 py-4 text-slate-400">
+                        <div className="w-4 h-4 border-2 border-slate-300 border-t-indigo-500 rounded-full animate-spin" />
+                        <span className="text-xs font-medium">Carregando...</span>
+                    </div>
+                )}
             </div>
         </Card>
     );
