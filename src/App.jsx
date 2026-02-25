@@ -19,8 +19,6 @@ import {
   BarChart3,
   ChevronRight,
   Download,
-  ZoomIn,
-  ZoomOut,
   Upload,
   FileSpreadsheet,
   FileCode,
@@ -806,6 +804,7 @@ const EntryDetailsModal = ({ isOpen, onClose, entry, truck, onSave, onDelete, is
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [previewingImage, setPreviewingImage] = useState(null); // 'odometer' | 'receipt' | null
   const [zoom, setZoom] = useState(1);
+  const [zoomOrigin, setZoomOrigin] = useState('center center');
   const [newOdometerBeforeFile, setNewOdometerBeforeFile] = useState(null);
   const [newOdometerAfterFile, setNewOdometerAfterFile] = useState(null);
   const [newReceiptFile, setNewReceiptFile] = useState(null);
@@ -1195,55 +1194,87 @@ const EntryDetailsModal = ({ isOpen, onClose, entry, truck, onSave, onDelete, is
       </form>
 
       {/* Modal de Preview de Imagem (interno) */}
+      {/* Modal de Preview de Imagem (interno) */}
       {previewingImage && (
-        <div className="fixed inset-0 bg-slate-900/95 backdrop-blur-lg flex items-center justify-center z-[110] p-4" onClick={() => { setPreviewingImage(null); setZoom(1); }}>
-          <div className="relative max-w-4xl w-full h-full flex flex-col" onClick={e => e.stopPropagation()}>
-            <div className="flex justify-between items-center mb-4">
-              <p className="text-white font-bold text-lg">
+        <div className="fixed inset-0 bg-slate-900/95 backdrop-blur-lg flex items-center justify-center z-[110] p-4" onClick={() => { setPreviewingImage(null); setZoom(1); setZoomOrigin('center center'); }}>
+          <div className="relative max-w-5xl w-full h-full flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-between items-center mb-4 shrink-0">
+              <p className="text-white font-bold text-lg drop-shadow-md">
                 {previewingImage === 'odometer-before' && 'Odômetro - Antes do Abastecimento'}
                 {previewingImage === 'odometer-after' && 'Odômetro - Depois do Abastecimento'}
                 {previewingImage === 'receipt' && 'Foto do Recibo'}
               </p>
               <div className="flex gap-2 items-center">
-                <button onClick={() => setZoom(z => Math.max(z - 0.25, 0.5))} className="bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white p-2 rounded-xl transition-all" title="Reduzir Zoom">
-                  <ZoomOut size={20} />
-                </button>
-                <span className="text-white font-mono text-sm w-12 text-center">{Math.round(zoom * 100)}%</span>
-                <button onClick={() => setZoom(z => Math.min(z + 0.5, 4))} className="bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white p-2 rounded-xl transition-all" title="Aumentar Zoom">
-                  <ZoomIn size={20} />
-                </button>
-                <div className="w-px h-6 bg-slate-700 mx-1"></div>
+                <span className="text-white/60 font-mono text-sm px-2 mt-0.5">Clique na imagem para zoom</span>
+                <span className="text-white bg-slate-800 font-mono text-sm w-14 py-1 text-center rounded-lg">{Math.round(zoom * 100)}%</span>
+                <div className="w-px h-6 bg-slate-700/50 mx-1"></div>
                 <button
-                  onClick={() => {
+                  onClick={async () => {
                     const src = previewingImage === 'odometer-before' ? (entry.odometerBeforePhoto || entry.odometerUrl) : previewingImage === 'odometer-after' ? entry.odometerAfterPhoto : receiptPhoto;
-                    // Abrir em nova aba (download direto costuma ser bloqueado pelo CORS)
-                    if (src) window.open(src, '_blank');
+                    if (!src) return;
+                    try {
+                      // Forçar download baixando o blob para driblar bloqueador de popup
+                      const response = await fetch(src, { mode: 'cors' });
+                      if (!response.ok) throw new Error('Network response was not ok');
+                      const blob = await response.blob();
+                      const blobUrl = window.URL.createObjectURL(blob);
+                      const a = document.createElement('a');
+                      a.href = blobUrl;
+                      a.download = `comprovante_${previewingImage}_${entry.date || Date.now()}.jpg`;
+                      document.body.appendChild(a);
+                      a.click();
+                      document.body.removeChild(a);
+                      setTimeout(() => window.URL.revokeObjectURL(blobUrl), 100);
+                    } catch (e) {
+                      console.error('Download falhou, abrindo aba', e);
+                      window.open(src, '_blank');
+                    }
                   }}
-                  className="bg-indigo-500 hover:bg-indigo-600 text-white p-2 rounded-xl transition-all ml-1" title="Baixar/Ver Original"
+                  className="bg-indigo-500 hover:bg-indigo-600 text-white p-2 rounded-xl transition-all ml-1" title="Baixar Original"
                 >
                   <Download size={20} />
                 </button>
-                <button onClick={() => { setPreviewingImage(null); setZoom(1); }} className="bg-rose-500/20 hover:bg-rose-500 text-rose-500 hover:text-white p-2 rounded-xl transition-all ml-2" title="Fechar">
+                <button onClick={() => { setPreviewingImage(null); setZoom(1); setZoomOrigin('center center'); }} className="bg-rose-500/20 hover:bg-rose-500 text-rose-500 hover:text-white p-2 rounded-xl transition-all ml-2" title="Fechar">
                   <X size={20} />
                 </button>
               </div>
             </div>
-            <div className="flex-1 overflow-auto flex items-center justify-center relative bg-black/50 rounded-2xl border border-slate-700/50 custom-scrollbar p-0">
+
+            <div className="flex-1 overflow-auto flex items-center justify-center relative bg-black/40 rounded-2xl border border-slate-700/50 custom-scrollbar p-0">
               <img
                 src={
                   previewingImage === 'odometer-before' ? (entry.odometerBeforePhoto || entry.odometerUrl) :
                     previewingImage === 'odometer-after' ? entry.odometerAfterPhoto :
                       receiptPhoto
                 }
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (zoom === 1) {
+                    // Calcula o ponto exato do clique para ancorar o zoom
+                    const rect = e.target.getBoundingClientRect();
+                    const x = ((e.clientX - rect.left) / rect.width) * 100;
+                    const y = ((e.clientY - rect.top) / rect.height) * 100;
+                    setZoomOrigin(`${x}% ${y}%`);
+                    setZoom(1.25);
+                  } else if (zoom === 1.25) {
+                    setZoom(1.50);
+                  } else {
+                    setZoom(1);
+                    setTimeout(() => setZoomOrigin('center center'), 200); // Reseta após a transição
+                  }
+                }}
                 style={{
                   transform: `scale(${zoom})`,
-                  transformOrigin: 'center center',
-                  transition: 'transform 0.2s ease-out'
+                  transformOrigin: zoomOrigin,
+                  transition: 'transform 0.2s ease-out',
+                  cursor: zoom >= 1.5 ? 'zoom-out' : 'zoom-in'
                 }}
                 alt="Preview"
-                className="max-w-full max-h-full object-contain cursor-move"
+                className="max-w-full max-h-full object-contain"
+                draggable={false}
               />
             </div>
+
           </div>
         </div>
       )}
