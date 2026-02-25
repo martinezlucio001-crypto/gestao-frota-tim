@@ -65,10 +65,10 @@ const UnitizadorSection = ({ title, unitizadores, icon: Icon, colorClass, emptyM
     const sentinelRef = useRef(null);
     const scrollContainerRef = useRef(null);
 
-    // Reset visible count when data or sort changes
+    // Reset visible count only when sort changes (not when data loads)
     useEffect(() => {
         setVisibleCount(PAGE_SIZE);
-    }, [unitizadores, sortConfig]);
+    }, [sortConfig]);
 
     const sortedList = useMemo(() => {
         let sortable = [...unitizadores];
@@ -252,8 +252,7 @@ const UnitizadorSection = ({ title, unitizadores, icon: Icon, colorClass, emptyM
                         className="flex items-center justify-center gap-2 py-4 text-indigo-400 cursor-pointer hover:bg-indigo-50 transition-colors"
                         onClick={onLoadMore}
                     >
-                        <div className="w-4 h-4 border-2 border-indigo-200 border-t-indigo-500 rounded-full animate-spin" />
-                        <span className="text-xs font-medium">Carregando mais dados do servidor...</span>
+                        <span className="text-xs font-medium">Carregar mais</span>
                     </div>
                 )}
             </div>
@@ -290,18 +289,31 @@ const UnitizadoresPage = () => {
     const [filterDateStart, setFilterDateStart] = useState('');
     const [filterDateEnd, setFilterDateEnd] = useState('');
 
-    // helper to parse Excel serial dates like 46357.68 into DD/MM/YYYY
     const parseExcelDate = (excelDate) => {
         if (!excelDate) return '';
         if (typeof excelDate === 'string' && excelDate.includes('/')) return excelDate;
+
         const numericDate = Number(excelDate);
         if (isNaN(numericDate)) return String(excelDate);
+
         const unixTimestamp = (numericDate - 25569) * 86400 * 1000;
         const dateObj = new Date(unixTimestamp);
+
         const utcDate = new Date(dateObj.getTime() + dateObj.getTimezoneOffset() * 60000);
+
         const d = String(utcDate.getDate()).padStart(2, '0');
         const m = String(utcDate.getMonth() + 1).padStart(2, '0');
         const y = utcDate.getFullYear();
+
+        // Extract time from the fractional part of the Excel date
+        const fractionalDay = numericDate % 1;
+        if (fractionalDay > 0) {
+            const totalMinutes = Math.round(fractionalDay * 24 * 60);
+            const hours = String(Math.floor(totalMinutes / 60)).padStart(2, '0');
+            const minutes = String(totalMinutes % 60).padStart(2, '0');
+            return `${d}/${m}/${y} ${hours}:${minutes}`;
+        }
+
         return `${d}/${m}/${y}`;
     };
 
