@@ -5,6 +5,7 @@ import { signInWithEmailAndPassword, signOut as firebaseSignOut } from 'firebase
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { auth, db, storage, appId } from './lib/firebase';
 import heic2any from 'heic2any';
+import InstallAppButton from './components/InstallAppButton';
 
 // Formatador de data BR
 const formatDateBR = (dateString) => {
@@ -641,6 +642,7 @@ const DriverPortal = () => {
     if (!isLoggedIn) {
         return (
             <div className="min-h-screen bg-gradient-to-br from-indigo-600 to-purple-700 flex items-center justify-center p-4">
+                <InstallAppButton />
                 <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-8">
                     <div className="text-center mb-8">
                         <div className="w-16 h-16 bg-indigo-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
@@ -707,6 +709,7 @@ const DriverPortal = () => {
     // Tela Principal (logado)
     return (
         <div className="min-h-screen bg-slate-100">
+            <InstallAppButton />
             {/* Mensagem de boas-vindas */}
             {showWelcome && (
                 <div className="fixed top-0 left-0 right-0 z-50 flex justify-center pt-4 animate-in fade-in slide-in-from-top duration-300">
