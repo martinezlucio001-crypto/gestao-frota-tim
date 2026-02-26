@@ -57,10 +57,11 @@ const ImportExportPage = () => {
     // Helper: normalize peso value from Excel
     // Excel may deliver 22,45 as number 22.45 or string "22,45"
     const parsePeso = (raw) => {
-        if (raw === undefined || raw === null || raw === '') return '0';
-        if (typeof raw === 'number') return raw.toString();
+        if (raw === undefined || raw === null || raw === '') return 0;
+        if (typeof raw === 'number') return raw;
         // String: replace comma decimal separator
-        return raw.replace(',', '.');
+        const parsed = parseFloat(String(raw).replace(',', '.'));
+        return isNaN(parsed) ? 0 : parsed;
     };
 
     // --- IMPORT LOGIC ---
@@ -77,7 +78,7 @@ const ImportExportPage = () => {
 
         try {
             const data = await selectedFile.arrayBuffer();
-            const workbook = XLSX.read(data);
+            const workbook = XLSX.read(data, { raw: true });
             const sheetName = workbook.SheetNames[0];
             const sheet = workbook.Sheets[sheetName];
             const jsonData = XLSX.utils.sheet_to_json(sheet);
@@ -182,13 +183,18 @@ const ImportExportPage = () => {
                         const newItens = [...(existingData.itens || []), ...data.itens];
                         const newConferencia = [...(existingData.itens_conferencia || []), ...data.itens_conferencia];
 
+                        const newTotalWeight = newItens.reduce((sum, item) => sum + (typeof item.peso === 'number' ? item.peso : parseFloat(String(item.peso || 0).replace(',', '.')) || 0), 0);
+
                         batchHandler.update(existingDoc.ref, {
                             itens: newItens,
-                            itens_conferencia: newConferencia
+                            itens_conferencia: newConferencia,
+                            peso_total_declarado: newTotalWeight
                         });
                         updatedCount++;
                     } else {
                         // Create
+                        const calculatedTotalWeight = data.itens.reduce((sum, item) => sum + (typeof item.peso === 'number' ? item.peso : parseFloat(String(item.peso || 0).replace(',', '.')) || 0), 0);
+
                         const newDocRef = doc(despachosRef, notaKey);
                         batchHandler.set(newDocRef, {
                             nota_despacho: notaKey,
@@ -198,6 +204,7 @@ const ImportExportPage = () => {
                             criado_em: new Date(),
                             itens: data.itens,
                             itens_conferencia: data.itens_conferencia,
+                            peso_total_declarado: calculatedTotalWeight,
                             status: 'RECEBIDO',
                             created_by: 'USER'
                         });

@@ -28,6 +28,16 @@ const formatDate = (val) => {
     return String(val);
 };
 
+// Helper: format peso consistently
+const formatPeso = (peso) => {
+    if (peso === undefined || peso === null || peso === '-' || peso === '') return '-';
+    // If peso comes as a raw string like "87" or "170" from older corrupted states (which meant 8.7 or 17.0)
+    // We try to parse it. Note: we can't magically guess if "87" meant 87kg or 8.7kg if the DB recorded 87.
+    // However, the function below will ensure new numbers like 8.7 are formatted to "8,70"
+    const num = typeof peso === 'number' ? peso : parseFloat(String(peso).replace(',', '.'));
+    return isNaN(num) ? '-' : num.toLocaleString('pt-BR', { minimumFractionDigits: 2 });
+};
+
 const NotaDetalheModal = ({ nota, onClose, onProcessar, onToggleItem, onToggleAll, readOnly = false, divergenceAlert = null, subtitle = null }) => {
     if (!nota) return null;
 
@@ -264,7 +274,7 @@ const NotaDetalheModal = ({ nota, onClose, onProcessar, onToggleItem, onToggleAl
                                                 </td>
                                                 <td className="px-4 py-2 text-slate-700 font-medium">{unitizador}</td>
                                                 <td className="px-4 py-2 text-slate-500">{displayItem.lacre}</td>
-                                                <td className="px-4 py-2 text-right text-slate-700">{displayItem.peso}</td>
+                                                <td className="px-4 py-2 text-right text-slate-700">{formatPeso(displayItem.peso)}</td>
                                                 {!readOnly && (
                                                     <td className="px-4 py-2 text-center">
                                                         <input
@@ -320,7 +330,7 @@ const NotaDetalheModal = ({ nota, onClose, onProcessar, onToggleItem, onToggleAl
                                         </div>
                                         <div className="flex items-center gap-3 text-sm text-slate-500">
                                             <span>Lacre: <span className="text-slate-700 font-medium">{displayItem.lacre || '-'}</span></span>
-                                            <span>Peso: <span className="text-slate-700 font-medium">{displayItem.peso}</span></span>
+                                            <span>Peso: <span className="text-slate-700 font-medium">{formatPeso(displayItem.peso)}</span> kg</span>
                                         </div>
                                     </div>
                                 );

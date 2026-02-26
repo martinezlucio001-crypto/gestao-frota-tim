@@ -282,13 +282,13 @@ const NotaSection = ({ title, notas, icon: Icon, colorClass, onOpenNota, emptyMe
                                         <TableCell className="text-right font-medium">
                                             {(() => {
                                                 let totalWeight = nota.peso_total_declarado;
-                                                if (totalWeight === undefined || totalWeight === null || totalWeight === 0) {
+                                                if (totalWeight === undefined || totalWeight === null || totalWeight === 0 || totalWeight === '') {
                                                     totalWeight = (nota.itens || []).reduce((sum, item) => {
                                                         const p = parseFloat(String(item.peso || 0).replace(',', '.'));
                                                         return sum + (isNaN(p) ? 0 : p);
                                                     }, 0);
                                                 }
-                                                return totalWeight.toLocaleString('pt-BR', { minimumFractionDigits: 2 });
+                                                return Number(totalWeight).toLocaleString('pt-BR', { minimumFractionDigits: 2 });
                                             })()}
                                         </TableCell>
                                         <TableCell className="text-center">
@@ -339,13 +339,13 @@ const NotaSection = ({ title, notas, icon: Icon, colorClass, onOpenNota, emptyMe
                                     <span className="font-medium text-slate-600">
                                         {(() => {
                                             let totalWeight = nota.peso_total_declarado;
-                                            if (totalWeight === undefined || totalWeight === null || totalWeight === 0) {
+                                            if (totalWeight === undefined || totalWeight === null || totalWeight === 0 || totalWeight === '') {
                                                 totalWeight = (nota.itens || []).reduce((sum, item) => {
                                                     const p = parseFloat(String(item.peso || 0).replace(',', '.'));
                                                     return sum + (isNaN(p) ? 0 : p);
                                                 }, 0);
                                             }
-                                            return totalWeight.toLocaleString('pt-BR', { minimumFractionDigits: 2 });
+                                            return Number(totalWeight).toLocaleString('pt-BR', { minimumFractionDigits: 2 });
                                         })()} kg
                                     </span>
                                 </div>
