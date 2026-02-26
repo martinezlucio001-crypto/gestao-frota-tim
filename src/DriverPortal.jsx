@@ -295,7 +295,7 @@ const DriverPortal = () => {
     const [receiptPhoto, setReceiptPhoto] = useState(null);
 
     useEffect(() => {
-        document.title = "Portal do Motorista TIM";
+        document.title = "Portal Tim Transportes";
     }, []);
 
     // Verificar login salvo

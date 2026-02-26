@@ -2132,10 +2132,8 @@ export default function FleetManager({ embedded = false, externalView, onNavigat
   const [resetEmailSent, setResetEmailSent] = useState(false);
 
   useEffect(() => {
-    if (!embedded) {
-      document.title = "Gestão de Frota TIM";
-    }
-  }, [embedded]);
+    document.title = "Portal Tim Transportes";
+  }, []);
 
   // Monitorar estado de autenticação do admin
   useEffect(() => {

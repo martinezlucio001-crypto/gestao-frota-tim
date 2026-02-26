@@ -1,8 +1,17 @@
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Truck, ExternalLink, ShieldCheck, ClipboardList, BarChart3, Users } from 'lucide-react';
+import InstallAppButton from './components/InstallAppButton';
 
 const LandingPage = () => {
+    useEffect(() => {
+        // Se já estiver logado como motorista, entra direto no portal do motorista
+        const savedTruck = localStorage.getItem('driverTruck');
+        if (savedTruck) {
+            window.location.replace('/motorista');
+        }
+    }, []);
+
     const cards = [
         {
             title: 'Administração',
@@ -42,6 +51,7 @@ const LandingPage = () => {
 
     return (
         <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-6">
+            <InstallAppButton />
             <div className="w-full max-w-5xl">
 
                 {/* Header */}

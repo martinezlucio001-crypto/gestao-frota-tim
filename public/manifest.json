@@ -1,6 +1,6 @@
 {
-    "name": "Portal do Motorista TIM",
-    "short_name": "Portal Motorista TIM",
+    "name": "Portal Tim Transportes",
+    "short_name": "Portal Tim",
     "description": "Sistema de gestão de combustível para frotas",
     "start_url": "/",
     "display": "standalone",
