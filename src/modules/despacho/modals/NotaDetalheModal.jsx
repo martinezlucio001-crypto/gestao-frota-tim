@@ -339,7 +339,20 @@ const NotaDetalheModal = ({ nota, onClose, onProcessar, onToggleItem, onToggleAl
                     </div>
 
                     <div className="mt-2 text-right text-xs sm:text-sm text-slate-500 font-medium">
-                        Peso Total Declarado: {parseFloat(nota.peso_total_declarado || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })} kg
+                        Peso Total Declarado:{' '}
+                        {(() => {
+                            let totalWeight = nota.peso_total_declarado;
+                            if (totalWeight === undefined || totalWeight === null || totalWeight === 0 || totalWeight === '') {
+                                const parseFloatSafe = (val) => {
+                                    const p = parseFloat(String(val || 0).replace(',', '.'));
+                                    return isNaN(p) ? 0 : p;
+                                };
+                                const weightItens = (nota.itens || []).reduce((sum, item) => sum + parseFloatSafe(item.peso), 0);
+                                const weightConferencia = (nota.itens_conferencia || []).reduce((sum, item) => sum + parseFloatSafe(item.peso), 0);
+                                totalWeight = weightItens + weightConferencia;
+                            }
+                            return Number(totalWeight).toLocaleString('pt-BR', { minimumFractionDigits: 2 });
+                        })()} kg
                     </div>
                 </div>
 

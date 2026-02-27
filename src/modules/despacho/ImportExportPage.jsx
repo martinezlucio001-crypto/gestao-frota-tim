@@ -180,10 +180,25 @@ const ImportExportPage = () => {
                     if (existingDoc) {
                         // Update
                         const existingData = existingDoc.data();
-                        const newItens = [...(existingData.itens || []), ...data.itens];
-                        const newConferencia = [...(existingData.itens_conferencia || []), ...data.itens_conferencia];
 
-                        const newTotalWeight = [...newItens, ...newConferencia].reduce((sum, item) => sum + (typeof item.peso === 'number' ? item.peso : parseFloat(String(item.peso || 0).replace(',', '.')) || 0), 0);
+                        // Merge items without duplicating (by unitizador ID)
+                        const mergeItems = (oldItems, newItems) => {
+                            const merged = [...(oldItems || [])];
+                            newItems.forEach(newItem => {
+                                const exists = merged.find(i => String(i?.unitizador || '').trim() === String(newItem.unitizador || '').trim());
+                                if (!exists) merged.push(newItem);
+                            });
+                            return merged;
+                        };
+
+                        const newItens = mergeItems(existingData.itens, data.itens);
+                        const newConferencia = mergeItems(existingData.itens_conferencia, data.itens_conferencia);
+
+                        // Calculate total weight of ALL items (Recebimento + Devolução)
+                        const parseFloatSafe = (val) => typeof val === 'number' ? val : parseFloat(String(val || 0).replace(',', '.')) || 0;
+                        const weightItens = newItens.reduce((sum, item) => sum + parseFloatSafe(item.peso), 0);
+                        const weightConferencia = newConferencia.reduce((sum, item) => sum + parseFloatSafe(item.peso), 0);
+                        const newTotalWeight = weightItens + weightConferencia;
 
                         batchHandler.update(existingDoc.ref, {
                             itens: newItens,
@@ -193,7 +208,11 @@ const ImportExportPage = () => {
                         updatedCount++;
                     } else {
                         // Create
-                        const calculatedTotalWeight = [...data.itens, ...data.itens_conferencia].reduce((sum, item) => sum + (typeof item.peso === 'number' ? item.peso : parseFloat(String(item.peso || 0).replace(',', '.')) || 0), 0);
+                        // Calculate total weight of ALL items (Recebimento + Devolução)
+                        const parseFloatSafe = (val) => typeof val === 'number' ? val : parseFloat(String(val || 0).replace(',', '.')) || 0;
+                        const weightItens = data.itens.reduce((sum, item) => sum + parseFloatSafe(item.peso), 0);
+                        const weightConferencia = data.itens_conferencia.reduce((sum, item) => sum + parseFloatSafe(item.peso), 0);
+                        const calculatedTotalWeight = weightItens + weightConferencia;
 
                         const newDocRef = doc(despachosRef, notaKey);
                         batchHandler.set(newDocRef, {

@@ -283,11 +283,13 @@ const NotaSection = ({ title, notas, icon: Icon, colorClass, onOpenNota, emptyMe
                                             {(() => {
                                                 let totalWeight = nota.peso_total_declarado;
                                                 if (totalWeight === undefined || totalWeight === null || totalWeight === 0 || totalWeight === '') {
-                                                    const allItems = [...(nota.itens || []), ...(nota.itens_conferencia || [])];
-                                                    totalWeight = allItems.reduce((sum, item) => {
-                                                        const p = parseFloat(String(item.peso || 0).replace(',', '.'));
-                                                        return sum + (isNaN(p) ? 0 : p);
-                                                    }, 0);
+                                                    const parseFloatSafe = (val) => {
+                                                        const p = parseFloat(String(val || 0).replace(',', '.'));
+                                                        return isNaN(p) ? 0 : p;
+                                                    };
+                                                    const weightItens = (nota.itens || []).reduce((sum, item) => sum + parseFloatSafe(item.peso), 0);
+                                                    const weightConferencia = (nota.itens_conferencia || []).reduce((sum, item) => sum + parseFloatSafe(item.peso), 0);
+                                                    totalWeight = weightItens + weightConferencia;
                                                 }
                                                 return Number(totalWeight).toLocaleString('pt-BR', { minimumFractionDigits: 2 });
                                             })()}
@@ -341,11 +343,13 @@ const NotaSection = ({ title, notas, icon: Icon, colorClass, onOpenNota, emptyMe
                                         {(() => {
                                             let totalWeight = nota.peso_total_declarado;
                                             if (totalWeight === undefined || totalWeight === null || totalWeight === 0 || totalWeight === '') {
-                                                const allItems = [...(nota.itens || []), ...(nota.itens_conferencia || [])];
-                                                totalWeight = allItems.reduce((sum, item) => {
-                                                    const p = parseFloat(String(item.peso || 0).replace(',', '.'));
-                                                    return sum + (isNaN(p) ? 0 : p);
-                                                }, 0);
+                                                const parseFloatSafe = (val) => {
+                                                    const p = parseFloat(String(val || 0).replace(',', '.'));
+                                                    return isNaN(p) ? 0 : p;
+                                                };
+                                                const weightItens = (nota.itens || []).reduce((sum, item) => sum + parseFloatSafe(item.peso), 0);
+                                                const weightConferencia = (nota.itens_conferencia || []).reduce((sum, item) => sum + parseFloatSafe(item.peso), 0);
+                                                totalWeight = weightItens + weightConferencia;
                                             }
                                             return Number(totalWeight).toLocaleString('pt-BR', { minimumFractionDigits: 2 });
                                         })()} kg
@@ -491,132 +495,92 @@ const NotasDespachoPage = () => {
         return () => observer.disconnect();
     }, [hasMoreDocs, loadMore]);
 
+    // "Atualizar Status" - Full reconciliation
     const handleReconcileStatus = async () => {
         if (reconciling) return;
         setReconciling(true);
         try {
+            // Load ALL notes
             const allQ = query(collection(db, 'tb_despachos_conferencia'), orderBy('criado_em', 'desc'));
             const allSnapshot = await getDocs(allQ);
             const allNotes = allSnapshot.docs.map(d => ({ id: d.id, ...d.data() }));
 
-            // Build unitizer map
+            // Build unitizer map: unitizer ID → { entryNoteIds, exitNoteIds }
             const unitizerMap = new Map();
             allNotes.forEach(nota => {
-                (Array.isArray(nota.itens) ? nota.itens : []).forEach(item => {
+                const itensEntrada = Array.isArray(nota.itens) ? nota.itens : [];
+                const itensSaida = Array.isArray(nota.itens_conferencia) ? nota.itens_conferencia : [];
+
+                itensEntrada.forEach(item => {
                     const u = typeof item === 'string' ? item.split(' - ')[0] : item?.unitizador;
-                    let peso = typeof item === 'string' ? item.split(' - ')[2] : item?.peso;
                     if (!u) return;
-                    peso = parseFloat(String(peso || 0).replace(',', '.'));
                     const id = String(u).trim();
-                    if (!unitizerMap.has(id)) unitizerMap.set(id, { entries: [], exits: [] });
-                    unitizerMap.get(id).entries.push({ notaId: nota.id, peso });
+                    if (!unitizerMap.has(id)) unitizerMap.set(id, { entryNoteIds: new Set(), exitNoteIds: new Set() });
+                    unitizerMap.get(id).entryNoteIds.add(nota.id);
                 });
-                (Array.isArray(nota.itens_conferencia) ? nota.itens_conferencia : []).forEach(item => {
+
+                itensSaida.forEach(item => {
                     const u = typeof item === 'string' ? item.split(' - ')[0] : item?.unitizador;
-                    let peso = typeof item === 'string' ? item.split(' - ')[2] : item?.peso;
                     if (!u) return;
-                    peso = parseFloat(String(peso || 0).replace(',', '.'));
                     const id = String(u).trim();
-                    if (!unitizerMap.has(id)) unitizerMap.set(id, { entries: [], exits: [] });
-                    unitizerMap.get(id).exits.push({ notaId: nota.id, peso });
+                    if (!unitizerMap.has(id)) unitizerMap.set(id, { entryNoteIds: new Set(), exitNoteIds: new Set() });
+                    unitizerMap.get(id).exitNoteIds.add(nota.id);
                 });
             });
 
-            const updates = new Map();
+            // Determine note-level status from unitizer cross-reference
+            const noteStatusUpdates = new Map(); // noteId → newStatus
+
             allNotes.forEach(nota => {
+                if (nota.status === 'PROCESSADA' || nota.processado_em) return; // Dont overwrite manually processed
+
                 const itensEntrada = Array.isArray(nota.itens) ? nota.itens : [];
                 const itensSaida = Array.isArray(nota.itens_conferencia) ? nota.itens_conferencia : [];
                 const hasEntry = itensEntrada.length > 0;
                 const hasExit = itensSaida.length > 0;
 
-                let isDivergent = false;
-                let isOrphan = false;
-                let allEntryMatched = true;
-                let allExitMatched = true;
-                let divergenceReasons = [];
-
-                itensEntrada.forEach(item => {
-                    const u = String(typeof item === 'string' ? item.split(' - ')[0] : item?.unitizador).trim();
-                    const peso = parseFloat(String(typeof item === 'string' ? item.split(' - ')[2] : item?.peso || 0).replace(',', '.'));
-                    const data = unitizerMap.get(u);
-                    if (!data || data.exits.length === 0) {
-                        allEntryMatched = false;
-                    } else {
-                        const exitWeight = data.exits[0].peso;
-                        if (peso !== exitWeight) {
-                            isDivergent = true;
-                            divergenceReasons.push(`Peso div. ${u}`);
-                        }
-                    }
-                });
-
-                itensSaida.forEach(item => {
-                    const u = String(typeof item === 'string' ? item.split(' - ')[0] : item?.unitizador).trim();
-                    const peso = parseFloat(String(typeof item === 'string' ? item.split(' - ')[2] : item?.peso || 0).replace(',', '.'));
-                    const data = unitizerMap.get(u);
-                    if (!data || data.entries.length === 0) {
-                        allExitMatched = false;
-                        isOrphan = true;
-                        divergenceReasons.push(`Órfão ${u}`);
-                    } else {
-                        const entryWeight = data.entries[0].peso;
-                        if (peso !== entryWeight) {
-                            isDivergent = true;
-                            if (!divergenceReasons.includes(`Peso div. ${u}`)) {
-                                divergenceReasons.push(`Peso div. ${u}`);
-                            }
-                        }
-                    }
-                });
-
-                let newStatus = nota.status;
-                let newDivergence = divergenceReasons.join(' | ');
-
-                if (isDivergent) {
-                    newStatus = 'DIVERGENTE';
-                } else if (hasExit && !hasEntry && isOrphan) {
-                    newStatus = 'DEVOLVED_ORPHAN';
-                } else if (hasEntry && !hasExit) {
-                    if (allEntryMatched) {
-                        newStatus = 'CONCLUIDO';
-                    } else if (nota.status === 'CONCLUIDO' || nota.status === 'DIVERGENTE') {
-                        newStatus = nota.processado_em ? 'PROCESSADA' : 'RECEBIDO';
-                        newDivergence = '';
+                if (hasEntry && !hasExit) {
+                    // Check if ALL entry unitizers have exits in other notes
+                    const allResolved = itensEntrada.every(item => {
+                        const u = typeof item === 'string' ? item.split(' - ')[0] : item?.unitizador;
+                        if (!u) return true;
+                        const data = unitizerMap.get(String(u).trim());
+                        return data && data.exitNoteIds.size > 0;
+                    });
+                    if (allResolved && nota.status !== 'CONCLUIDO') {
+                        noteStatusUpdates.set(nota.id, 'CONCLUIDO');
                     }
                 } else if (hasExit && !hasEntry) {
-                    if (allExitMatched) {
-                        newStatus = 'CONCLUIDO';
-                        newDivergence = '';
-                    } else if (nota.status === 'CONCLUIDO' || nota.status === 'DIVERGENTE') {
-                        newStatus = 'DEVOLVED_ORPHAN';
+                    if (nota.status !== 'DEVOLVED_ORPHAN') {
+                        noteStatusUpdates.set(nota.id, 'DEVOLVED_ORPHAN');
                     }
                 } else if (hasEntry && hasExit) {
-                    if (isOrphan) {
-                        newStatus = 'DIVERGENTE';
-                    } else if (allEntryMatched && allExitMatched) {
-                        newStatus = 'CONCLUIDO';
-                    } else if (nota.status === 'CONCLUIDO' || nota.status === 'DIVERGENTE') {
-                        newStatus = nota.processado_em ? 'PROCESSADA' : 'RECEBIDO';
+                    // Check divergence
+                    const entryUnitizers = itensEntrada.map(i => typeof i === 'string' ? i.split(' - ')[0] : i?.unitizador).filter(Boolean).map(u => String(u).trim());
+                    const exitUnitizers = itensSaida.map(i => typeof i === 'string' ? i.split(' - ')[0] : i?.unitizador).filter(Boolean).map(u => String(u).trim());
+                    const mismatch = entryUnitizers.some(u => !exitUnitizers.includes(u)) || exitUnitizers.some(u => !entryUnitizers.includes(u));
+                    if (mismatch && nota.status !== 'DIVERGENTE') {
+                        noteStatusUpdates.set(nota.id, 'DIVERGENTE');
+                    } else if (!mismatch && nota.status !== 'CONCLUIDO') {
+                        noteStatusUpdates.set(nota.id, 'CONCLUIDO');
                     }
-                }
-
-                if (newStatus !== nota.status || newDivergence !== (nota.divergencia || '')) {
-                    updates.set(nota.id, { status: newStatus, divergencia: newDivergence });
                 }
             });
 
-            const entries = [...updates.entries()];
+            // Write updates in batches (Firestore limit: 500 per batch)
+            const entries = [...noteStatusUpdates.entries()];
             for (let i = 0; i < entries.length; i += 450) {
                 const batch = writeBatch(db);
-                entries.slice(i, i + 450).forEach(([noteId, fields]) => {
-                    batch.update(doc(db, 'tb_despachos_conferencia', noteId), fields);
+                const chunk = entries.slice(i, i + 450);
+                chunk.forEach(([noteId, newStatus]) => {
+                    batch.update(doc(db, 'tb_despachos_conferencia', noteId), { status: newStatus });
                 });
                 await batch.commit();
             }
 
             alert(`Status atualizado! ${entries.length} notas foram reconciliadas.`);
         } catch (error) {
-            console.error('Erro na reconciliação:', error);
+            console.error('Erro na reconcilia\u00e7\u00e3o:', error);
             alert('Erro ao atualizar status. Verifique o console.');
         } finally {
             setReconciling(false);
