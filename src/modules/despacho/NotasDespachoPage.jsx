@@ -253,60 +253,71 @@ const NotaSection = ({ title, notas, icon: Icon, colorClass, onOpenNota, emptyMe
                                 <TableEmpty message={emptyMessage || "Nenhuma nota nesta seção."} />
                             ) : (
                                 visibleNotas.map(nota => (
-                                    <TableRow
-                                        key={nota.id}
-                                        className="cursor-pointer hover:bg-slate-50 transition-colors"
-                                        onClick={() => onOpenNota(nota)}
-                                    >
-                                        <TableCell className="font-medium text-indigo-600">
-                                            <div className="flex items-center gap-2">
-                                                {nota.nota_despacho}
-                                                {nota.isManual && (
-                                                    <span className="text-[10px] bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded-full font-bold">Manual</span>
-                                                )}
-                                            </div>
-                                        </TableCell>
-                                        <TableCell className="text-slate-600">{nota.origem}</TableCell>
-                                        <TableCell className="text-slate-600">{nota.destino}</TableCell>
-                                        <TableCell className="text-slate-500 text-xs">
-                                            <div className="flex items-center gap-1">
-                                                {parseExcelDate(nota.data_ocorrencia)}
-                                                {/* Merge Indicator */}
-                                                {(nota.msgs_entrada > 1 || nota.msgs_saida > 1) && (
-                                                    <div
-                                                        className="flex items-center gap-0.5 bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded cursor-help"
-                                                        title={`${nota.msgs_entrada > 1 ? `${nota.msgs_entrada} E-mails de Entrada` : ''} ${nota.msgs_saida > 1 ? `${nota.msgs_saida} E-mails de Saída` : ''}`.trim()}
-                                                    >
-                                                        <AlertTriangle size={10} />
-                                                        <span className="text-[10px] font-bold">
-                                                            {Math.max(nota.msgs_entrada || 0, nota.msgs_saida || 0)}
-                                                        </span>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        </TableCell>
-                                        <TableCell className="text-right font-medium">
-                                            {(() => {
-                                                let totalWeight = nota.peso_total_declarado;
-                                                if (totalWeight === undefined || totalWeight === null || totalWeight === 0 || totalWeight === '') {
-                                                    const parseFloatSafe = (val) => {
-                                                        const p = parseFloat(String(val || 0).replace(',', '.'));
-                                                        return isNaN(p) ? 0 : p;
-                                                    };
-                                                    const weightItens = (nota.itens || []).reduce((sum, item) => sum + parseFloatSafe(item.peso), 0);
-                                                    const weightConferencia = (nota.itens_conferencia || []).reduce((sum, item) => sum + parseFloatSafe(item.peso), 0);
-                                                    totalWeight = weightItens + weightConferencia;
-                                                }
-                                                return Number(totalWeight).toLocaleString('pt-BR', { minimumFractionDigits: 2 });
-                                            })()}
-                                        </TableCell>
-                                        <TableCell className="text-center">
-                                            <StatusLights nota={nota} />
-                                        </TableCell>
-                                        <TableCell>
-                                            <ChevronRight size={18} className="text-slate-400" />
-                                        </TableCell>
-                                    </TableRow>
+                                    <React.Fragment key={nota.id}>
+                                        <TableRow
+                                            className="cursor-pointer hover:bg-slate-50 transition-colors"
+                                            onClick={() => onOpenNota(nota)}
+                                        >
+                                            <TableCell className="font-medium text-indigo-600">
+                                                <div className="flex items-center gap-2">
+                                                    {nota.nota_despacho}
+                                                    {nota.isManual && (
+                                                        <span className="text-[10px] bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded-full font-bold">Manual</span>
+                                                    )}
+                                                </div>
+                                            </TableCell>
+                                            <TableCell className="text-slate-600">{nota.origem}</TableCell>
+                                            <TableCell className="text-slate-600">{nota.destino}</TableCell>
+                                            <TableCell className="text-slate-500 text-xs">
+                                                <div className="flex items-center gap-1">
+                                                    {parseExcelDate(nota.data_ocorrencia)}
+                                                    {/* Merge Indicator */}
+                                                    {(nota.msgs_entrada > 1 || nota.msgs_saida > 1) && (
+                                                        <div
+                                                            className="flex items-center gap-0.5 bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded cursor-help"
+                                                            title={`${nota.msgs_entrada > 1 ? `${nota.msgs_entrada} E-mails de Entrada` : ''} ${nota.msgs_saida > 1 ? `${nota.msgs_saida} E-mails de Saída` : ''}`.trim()}
+                                                        >
+                                                            <AlertTriangle size={10} />
+                                                            <span className="text-[10px] font-bold">
+                                                                {Math.max(nota.msgs_entrada || 0, nota.msgs_saida || 0)}
+                                                            </span>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </TableCell>
+                                            <TableCell className="text-right font-medium">
+                                                {(() => {
+                                                    let totalWeight = nota.peso_total_declarado;
+                                                    if (totalWeight === undefined || totalWeight === null || totalWeight === 0 || totalWeight === '') {
+                                                        const parseFloatSafe = (val) => {
+                                                            const p = parseFloat(String(val || 0).replace(',', '.'));
+                                                            return isNaN(p) ? 0 : p;
+                                                        };
+                                                        const weightItens = (nota.itens || []).reduce((sum, item) => sum + parseFloatSafe(item.peso), 0);
+                                                        const weightConferencia = (nota.itens_conferencia || []).reduce((sum, item) => sum + parseFloatSafe(item.peso), 0);
+                                                        totalWeight = weightItens + weightConferencia;
+                                                    }
+                                                    return Number(totalWeight).toLocaleString('pt-BR', { minimumFractionDigits: 2 });
+                                                })()}
+                                            </TableCell>
+                                            <TableCell className="text-center">
+                                                <StatusLights nota={nota} />
+                                            </TableCell>
+                                            <TableCell>
+                                                <ChevronRight size={18} className="text-slate-400" />
+                                            </TableCell>
+                                        </TableRow>
+                                        {nota.observacoes && (
+                                            <TableRow className="bg-slate-50/50 hover:bg-slate-50/50">
+                                                <TableCell colSpan={7} className="py-2 px-4 shadow-[inset_0_4px_6px_-6px_rgba(0,0,0,0.1)]">
+                                                    <p className="text-xs text-slate-500 italic line-clamp-1">
+                                                        <span className="font-semibold text-slate-400 mr-1">Obs:</span>
+                                                        {nota.observacoes}
+                                                    </p>
+                                                </TableCell>
+                                            </TableRow>
+                                        )}
+                                    </React.Fragment>
                                 ))
                             )}
                         </TableBody>
@@ -366,6 +377,14 @@ const NotaSection = ({ title, notas, icon: Icon, colorClass, onOpenNota, emptyMe
                                         })()} kg
                                     </span>
                                 </div>
+                                {nota.observacoes && (
+                                    <div className="mt-2 pt-2 border-t border-slate-100">
+                                        <p className="text-xs text-slate-500 italic line-clamp-2">
+                                            <span className="font-semibold text-slate-400 mr-1">Obs:</span>
+                                            {nota.observacoes}
+                                        </p>
+                                    </div>
+                                )}
                             </div>
                         ))
                     )}
@@ -622,13 +641,17 @@ const NotasDespachoPage = () => {
                 const matchDestino = String(nota.destino || '').toLowerCase().includes(lowerTerm);
                 const matchObs = String(nota.observacoes || '').toLowerCase().includes(lowerTerm);
 
-                // Search in Items (Unitizers)
-                const matchItems = nota.itens?.some(item =>
+                const matchItems = (nota.itens || []).some(item =>
                     String(item.unitizador || '').toLowerCase().includes(lowerTerm) ||
                     String(item.lacre || '').toLowerCase().includes(lowerTerm)
                 );
 
-                if (!matchId && !matchOrigem && !matchDestino && !matchItems && !matchObs) return false;
+                const matchConferencia = (nota.itens_conferencia || []).some(item =>
+                    String(item.unitizador || '').toLowerCase().includes(lowerTerm) ||
+                    String(item.lacre || '').toLowerCase().includes(lowerTerm)
+                );
+
+                if (!matchId && !matchOrigem && !matchDestino && !matchItems && !matchConferencia && !matchObs) return false;
             }
 
             // Date Range
