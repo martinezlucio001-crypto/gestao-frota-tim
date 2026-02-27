@@ -283,7 +283,8 @@ const NotaSection = ({ title, notas, icon: Icon, colorClass, onOpenNota, emptyMe
                                             {(() => {
                                                 let totalWeight = nota.peso_total_declarado;
                                                 if (totalWeight === undefined || totalWeight === null || totalWeight === 0 || totalWeight === '') {
-                                                    totalWeight = (nota.itens || []).reduce((sum, item) => {
+                                                    const allItems = [...(nota.itens || []), ...(nota.itens_conferencia || [])];
+                                                    totalWeight = allItems.reduce((sum, item) => {
                                                         const p = parseFloat(String(item.peso || 0).replace(',', '.'));
                                                         return sum + (isNaN(p) ? 0 : p);
                                                     }, 0);
@@ -340,7 +341,8 @@ const NotaSection = ({ title, notas, icon: Icon, colorClass, onOpenNota, emptyMe
                                         {(() => {
                                             let totalWeight = nota.peso_total_declarado;
                                             if (totalWeight === undefined || totalWeight === null || totalWeight === 0 || totalWeight === '') {
-                                                totalWeight = (nota.itens || []).reduce((sum, item) => {
+                                                const allItems = [...(nota.itens || []), ...(nota.itens_conferencia || [])];
+                                                totalWeight = allItems.reduce((sum, item) => {
                                                     const p = parseFloat(String(item.peso || 0).replace(',', '.'));
                                                     return sum + (isNaN(p) ? 0 : p);
                                                 }, 0);
