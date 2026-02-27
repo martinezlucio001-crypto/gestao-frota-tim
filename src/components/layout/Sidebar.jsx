@@ -19,8 +19,8 @@ import {
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 
-// Estrutura do menu com módulos e submódulos
-const menuItems = [
+// Estrutura do menu com módulos e submódulos padrão (Admin)
+export const defaultMenuItems = [
     {
         id: 'dashboard',
         label: 'Dashboard',
@@ -91,11 +91,12 @@ const menuItems = [
     }
 ];
 
-export const Sidebar = ({ currentView, onNavigate, isCollapsed, onToggleCollapse }) => {
-    const [expandedMenus, setExpandedMenus] = useState([]);
+export const Sidebar = ({ currentView, onNavigate, isCollapsed, onToggleCollapse, items = defaultMenuItems, hideSettings = false, forceSubmenuExpanded = false }) => {
+    const [expandedMenus, setExpandedMenus] = useState(forceSubmenuExpanded ? items.map(i => i.id) : []);
     const [isMobileOpen, setIsMobileOpen] = useState(false);
 
     const toggleSubmenu = (menuId) => {
+        if (forceSubmenuExpanded) return; // Se forçado a expandir, não permite fechar
         setExpandedMenus(prev =>
             prev.includes(menuId)
                 ? prev.filter(id => id !== menuId)
@@ -151,7 +152,7 @@ export const Sidebar = ({ currentView, onNavigate, isCollapsed, onToggleCollapse
 
             {/* Menu Items */}
             <nav className="flex-1 overflow-y-auto py-4 px-3">
-                {menuItems.map(item => (
+                {items.map(item => (
                     <div key={item.id} className="mb-1">
                         {/* Item Principal */}
                         <button
@@ -211,18 +212,20 @@ export const Sidebar = ({ currentView, onNavigate, isCollapsed, onToggleCollapse
             </nav>
 
             {/* Footer */}
-            <div className="border-t border-slate-100 p-3">
-                <button
-                    onClick={() => handleNavigate('settings')}
-                    className={cn(
-                        "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all text-slate-600 hover:bg-slate-50",
-                        isCollapsed && "justify-center"
-                    )}
-                >
-                    <Settings size={20} />
-                    {!isCollapsed && <span className="text-sm font-medium">Configurações</span>}
-                </button>
-            </div>
+            {!hideSettings && (
+                <div className="border-t border-slate-100 p-3">
+                    <button
+                        onClick={() => handleNavigate('settings')}
+                        className={cn(
+                            "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all text-slate-600 hover:bg-slate-50",
+                            isCollapsed && "justify-center"
+                        )}
+                    >
+                        <Settings size={20} />
+                        {!isCollapsed && <span className="text-sm font-medium">Configurações</span>}
+                    </button>
+                </div>
+            )}
         </>
     );
 

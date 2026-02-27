@@ -27,9 +27,8 @@ const LandingPage = () => {
             description: 'Controle de envio e recebimento de cargas (CDD SANTAREM)',
             icon: ClipboardList,
             color: 'bg-blue-500',
-            href: '#', // Placeholder
-            active: false,
-            badge: 'Em Breve'
+            href: '/stm',
+            active: true
         },
         {
             title: 'Portal de Controle BEL',
