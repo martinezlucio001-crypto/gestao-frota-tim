@@ -165,7 +165,7 @@ const STMPortal = () => {
             if (user) {
                 // Verificar acesso ao portal stm
                 const accessDoc = await getDoc(doc(db, 'portalAccess', user.uid));
-                if (accessDoc.exists() && accessDoc.data().allowedPortals?.includes('stm')) {
+                if (accessDoc.exists() && accessDoc.data().allowedPortals?.includes('despacho_stm')) {
                     setIsAuthenticated(true);
                     setCurrentUser(user);
                 } else {
@@ -191,7 +191,7 @@ const STMPortal = () => {
 
             // Verificar acesso ao portal stm
             const accessDoc = await getDoc(doc(db, 'portalAccess', userCredential.user.uid));
-            if (!accessDoc.exists() || !accessDoc.data().allowedPortals?.includes('stm')) {
+            if (!accessDoc.exists() || !accessDoc.data().allowedPortals?.includes('despacho_stm')) {
                 await signOut(auth);
                 setLoginError('Você não tem permissão para acessar o Portal STM.');
                 return;
