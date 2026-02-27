@@ -136,11 +136,12 @@ const NotaManualModal = ({ isOpen, onClose, onSuccess }) => {
                                 label="Tipo"
                                 value={formData.tipo}
                                 onChange={e => setFormData({ ...formData, tipo: e.target.value })}
+                                options={[
+                                    { value: 'Recebimento', label: 'Recebimento (Entrada)' },
+                                    { value: 'Devolução', label: 'Devolução (Saída)' }
+                                ]}
                                 required
-                            >
-                                <option value="Recebimento">Recebimento (Entrada)</option>
-                                <option value="Devolução">Devolução (Saída)</option>
-                            </Select>
+                            />
 
                             <Input
                                 type="datetime-local"
@@ -157,21 +158,19 @@ const NotaManualModal = ({ isOpen, onClose, onSuccess }) => {
                                 label="Origem"
                                 value={formData.origem}
                                 onChange={e => setFormData({ ...formData, origem: e.target.value })}
+                                options={CITIES.map(c => ({ value: c, label: c }))}
+                                placeholder="Selecione..."
                                 required
-                            >
-                                <option value="">Selecione...</option>
-                                {CITIES.map(c => <option key={c} value={c}>{c}</option>)}
-                            </Select>
+                            />
 
                             <Select
                                 label="Destino"
                                 value={formData.destino}
                                 onChange={e => setFormData({ ...formData, destino: e.target.value })}
+                                options={CITIES.map(c => ({ value: c, label: c }))}
+                                placeholder="Selecione..."
                                 required
-                            >
-                                <option value="">Selecione...</option>
-                                {CITIES.map(c => <option key={c} value={c}>{c}</option>)}
-                            </Select>
+                            />
                         </div>
 
                         {/* Lista de Unitizadores */}
