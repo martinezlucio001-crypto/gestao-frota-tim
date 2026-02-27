@@ -1,16 +1,9 @@
 
-import React, { useEffect } from 'react';
+import React from 'react';
 import { Truck, ExternalLink, ShieldCheck, ClipboardList, BarChart3, Users } from 'lucide-react';
 import InstallAppButton from './components/InstallAppButton';
 
 const LandingPage = () => {
-    useEffect(() => {
-        // Se já estiver logado como motorista, entra direto no portal do motorista
-        const savedTruck = localStorage.getItem('driverTruck');
-        if (savedTruck) {
-            window.location.replace('/motorista');
-        }
-    }, []);
 
     const cards = [
         {
