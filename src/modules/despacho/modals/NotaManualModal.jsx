@@ -108,7 +108,7 @@ const NotaManualModal = ({ isOpen, onClose, onSuccess }) => {
                 {/* Header */}
                 <div className="flex items-center justify-between p-6 border-b border-slate-100">
                     <div>
-                        <h2 className="text-xl font-bold text-slate-800">Adicionar Despacho Manual</h2>
+                        <h2 className="text-xl font-bold text-slate-800">Adição Manual de Nota de Despacho</h2>
                         <p className="text-sm text-slate-500">Insira uma nota de despacho não importada no sistema.</p>
                     </div>
                     <button
