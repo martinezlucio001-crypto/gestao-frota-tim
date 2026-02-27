@@ -14,6 +14,7 @@ const InstallAppButton = () => {
         // Regra 2: Não exibir se já for standalone
         const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
 
+        const userAgent = window.navigator.userAgent.toLowerCase();
         const isIosDevice = /iphone|ipad|ipod/.test(userAgent);
         setIsIos(isIosDevice);
 
