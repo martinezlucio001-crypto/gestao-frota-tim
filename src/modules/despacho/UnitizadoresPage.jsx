@@ -387,11 +387,30 @@ const UnitizadoresPage = () => {
                 uObj.status = 'ORPHAN';
                 uObj.divergenceType = 'Unitizador não encontrado na entrada';
             } else if (hasEntry && hasExit) {
-                if (entry.peso === exit.peso) {
+                const diffs = [];
+                const parseFloatSafe = (val) => {
+                    const p = parseFloat(String(val || 0).replace(',', '.'));
+                    return isNaN(p) ? 0 : p;
+                };
+
+                if (parseFloatSafe(entry.peso) !== parseFloatSafe(exit.peso)) {
+                    diffs.push(`Peso (${entry.peso} vs ${exit.peso})`);
+                }
+                if (entry.notaId !== exit.notaId) {
+                    diffs.push(`Nota (${entry.notaId} vs ${exit.notaId})`);
+                }
+                if (entry.origem !== exit.origem) {
+                    diffs.push(`Origem (${entry.origem} vs ${exit.origem})`);
+                }
+                if (entry.destino !== exit.destino) {
+                    diffs.push(`Destino (${entry.destino} vs ${exit.destino})`);
+                }
+
+                if (diffs.length === 0) {
                     uObj.status = 'ENTREGUE';
                 } else {
                     uObj.status = 'DIVERGENTE';
-                    uObj.divergenceType = `Peso divergente (Entrada: ${entry.peso} vs Saída: ${exit.peso})`;
+                    uObj.divergenceType = `Divergência de: ${diffs.join(' | ')}`;
                 }
             }
             processedList.push(uObj);
