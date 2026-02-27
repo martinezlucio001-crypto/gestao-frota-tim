@@ -608,6 +608,7 @@ const NotasDespachoPage = () => {
                 const matchId = String(nota.nota_despacho || '').toLowerCase().includes(lowerTerm);
                 const matchOrigem = String(nota.origem || '').toLowerCase().includes(lowerTerm);
                 const matchDestino = String(nota.destino || '').toLowerCase().includes(lowerTerm);
+                const matchObs = String(nota.observacoes || '').toLowerCase().includes(lowerTerm);
 
                 // Search in Items (Unitizers)
                 const matchItems = nota.itens?.some(item =>
@@ -615,7 +616,7 @@ const NotasDespachoPage = () => {
                     String(item.lacre || '').toLowerCase().includes(lowerTerm)
                 );
 
-                if (!matchId && !matchOrigem && !matchDestino && !matchItems) return false;
+                if (!matchId && !matchOrigem && !matchDestino && !matchItems && !matchObs) return false;
             }
 
             // Date Range
@@ -649,10 +650,10 @@ const NotasDespachoPage = () => {
         return {
             recebidos: filteredNotas.filter(n => n.status === 'RECEBIDO' || n.status === 'IMPORTADO'),
             processados: filteredNotas.filter(n => n.status === 'PROCESSADA'),
+            divergenciaProcessamento: filteredNotas.filter(n => n.status === 'DIVERGENCIA_PROCESSAMENTO'),
             concluidos: filteredNotas.filter(n => ['CONCLUIDO', 'ENTREGUE'].includes(n.status)),
             divergentes: filteredNotas.filter(n => n.status === 'DIVERGENTE'),
-            orfas: filteredNotas.filter(n => n.status === 'DEVOLVED_ORPHAN'),
-            manuais: [] // Removido, tratamos tudo como igual
+            orfas: filteredNotas.filter(n => n.status === 'DEVOLVED_ORPHAN')
         };
     }, [filteredNotas]);
 
@@ -664,9 +665,32 @@ const NotasDespachoPage = () => {
     const handleDespachoSuccess = async () => {
         if (selectedNota) {
             try {
+                // Check for unchecked items and flag them
+                const processList = (list) => {
+                    return (list || []).map(item => {
+                        const isChecked = typeof item === 'string' ? false : !!item.conferido;
+                        if (!isChecked) {
+                            return typeof item === 'string'
+                                ? { unitizador: item.split(' - ')[0] || '-', lacre: item.split(' - ')[1] || '-', peso: item.split(' - ')[2] || '-', conferido: false, divergencia_processamento: true, origem: item }
+                                : { ...item, divergencia_processamento: true };
+                        }
+                        return typeof item === 'string'
+                            ? { unitizador: item.split(' - ')[0] || '-', lacre: item.split(' - ')[1] || '-', peso: item.split(' - ')[2] || '-', conferido: true, origem: item }
+                            : item;
+                    });
+                };
+
+                const newItens = processList(selectedNota.itens);
+                const newItensConf = processList(selectedNota.itens_conferencia);
+
+                const hasDivergence = newItens.some(i => i.divergencia_processamento) || newItensConf.some(i => i.divergencia_processamento);
+                const nextStatus = hasDivergence ? 'DIVERGENCIA_PROCESSAMENTO' : 'PROCESSADA';
+
                 await updateDoc(doc(db, 'tb_despachos_conferencia', selectedNota.id), {
-                    status: 'PROCESSADA',
-                    processado_em: new Date().toISOString()
+                    status: nextStatus,
+                    processado_em: new Date().toISOString(),
+                    itens: newItens,
+                    itens_conferencia: newItensConf
                 });
             } catch (error) {
                 console.error("Erro ao atualizar status:", error);
@@ -794,6 +818,7 @@ const NotasDespachoPage = () => {
         }
 
         return {
+            locked: true,
             data: (() => {
                 const d = new Date();
                 return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
@@ -1000,7 +1025,20 @@ const NotasDespachoPage = () => {
                     />
                 )}
 
-                {/* 5. Notas Divergentes */}
+                {/* 5. Divergencia de Processamento */}
+                {sections.divergenciaProcessamento && sections.divergenciaProcessamento.length > 0 && (
+                    <NotaSection
+                        title="Divergência de Processamento"
+                        notas={sections.divergenciaProcessamento}
+                        icon={AlertTriangle}
+                        colorClass="border-l-rose-500"
+                        onOpenNota={setSelectedNota}
+                        hasMoreFirestoreDocs={hasMoreDocs}
+                        onLoadMore={loadMore}
+                    />
+                )}
+
+                {/* 6. Notas Divergentes */}
                 {sections.divergentes.length > 0 && (
                     <NotaSection
                         title="Notas Divergentes"

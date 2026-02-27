@@ -262,6 +262,9 @@ const DespachoModal = ({ isOpen, onClose, editingDespacho, servidores = [], init
         }
     };
 
+    const isLocked = !!initialData?.locked && !editingDespacho;
+    const isValidVolumes = formData.volumesCorreios === '' || formData.volumesEntregues === '' || (Number(formData.volumesEntregues) <= Number(formData.volumesCorreios));
+
     // Handler para permitir apenas inteiros
     const handleIntegerInput = (e) => {
         if (['.', ',', 'e', 'E', '+', '-'].includes(e.key)) {
@@ -301,6 +304,7 @@ const DespachoModal = ({ isOpen, onClose, editingDespacho, servidores = [], init
                         type="date"
                         value={formData.data}
                         onChange={(e) => handleChange('data', e.target.value)}
+                        disabled={isLocked}
                         required
                     />
                     <Select
@@ -331,13 +335,15 @@ const DespachoModal = ({ isOpen, onClose, editingDespacho, servidores = [], init
                         onChange={(e) => handleChange('origem', e.target.value)}
                         options={originOptions}
                         placeholder="Selecione"
+                        disabled={isLocked}
                         required
                     />
 
                     <button
                         type="button"
                         onClick={handleSwapRoute}
-                        className="sm:mt-8 p-2 rounded-full hover:bg-slate-100 text-slate-500 hover:text-indigo-600 transition-colors border border-transparent hover:border-slate-200 justify-self-center"
+                        disabled={isLocked}
+                        className="sm:mt-8 p-2 rounded-full hover:bg-slate-100 text-slate-500 hover:text-indigo-600 transition-colors border border-transparent hover:border-slate-200 justify-self-center disabled:opacity-50 disabled:cursor-not-allowed"
                         title="Inverter Origem e Destino"
                     >
                         <ArrowRightLeft size={20} />
@@ -349,6 +355,7 @@ const DespachoModal = ({ isOpen, onClose, editingDespacho, servidores = [], init
                         onChange={(e) => handleChange('destino', e.target.value)}
                         options={destinationOptions}
                         placeholder="Selecione"
+                        disabled={isLocked}
                         required
                     />
                 </div>
@@ -384,6 +391,7 @@ const DespachoModal = ({ isOpen, onClose, editingDespacho, servidores = [], init
                             value={formData.volumesCorreios}
                             onChange={(e) => handleChange('volumesCorreios', e.target.value)}
                             onKeyDown={handleIntegerInput}
+                            disabled={isLocked}
                             required
                             className="[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                         />
@@ -394,6 +402,7 @@ const DespachoModal = ({ isOpen, onClose, editingDespacho, servidores = [], init
                             onChange={(e) => handleChange('volumesEntregues', e.target.value)}
                             onKeyDown={handleIntegerInput}
                             required
+                            error={!isValidVolumes ? "Não pode exceder Volumes Correios" : undefined}
                             className="[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                         />
 
@@ -403,6 +412,7 @@ const DespachoModal = ({ isOpen, onClose, editingDespacho, servidores = [], init
                             step="0.01"
                             value={formData.pesoTotal}
                             onChange={(e) => handleChange('pesoTotal', e.target.value)}
+                            disabled={isLocked}
                             className="[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                         />
                         <Input
@@ -450,7 +460,7 @@ const DespachoModal = ({ isOpen, onClose, editingDespacho, servidores = [], init
                         type="submit"
                         variant={editingDespacho ? 'primary' : 'success'}
                         className="flex-1 w-full sm:w-auto"
-                        disabled={isLoading}
+                        disabled={isLoading || !isValidVolumes}
                     >
                         {isLoading ? (
                             <>
