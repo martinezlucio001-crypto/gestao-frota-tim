@@ -864,7 +864,6 @@ const NotasDespachoPage = () => {
 
                 <div className="flex items-center gap-2">
                     <Button
-                        variant="secondary"
                         className="flex items-center gap-2"
                         onClick={() => setIsManualModalOpen(true)}
                     >
