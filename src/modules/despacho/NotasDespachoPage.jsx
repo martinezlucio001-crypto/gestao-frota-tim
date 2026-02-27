@@ -491,92 +491,132 @@ const NotasDespachoPage = () => {
         return () => observer.disconnect();
     }, [hasMoreDocs, loadMore]);
 
-    // "Atualizar Status" - Full reconciliation
     const handleReconcileStatus = async () => {
         if (reconciling) return;
         setReconciling(true);
         try {
-            // Load ALL notes
             const allQ = query(collection(db, 'tb_despachos_conferencia'), orderBy('criado_em', 'desc'));
             const allSnapshot = await getDocs(allQ);
             const allNotes = allSnapshot.docs.map(d => ({ id: d.id, ...d.data() }));
 
-            // Build unitizer map: unitizer ID → { entryNoteIds, exitNoteIds }
+            // Build unitizer map
             const unitizerMap = new Map();
             allNotes.forEach(nota => {
-                const itensEntrada = Array.isArray(nota.itens) ? nota.itens : [];
-                const itensSaida = Array.isArray(nota.itens_conferencia) ? nota.itens_conferencia : [];
-
-                itensEntrada.forEach(item => {
+                (Array.isArray(nota.itens) ? nota.itens : []).forEach(item => {
                     const u = typeof item === 'string' ? item.split(' - ')[0] : item?.unitizador;
+                    let peso = typeof item === 'string' ? item.split(' - ')[2] : item?.peso;
                     if (!u) return;
+                    peso = parseFloat(String(peso || 0).replace(',', '.'));
                     const id = String(u).trim();
-                    if (!unitizerMap.has(id)) unitizerMap.set(id, { entryNoteIds: new Set(), exitNoteIds: new Set() });
-                    unitizerMap.get(id).entryNoteIds.add(nota.id);
+                    if (!unitizerMap.has(id)) unitizerMap.set(id, { entries: [], exits: [] });
+                    unitizerMap.get(id).entries.push({ notaId: nota.id, peso });
                 });
-
-                itensSaida.forEach(item => {
+                (Array.isArray(nota.itens_conferencia) ? nota.itens_conferencia : []).forEach(item => {
                     const u = typeof item === 'string' ? item.split(' - ')[0] : item?.unitizador;
+                    let peso = typeof item === 'string' ? item.split(' - ')[2] : item?.peso;
                     if (!u) return;
+                    peso = parseFloat(String(peso || 0).replace(',', '.'));
                     const id = String(u).trim();
-                    if (!unitizerMap.has(id)) unitizerMap.set(id, { entryNoteIds: new Set(), exitNoteIds: new Set() });
-                    unitizerMap.get(id).exitNoteIds.add(nota.id);
+                    if (!unitizerMap.has(id)) unitizerMap.set(id, { entries: [], exits: [] });
+                    unitizerMap.get(id).exits.push({ notaId: nota.id, peso });
                 });
             });
 
-            // Determine note-level status from unitizer cross-reference
-            const noteStatusUpdates = new Map(); // noteId → newStatus
-
+            const updates = new Map();
             allNotes.forEach(nota => {
-                if (nota.status === 'PROCESSADA' || nota.processado_em) return; // Dont overwrite manually processed
-
                 const itensEntrada = Array.isArray(nota.itens) ? nota.itens : [];
                 const itensSaida = Array.isArray(nota.itens_conferencia) ? nota.itens_conferencia : [];
                 const hasEntry = itensEntrada.length > 0;
                 const hasExit = itensSaida.length > 0;
 
-                if (hasEntry && !hasExit) {
-                    // Check if ALL entry unitizers have exits in other notes
-                    const allResolved = itensEntrada.every(item => {
-                        const u = typeof item === 'string' ? item.split(' - ')[0] : item?.unitizador;
-                        if (!u) return true;
-                        const data = unitizerMap.get(String(u).trim());
-                        return data && data.exitNoteIds.size > 0;
-                    });
-                    if (allResolved && nota.status !== 'CONCLUIDO') {
-                        noteStatusUpdates.set(nota.id, 'CONCLUIDO');
+                let isDivergent = false;
+                let isOrphan = false;
+                let allEntryMatched = true;
+                let allExitMatched = true;
+                let divergenceReasons = [];
+
+                itensEntrada.forEach(item => {
+                    const u = String(typeof item === 'string' ? item.split(' - ')[0] : item?.unitizador).trim();
+                    const peso = parseFloat(String(typeof item === 'string' ? item.split(' - ')[2] : item?.peso || 0).replace(',', '.'));
+                    const data = unitizerMap.get(u);
+                    if (!data || data.exits.length === 0) {
+                        allEntryMatched = false;
+                    } else {
+                        const exitWeight = data.exits[0].peso;
+                        if (peso !== exitWeight) {
+                            isDivergent = true;
+                            divergenceReasons.push(`Peso div. ${u}`);
+                        }
+                    }
+                });
+
+                itensSaida.forEach(item => {
+                    const u = String(typeof item === 'string' ? item.split(' - ')[0] : item?.unitizador).trim();
+                    const peso = parseFloat(String(typeof item === 'string' ? item.split(' - ')[2] : item?.peso || 0).replace(',', '.'));
+                    const data = unitizerMap.get(u);
+                    if (!data || data.entries.length === 0) {
+                        allExitMatched = false;
+                        isOrphan = true;
+                        divergenceReasons.push(`Órfão ${u}`);
+                    } else {
+                        const entryWeight = data.entries[0].peso;
+                        if (peso !== entryWeight) {
+                            isDivergent = true;
+                            if (!divergenceReasons.includes(`Peso div. ${u}`)) {
+                                divergenceReasons.push(`Peso div. ${u}`);
+                            }
+                        }
+                    }
+                });
+
+                let newStatus = nota.status;
+                let newDivergence = divergenceReasons.join(' | ');
+
+                if (isDivergent) {
+                    newStatus = 'DIVERGENTE';
+                } else if (hasExit && !hasEntry && isOrphan) {
+                    newStatus = 'DEVOLVED_ORPHAN';
+                } else if (hasEntry && !hasExit) {
+                    if (allEntryMatched) {
+                        newStatus = 'CONCLUIDO';
+                    } else if (nota.status === 'CONCLUIDO' || nota.status === 'DIVERGENTE') {
+                        newStatus = nota.processado_em ? 'PROCESSADA' : 'RECEBIDO';
+                        newDivergence = '';
                     }
                 } else if (hasExit && !hasEntry) {
-                    if (nota.status !== 'DEVOLVED_ORPHAN') {
-                        noteStatusUpdates.set(nota.id, 'DEVOLVED_ORPHAN');
+                    if (allExitMatched) {
+                        newStatus = 'CONCLUIDO';
+                        newDivergence = '';
+                    } else if (nota.status === 'CONCLUIDO' || nota.status === 'DIVERGENTE') {
+                        newStatus = 'DEVOLVED_ORPHAN';
                     }
                 } else if (hasEntry && hasExit) {
-                    // Check divergence
-                    const entryUnitizers = itensEntrada.map(i => typeof i === 'string' ? i.split(' - ')[0] : i?.unitizador).filter(Boolean).map(u => String(u).trim());
-                    const exitUnitizers = itensSaida.map(i => typeof i === 'string' ? i.split(' - ')[0] : i?.unitizador).filter(Boolean).map(u => String(u).trim());
-                    const mismatch = entryUnitizers.some(u => !exitUnitizers.includes(u)) || exitUnitizers.some(u => !entryUnitizers.includes(u));
-                    if (mismatch && nota.status !== 'DIVERGENTE') {
-                        noteStatusUpdates.set(nota.id, 'DIVERGENTE');
-                    } else if (!mismatch && nota.status !== 'CONCLUIDO') {
-                        noteStatusUpdates.set(nota.id, 'CONCLUIDO');
+                    if (isOrphan) {
+                        newStatus = 'DIVERGENTE';
+                    } else if (allEntryMatched && allExitMatched) {
+                        newStatus = 'CONCLUIDO';
+                    } else if (nota.status === 'CONCLUIDO' || nota.status === 'DIVERGENTE') {
+                        newStatus = nota.processado_em ? 'PROCESSADA' : 'RECEBIDO';
                     }
+                }
+
+                if (newStatus !== nota.status || newDivergence !== (nota.divergencia || '')) {
+                    updates.set(nota.id, { status: newStatus, divergencia: newDivergence });
                 }
             });
 
-            // Write updates in batches (Firestore limit: 500 per batch)
-            const entries = [...noteStatusUpdates.entries()];
+            const entries = [...updates.entries()];
             for (let i = 0; i < entries.length; i += 450) {
                 const batch = writeBatch(db);
-                const chunk = entries.slice(i, i + 450);
-                chunk.forEach(([noteId, newStatus]) => {
-                    batch.update(doc(db, 'tb_despachos_conferencia', noteId), { status: newStatus });
+                entries.slice(i, i + 450).forEach(([noteId, fields]) => {
+                    batch.update(doc(db, 'tb_despachos_conferencia', noteId), fields);
                 });
                 await batch.commit();
             }
 
             alert(`Status atualizado! ${entries.length} notas foram reconciliadas.`);
         } catch (error) {
-            console.error('Erro na reconcilia\u00e7\u00e3o:', error);
+            console.error('Erro na reconciliação:', error);
             alert('Erro ao atualizar status. Verifique o console.');
         } finally {
             setReconciling(false);
