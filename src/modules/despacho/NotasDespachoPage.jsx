@@ -5,11 +5,12 @@ import { Card, Button, Input, Select, Modal, ModalFooter } from '../../component
 import {
     FileText, Package, Truck, Calendar, Search, Filter,
     MoreVertical, CheckCircle2, AlertCircle, X, ChevronRight,
-    ArrowUp, ArrowDown, RefreshCw, AlertTriangle, Loader2, DatabaseZap
+    ArrowUp, ArrowDown, RefreshCw, AlertTriangle, Loader2, DatabaseZap, Plus
 } from 'lucide-react';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell, TableEmpty } from '../../components/ui/Table';
 import NotaDetalheModal from './modals/NotaDetalheModal';
 import DespachoModal from './modals/DespachoModal';
+import NotaManualModal from './modals/NotaManualModal';
 import { formatCurrency } from '../../lib/utils';
 import { CITIES } from '../../lib/cities';
 
@@ -258,7 +259,12 @@ const NotaSection = ({ title, notas, icon: Icon, colorClass, onOpenNota, emptyMe
                                         onClick={() => onOpenNota(nota)}
                                     >
                                         <TableCell className="font-medium text-indigo-600">
-                                            {nota.nota_despacho}
+                                            <div className="flex items-center gap-2">
+                                                {nota.nota_despacho}
+                                                {nota.isManual && (
+                                                    <span className="text-[10px] bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded-full font-bold">Manual</span>
+                                                )}
+                                            </div>
                                         </TableCell>
                                         <TableCell className="text-slate-600">{nota.origem}</TableCell>
                                         <TableCell className="text-slate-600">{nota.destino}</TableCell>
@@ -321,7 +327,12 @@ const NotaSection = ({ title, notas, icon: Icon, colorClass, onOpenNota, emptyMe
                                 onClick={() => onOpenNota(nota)}
                             >
                                 <div className="flex items-center justify-between mb-1">
-                                    <span className="font-bold text-indigo-600 text-sm">{nota.nota_despacho}</span>
+                                    <div className="flex items-center gap-2">
+                                        <span className="font-bold text-indigo-600 text-sm">{nota.nota_despacho}</span>
+                                        {nota.isManual && (
+                                            <span className="text-[10px] bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded-full font-bold">Manual</span>
+                                        )}
+                                    </div>
                                     <StatusLights nota={nota} />
                                 </div>
                                 <div className="flex items-center gap-1 text-slate-600 text-xs mb-1">
@@ -391,6 +402,7 @@ const NotasDespachoPage = () => {
 
     const [selectedNota, setSelectedNota] = useState(null);
     const [isDespachoModalOpen, setIsDespachoModalOpen] = useState(false);
+    const [isManualModalOpen, setIsManualModalOpen] = useState(false);
 
     // Pagination state
     const [lastDocSnapshot, setLastDocSnapshot] = useState(null);
@@ -851,7 +863,14 @@ const NotasDespachoPage = () => {
                 </div>
 
                 <div className="flex items-center gap-2">
-
+                    <Button
+                        variant="secondary"
+                        className="flex items-center gap-2"
+                        onClick={() => setIsManualModalOpen(true)}
+                    >
+                        <Plus size={16} />
+                        Adicionar Despacho
+                    </Button>
                     <Button
                         variant="outline"
                         className="flex items-center gap-2"
@@ -1058,6 +1077,11 @@ const NotasDespachoPage = () => {
                 initialData={initialDespachoData}
                 onSaveSuccess={handleDespachoSuccess}
                 servidores={servidores}
+            />
+
+            <NotaManualModal
+                isOpen={isManualModalOpen}
+                onClose={() => setIsManualModalOpen(false)}
             />
         </div>
     );

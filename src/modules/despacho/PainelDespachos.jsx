@@ -386,10 +386,6 @@ const PainelDespachos = () => {
                             <FileDown size={18} />
                             Exportar PDF
                         </Button>
-                        <Button onClick={() => setIsModalOpen(true)} className="gap-2">
-                            <Plus size={18} />
-                            Adicionar Despacho
-                        </Button>
                     </div>
                 </div>
             </Card>
