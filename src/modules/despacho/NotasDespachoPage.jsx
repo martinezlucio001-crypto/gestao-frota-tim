@@ -828,21 +828,42 @@ const NotasDespachoPage = () => {
             peso = peso.replace(',', '.');
         }
 
+        const origem = findClosestCity(selectedNota.origem);
+        const destino = findClosestCity(selectedNota.destino);
+
+        let matchedServidorId = '';
+        if (servidores && servidores.length > 0) {
+            const matchingServidor = servidores.find(s =>
+                s.rotas && s.rotas.some(rota =>
+                    (rota.origem === origem && rota.destino === destino) ||
+                    (rota.origem === destino && rota.destino === origem)
+                )
+            );
+            if (matchingServidor) {
+                matchedServidorId = matchingServidor.id;
+            }
+        }
+
         return {
             locked: true,
             data: (() => {
                 const d = new Date();
                 return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
             })(),
-            origem: findClosestCity(selectedNota.origem),
-            destino: findClosestCity(selectedNota.destino),
+            origem: origem,
+            destino: destino,
+            servidorId: matchedServidorId,
             pesoTotal: peso,
-            volumesCorreios: selectedNota.qtde_unitizadores || (selectedNota.itens ? selectedNota.itens.length : 0),
+            volumesCorreios: (() => {
+                const itens = selectedNota.itens || [];
+                const itensConf = selectedNota.itens_conferencia || [];
+                return [...itens, ...itensConf].filter(i => i.conferido === true).length;
+            })(),
             volumesEntregues: '', // User usually fills this upon delivery/dispatch
             quantidadePaletes: 0,
             observacoes: `Despacho gerado a partir da Nota ${selectedNota.nota_despacho}.`
         };
-    }, [selectedNota]);
+    }, [selectedNota, servidores]);
 
     return (
         <div className="space-y-6 pb-20">

@@ -51,7 +51,7 @@ const DespachoModal = ({ isOpen, onClose, editingDespacho, servidores = [], init
                     origem: initialData.origem || '',
                     destino: initialData.destino || '',
                     tipoCarga: '',
-                    servidorId: '',
+                    servidorId: initialData.servidorId || '',
                     servidorNome: '',
                     unidadePrecificacao: '',
                     volumesCorreios: initialData.volumesCorreios !== undefined && initialData.volumesCorreios !== null ? String(initialData.volumesCorreios) : '',
@@ -304,7 +304,6 @@ const DespachoModal = ({ isOpen, onClose, editingDespacho, servidores = [], init
                         type="date"
                         value={formData.data}
                         onChange={(e) => handleChange('data', e.target.value)}
-                        disabled={isLocked}
                         required
                     />
                     <Select
@@ -319,7 +318,7 @@ const DespachoModal = ({ isOpen, onClose, editingDespacho, servidores = [], init
 
                 <div className="mb-4">
                     <Select
-                        label="Servidor (Prestador)"
+                        label="Servidor"
                         value={formData.servidorId}
                         onChange={(e) => handleChange('servidorId', e.target.value)}
                         options={servidorOptions.map(s => ({ value: s.id, label: s.nome }))}
