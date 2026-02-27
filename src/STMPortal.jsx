@@ -5,7 +5,7 @@ import {
     signOut
 } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
-import { Loader2, Eye, EyeOff, Lock, Mail, ClipboardList, LayoutDashboard, FileText, Package, Users, DollarSign, Shield, Download } from 'lucide-react';
+import { Loader2, Eye, EyeOff, Lock, Mail, ClipboardList, LayoutDashboard, FileText, Package, Users, DollarSign, Shield, Download, ChevronLeft } from 'lucide-react';
 import { auth, db } from './lib/firebase';
 import { Sidebar, Header } from './components/layout';
 
@@ -104,6 +104,16 @@ const STMLoginPage = ({ onLogin, isLoading, error }) => {
                         )}
                     </button>
                 </form>
+
+                <div className="mt-8 text-center border-t border-slate-100 pt-6">
+                    <a
+                        href="/"
+                        className="text-slate-400 hover:text-slate-600 text-sm font-medium transition-colors inline-flex items-center gap-1"
+                    >
+                        <ChevronLeft size={16} />
+                        Voltar
+                    </a>
+                </div>
             </div>
         </div>
     );

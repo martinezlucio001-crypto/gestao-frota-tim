@@ -701,6 +701,16 @@ const DriverPortal = () => {
                             {isLoading ? <Loader2 size={20} className="animate-spin" /> : 'Entrar'}
                         </button>
                     </form>
+
+                    <div className="mt-8 text-center border-t border-slate-100 pt-6">
+                        <a
+                            href="/"
+                            className="text-slate-400 hover:text-slate-600 text-sm font-medium transition-colors inline-flex items-center gap-1"
+                        >
+                            <ChevronLeft size={16} />
+                            Voltar
+                        </a>
+                    </div>
                 </div>
             </div>
         );
