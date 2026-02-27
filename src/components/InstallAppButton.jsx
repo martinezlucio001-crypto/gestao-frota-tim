@@ -14,14 +14,10 @@ const InstallAppButton = () => {
         // Regra 2: Não exibir se já for standalone
         const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
 
-        // Regra 3: Apenas em dispositivos móveis (Android / iOS)
-        const userAgent = window.navigator.userAgent.toLowerCase();
-        const isMobile = /iphone|ipad|ipod|android/.test(userAgent);
-
         const isIosDevice = /iphone|ipad|ipod/.test(userAgent);
         setIsIos(isIosDevice);
 
-        if (isNewHostname && !isStandalone && isMobile) {
+        if (isNewHostname && !isStandalone) {
             setIsVisible(true);
         }
 
