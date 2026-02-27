@@ -386,8 +386,8 @@ const UnitizadoresPage = () => {
             const isDivergenciaProc = data.entries.some(e => e.divergencia_processamento) || data.exits.some(e => e.divergencia_processamento);
 
             if (isDivergenciaProc) {
-                uObj.status = 'DIVERGENCIA_PROCESSAMENTO';
-                uObj.divergenceType = 'Deixado de fora durante processamento de despacho (não conferido na saída).';
+                uObj.status = 'DIVERGENTE';
+                uObj.divergenceType = 'Ausente no processamento de despacho (não conferido na saída).';
             } else if (hasEntry && !hasExit) {
                 uObj.status = isProcessed ? 'PROCESSADA' : 'RECEBIDO';
             } else if (hasExit && !hasEntry) {
@@ -619,7 +619,6 @@ const UnitizadoresPage = () => {
             entregues: filteredList.filter(u => u.status === 'ENTREGUE').sort((a, b) => String(b.data_entrada || '').localeCompare(String(a.data_entrada || ''))),
             orfaos: filteredList.filter(u => u.status === 'ORPHAN').sort((a, b) => String(b.data_entrada || '').localeCompare(String(a.data_entrada || ''))),
             divergentes: filteredList.filter(u => u.status === 'DIVERGENTE').sort((a, b) => String(b.data_entrada || '').localeCompare(String(a.data_entrada || ''))),
-            divergenciaProcessamento: filteredList.filter(u => u.status === 'DIVERGENCIA_PROCESSAMENTO').sort((a, b) => String(b.data_entrada || '').localeCompare(String(a.data_entrada || ''))),
         };
     }, [filteredList]);
 
@@ -738,47 +737,6 @@ const UnitizadoresPage = () => {
                         unitizadores={sections.orfaos}
                         icon={AlertCircle}
                         colorClass="border-l-orange-400"
-                        hasMoreFirestoreDocs={hasMoreDocs}
-                        onLoadMore={loadMore}
-                    />
-                )}
-
-                {sections.divergenciaProcessamento && sections.divergenciaProcessamento.length > 0 && (
-                    <UnitizadorSection
-                        title="Divergência de Processamento"
-                        unitizadores={sections.divergenciaProcessamento}
-                        icon={AlertTriangle}
-                        colorClass="border-l-rose-500"
-                        onRowClick={(u) => {
-                            const reasons = [];
-                            if (u.divergenceType) reasons.push(u.divergenceType);
-                            const entryIds = u.entryNoteIds || [];
-                            const exitIds = u.exitNoteIds || [];
-                            setDivergenceReasons(reasons);
-
-                            const allNoteIds = [...new Set([...entryIds, ...exitIds])];
-                            const notasRaw = allNoteIds.map(id => rawNotesMap[id]).filter(Boolean);
-                            if (notasRaw.length === 0) return;
-
-                            const recNotas = entryIds.map(id => rawNotesMap[id]).filter(Boolean);
-                            const devNotas = exitIds.map(id => rawNotesMap[id]).filter(Boolean);
-
-                            const labeled = [];
-                            recNotas.forEach((n, i) => labeled.push({ ...n, _switchLabel: `Recebimento ${i + 1}`, _type: 'rec', _order: i }));
-                            devNotas.forEach((n, i) => {
-                                const already = labeled.find(l => l.nota_despacho === n.nota_despacho);
-                                if (!already) {
-                                    labeled.push({ ...n, _switchLabel: `Devolução ${i + 1}`, _type: 'dev', _order: i });
-                                } else {
-                                    already._switchLabel = `Recebimento ${recNotas.indexOf(n) + 1}`;
-                                }
-                            });
-
-                            setSelectedUnitizerId(u.id);
-                            setAvailableNotas(labeled);
-                            setSelectedNotaIndex(0);
-                            setSelectedNota(labeled[0]);
-                        }}
                         hasMoreFirestoreDocs={hasMoreDocs}
                         onLoadMore={loadMore}
                     />

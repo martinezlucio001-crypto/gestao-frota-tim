@@ -650,7 +650,6 @@ const NotasDespachoPage = () => {
         return {
             recebidos: filteredNotas.filter(n => n.status === 'RECEBIDO' || n.status === 'IMPORTADO'),
             processados: filteredNotas.filter(n => n.status === 'PROCESSADA'),
-            divergenciaProcessamento: filteredNotas.filter(n => n.status === 'DIVERGENCIA_PROCESSAMENTO'),
             concluidos: filteredNotas.filter(n => ['CONCLUIDO', 'ENTREGUE'].includes(n.status)),
             divergentes: filteredNotas.filter(n => n.status === 'DIVERGENTE'),
             orfas: filteredNotas.filter(n => n.status === 'DEVOLVED_ORPHAN')
@@ -684,7 +683,7 @@ const NotasDespachoPage = () => {
                 const newItensConf = processList(selectedNota.itens_conferencia);
 
                 const hasDivergence = newItens.some(i => i.divergencia_processamento) || newItensConf.some(i => i.divergencia_processamento);
-                const nextStatus = hasDivergence ? 'DIVERGENCIA_PROCESSAMENTO' : 'PROCESSADA';
+                const nextStatus = hasDivergence ? 'DIVERGENTE' : 'PROCESSADA';
 
                 await updateDoc(doc(db, 'tb_despachos_conferencia', selectedNota.id), {
                     status: nextStatus,
@@ -1025,20 +1024,7 @@ const NotasDespachoPage = () => {
                     />
                 )}
 
-                {/* 5. Divergencia de Processamento */}
-                {sections.divergenciaProcessamento && sections.divergenciaProcessamento.length > 0 && (
-                    <NotaSection
-                        title="Divergência de Processamento"
-                        notas={sections.divergenciaProcessamento}
-                        icon={AlertTriangle}
-                        colorClass="border-l-rose-500"
-                        onOpenNota={setSelectedNota}
-                        hasMoreFirestoreDocs={hasMoreDocs}
-                        onLoadMore={loadMore}
-                    />
-                )}
-
-                {/* 6. Notas Divergentes */}
+                {/* 5. Notas Divergentes */}
                 {sections.divergentes.length > 0 && (
                     <NotaSection
                         title="Notas Divergentes"
