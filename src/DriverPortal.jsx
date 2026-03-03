@@ -565,10 +565,19 @@ const DriverPortal = () => {
     const uploadBase64ToStorage = async (base64String, path) => {
         if (!base64String) return null;
         try {
-            const response = await fetch(base64String);
-            const blob = await response.blob();
+            // Converter base64 para Blob manualmente para evitar falhas de fetch() em navegadores mobile
+            const arr = base64String.split(',');
+            const mime = arr[0].match(/:(.*?);/)[1];
+            const bstr = atob(arr[1]);
+            let n = bstr.length;
+            const u8arr = new Uint8Array(n);
+            while (n--) {
+                u8arr[n] = bstr.charCodeAt(n);
+            }
+            const blob = new Blob([u8arr], { type: mime });
+
             const storageRef = ref(storage, path);
-            await uploadBytes(storageRef, blob, { contentType: 'image/jpeg' });
+            await uploadBytes(storageRef, blob, { contentType: mime });
             return await getDownloadURL(storageRef);
         } catch (error) {
             console.error('Erro no upload:', error);
