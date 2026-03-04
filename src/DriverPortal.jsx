@@ -41,70 +41,93 @@ const CameraCapture = ({ onCapture, label, plate }) => {
         };
 
         try {
-            let fileToProcess = file;
-
-            // Verificar se é HEIC/HEIF (comum em iPhones)
+            // Verificar se é HEIC/HEIF (comum em iPhones e Samsungs)
             const isHeic = file.type === 'image/heic' ||
                 file.type === 'image/heif' ||
                 file.name.toLowerCase().endsWith('.heic') ||
                 file.name.toLowerCase().endsWith('.heif');
 
+            // Função de marca d'água (reutilizada em todos os métodos)
+            const applyWatermarkAndConvert = (imgSource, width, height) => {
+                const canvas = document.createElement('canvas');
+                const maxWidth = 1200;
+                const scale = Math.min(1, maxWidth / width);
+                canvas.width = width * scale;
+                canvas.height = height * scale;
+
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(imgSource, 0, 0, canvas.width, canvas.height);
+
+                // Marca d'água
+                const now = new Date();
+                const dateStr = now.toLocaleDateString('pt-BR');
+                const timeStr = now.toLocaleTimeString('pt-BR').slice(0, 5);
+                const fontSize = Math.max(32, Math.floor(canvas.width / 18));
+                const watermarkText = `${dateStr}; ${timeStr}, ${plate}`;
+                const textY = canvas.height - fontSize * 0.8;
+
+                ctx.font = `bold ${fontSize}px Arial`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.strokeStyle = 'rgba(0, 0, 0, 0.9)';
+                ctx.lineWidth = fontSize / 6;
+                ctx.lineJoin = 'round';
+                ctx.strokeText(watermarkText, canvas.width / 2, textY);
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+                ctx.fillText(watermarkText, canvas.width / 2, textY);
+
+                return canvas.toDataURL('image/jpeg', 0.7);
+            };
+
+            // ========================================================
+            // ESTRATÉGIA: Tentar decodificação NATIVA primeiro (rápido!)
+            // Se o celular tiver codec HEIC no sistema, createImageBitmap
+            // resolve em ~2 segundos. Só se falhar, usa heic2any (lento).
+            // ========================================================
+
+            // TENTATIVA 1: createImageBitmap direto no arquivo original (inclusive HEIC)
+            try {
+                console.log('Tentativa 1: createImageBitmap nativo no arquivo original...');
+                const bitmap = await createImageBitmap(file);
+                console.log('createImageBitmap nativo sucesso:', bitmap.width, 'x', bitmap.height);
+                const result = applyWatermarkAndConvert(bitmap, bitmap.width, bitmap.height);
+                bitmap.close();
+                clearTimeout(timeoutId);
+                setPreview(result);
+                onCapture(result);
+                setProcessing(false);
+                return; // Sucesso! Não precisa tentar mais nada.
+            } catch (nativeBitmapError) {
+                console.warn('createImageBitmap nativo falhou (codec HEIC não disponível neste dispositivo):', nativeBitmapError.message);
+            }
+
+            // TENTATIVA 2: Se é HEIC e o nativo falhou, converter com heic2any e depois processar
+            let fileToProcess = file;
             if (isHeic) {
-                console.log('Arquivo HEIC detectado, convertendo...');
+                console.log('Tentativa 2: Convertendo HEIC com heic2any (fallback JS)...');
                 try {
                     const convertedBlob = await heic2any({
                         blob: file,
                         toType: 'image/jpeg',
-                        quality: 0.8
+                        quality: 0.7
                     });
                     fileToProcess = Array.isArray(convertedBlob) ? convertedBlob[0] : convertedBlob;
-                    console.log('Conversão HEIC concluída');
+                    console.log('Conversão heic2any concluída');
                 } catch (heicError) {
-                    console.error('Erro ao converter HEIC:', heicError);
+                    console.error('heic2any também falhou:', heicError);
                     cleanup();
                     alert('Erro ao processar imagem HEIC. Por favor, tire uma nova foto diretamente pela câmera ou use uma imagem JPG/PNG.');
                     return;
                 }
             }
 
-            // Processar imagem - múltiplos métodos de fallback para máxima compatibilidade
+            // TENTATIVA 3: Processar o arquivo (já convertido se era HEIC) com múltiplos fallbacks
             const processImage = async (imageFile) => {
-                console.log('processImage iniciado para:', imageFile.name || 'blob', 'tipo:', imageFile.type, 'tamanho:', imageFile.size);
+                console.log('processImage para:', imageFile.name || 'blob', 'tipo:', imageFile.type, 'tamanho:', imageFile.size);
 
-                const applyWatermarkAndConvert = (imgSource, width, height) => {
-                    const canvas = document.createElement('canvas');
-                    const maxWidth = 1200;
-                    const scale = Math.min(1, maxWidth / width);
-                    canvas.width = width * scale;
-                    canvas.height = height * scale;
-
-                    const ctx = canvas.getContext('2d');
-                    ctx.drawImage(imgSource, 0, 0, canvas.width, canvas.height);
-
-                    // Marca d'água
-                    const now = new Date();
-                    const dateStr = now.toLocaleDateString('pt-BR');
-                    const timeStr = now.toLocaleTimeString('pt-BR').slice(0, 5);
-                    const fontSize = Math.max(32, Math.floor(canvas.width / 18));
-                    const watermarkText = `${dateStr}; ${timeStr}, ${plate}`;
-                    const textY = canvas.height - fontSize * 0.8;
-
-                    ctx.font = `bold ${fontSize}px Arial`;
-                    ctx.textAlign = 'center';
-                    ctx.textBaseline = 'middle';
-                    ctx.strokeStyle = 'rgba(0, 0, 0, 0.9)';
-                    ctx.lineWidth = fontSize / 6;
-                    ctx.lineJoin = 'round';
-                    ctx.strokeText(watermarkText, canvas.width / 2, textY);
-                    ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
-                    ctx.fillText(watermarkText, canvas.width / 2, textY);
-
-                    return canvas.toDataURL('image/jpeg', 0.7);
-                };
-
-                // Método 1: createImageBitmap (mais moderno e robusto)
+                // 3a: createImageBitmap (no blob já convertido)
                 try {
-                    console.log('Tentando createImageBitmap...');
+                    console.log('Tentando createImageBitmap no blob convertido...');
                     const bitmap = await createImageBitmap(imageFile);
                     console.log('createImageBitmap sucesso:', bitmap.width, 'x', bitmap.height);
                     const result = applyWatermarkAndConvert(bitmap, bitmap.width, bitmap.height);
@@ -114,7 +137,7 @@ const CameraCapture = ({ onCapture, label, plate }) => {
                     console.warn('createImageBitmap falhou:', bitmapError.message);
                 }
 
-                // Método 2: createObjectURL + Image
+                // 3b: createObjectURL + Image
                 try {
                     console.log('Tentando createObjectURL...');
                     const objectUrl = URL.createObjectURL(imageFile);
@@ -132,7 +155,7 @@ const CameraCapture = ({ onCapture, label, plate }) => {
                     console.warn('createObjectURL falhou:', urlError.message);
                 }
 
-                // Método 3: FileReader + Image (fallback final)
+                // 3c: FileReader + Image (fallback final)
                 try {
                     console.log('Tentando FileReader...');
                     const dataUrl = await new Promise((resolve, reject) => {
