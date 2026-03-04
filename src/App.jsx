@@ -2521,19 +2521,29 @@ export default function FleetManager({ embedded = false, externalView, onNavigat
           initialFuel: d.initialFuel ?? null,
         };
 
-        // Só inclui fotos se houve mudança explícita (nova foto ou remoção)
+        const originalEntry = entries.find(e => e.id === d.id);
+
+        // Só inclui fotos se houve mudança explícita (nova foto enviada)
+        // Se a foto não foi trocada, mantemos o valor antigo lendo direto do originalEntry
+
         if (odometerBeforeUrl) {
           editPayload.odometerBeforePhoto = odometerBeforeUrl;
           editPayload.odometerUrl = odometerBeforeUrl;
         } else if (d.odometerBeforePhoto === null) {
           editPayload.odometerBeforePhoto = null;
           editPayload.odometerUrl = null;
+        } else {
+          // Mantém as fotos originais se não houve nova nem deleção
+          if (originalEntry?.odometerBeforePhoto) editPayload.odometerBeforePhoto = originalEntry.odometerBeforePhoto;
+          if (originalEntry?.odometerUrl) editPayload.odometerUrl = originalEntry.odometerUrl;
         }
 
         if (odometerAfterUrl) {
           editPayload.odometerAfterPhoto = odometerAfterUrl;
         } else if (d.odometerAfterPhoto === null) {
           editPayload.odometerAfterPhoto = null;
+        } else {
+          if (originalEntry?.odometerAfterPhoto) editPayload.odometerAfterPhoto = originalEntry.odometerAfterPhoto;
         }
 
         if (receiptUploadUrl) {
@@ -2542,12 +2552,14 @@ export default function FleetManager({ embedded = false, externalView, onNavigat
         } else if (d.receiptUrl === null) {
           editPayload.receiptUrl = null;
           editPayload.receiptPhoto = null;
+        } else {
+          if (originalEntry?.receiptUrl) editPayload.receiptUrl = originalEntry.receiptUrl;
+          if (originalEntry?.receiptPhoto) editPayload.receiptPhoto = originalEntry.receiptPhoto;
         }
 
-        editPayload.hasReceipt = receiptUploadUrl ? true : !!(d.receiptUrl);
-        editPayload.hasOdometer = odometerBeforeUrl || odometerAfterUrl ? true : !!(d.odometerUrl);
+        editPayload.hasReceipt = receiptUploadUrl ? true : (d.receiptUrl === null ? false : !!(originalEntry?.hasReceipt || originalEntry?.receiptUrl));
+        editPayload.hasOdometer = (odometerBeforeUrl || odometerAfterUrl) ? true : (d.odometerUrl === null ? false : !!(originalEntry?.hasOdometer || originalEntry?.odometerUrl));
 
-        const originalEntry = entries.find(e => e.id === d.id);
         if (originalEntry && originalEntry.registeredBy === 'driver') {
           editPayload.editedByController = true;
           editPayload.registeredBy = 'driver';
