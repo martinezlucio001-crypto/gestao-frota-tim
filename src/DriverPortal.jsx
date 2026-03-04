@@ -20,17 +20,25 @@ const CameraCapture = ({ onCapture, label, plate }) => {
     const galleryInputRef = useRef(null);
     const [preview, setPreview] = useState(null);
     const [processing, setProcessing] = useState(false);
+    const [debugLogs, setDebugLogs] = useState([]);
+
+    // Função para adicionar log visual na tela
+    const addLog = (emoji, msg) => {
+        console.log(msg);
+        setDebugLogs(prev => [...prev, `${emoji} ${new Date().toLocaleTimeString('pt-BR').slice(0, 8)} ${msg}`]);
+    };
 
     const handleCapture = async (e) => {
         const file = e.target.files[0];
         if (!file) return;
 
-        console.log('Iniciando processamento de imagem:', file.name, file.type, file.size);
+        setDebugLogs([]); // Limpar logs anteriores
+        addLog('📂', `Arquivo: ${file.name} | Tipo: ${file.type || 'desconhecido'} | Tamanho: ${(file.size / 1024 / 1024).toFixed(2)}MB`);
         setProcessing(true);
 
-        // Timeout de segurança - 30 segundos máximo
+        // Timeout de segurança - 60 segundos máximo
         const timeoutId = setTimeout(() => {
-            console.error('Timeout ao processar imagem');
+            addLog('⏰', 'TIMEOUT: 60 segundos esgotados');
             setProcessing(false);
             alert('Tempo esgotado ao processar imagem. Tente novamente.');
         }, 60000);
@@ -41,13 +49,15 @@ const CameraCapture = ({ onCapture, label, plate }) => {
         };
 
         try {
-            // Verificar se é HEIC/HEIF (comum em iPhones e Samsungs)
+            // Verificar se é HEIC/HEIF
             const isHeic = file.type === 'image/heic' ||
                 file.type === 'image/heif' ||
                 file.name.toLowerCase().endsWith('.heic') ||
                 file.name.toLowerCase().endsWith('.heif');
 
-            // Função de marca d'água (reutilizada em todos os métodos)
+            addLog('🔍', `HEIC detectado: ${isHeic ? 'SIM' : 'NÃO'}`);
+
+            // Função de marca d'água
             const applyWatermarkAndConvert = (imgSource, width, height) => {
                 const canvas = document.createElement('canvas');
                 const maxWidth = 1200;
@@ -58,7 +68,6 @@ const CameraCapture = ({ onCapture, label, plate }) => {
                 const ctx = canvas.getContext('2d');
                 ctx.drawImage(imgSource, 0, 0, canvas.width, canvas.height);
 
-                // Marca d'água
                 const now = new Date();
                 const dateStr = now.toLocaleDateString('pt-BR');
                 const timeStr = now.toLocaleTimeString('pt-BR').slice(0, 5);
@@ -79,67 +88,63 @@ const CameraCapture = ({ onCapture, label, plate }) => {
                 return canvas.toDataURL('image/jpeg', 0.7);
             };
 
-            // ========================================================
-            // ESTRATÉGIA: Tentar decodificação NATIVA primeiro (rápido!)
-            // Se o celular tiver codec HEIC no sistema, createImageBitmap
-            // resolve em ~2 segundos. Só se falhar, usa heic2any (lento).
-            // ========================================================
-
-            // TENTATIVA 1: createImageBitmap direto no arquivo original (inclusive HEIC)
+            // TENTATIVA 1: createImageBitmap direto no arquivo original
+            addLog('🚀', 'T1: createImageBitmap nativo...');
             try {
-                console.log('Tentativa 1: createImageBitmap nativo no arquivo original...');
                 const bitmap = await createImageBitmap(file);
-                console.log('createImageBitmap nativo sucesso:', bitmap.width, 'x', bitmap.height);
+                addLog('✅', `T1 SUCESSO: ${bitmap.width}x${bitmap.height}`);
                 const result = applyWatermarkAndConvert(bitmap, bitmap.width, bitmap.height);
                 bitmap.close();
                 clearTimeout(timeoutId);
                 setPreview(result);
                 onCapture(result);
                 setProcessing(false);
-                return; // Sucesso! Não precisa tentar mais nada.
-            } catch (nativeBitmapError) {
-                console.warn('createImageBitmap nativo falhou (codec HEIC não disponível neste dispositivo):', nativeBitmapError.message);
+                addLog('🎉', 'Imagem processada com sucesso!');
+                return;
+            } catch (err) {
+                addLog('❌', `T1 FALHOU: ${err.message}`);
             }
 
-            // TENTATIVA 2: Se é HEIC e o nativo falhou, converter com heic2any e depois processar
+            // TENTATIVA 2: heic2any (só se for HEIC)
             let fileToProcess = file;
             if (isHeic) {
-                console.log('Tentativa 2: Convertendo HEIC com heic2any (fallback JS)...');
+                addLog('🐢', 'T2: heic2any convertendo HEIC→JPEG...');
                 try {
+                    const t0 = Date.now();
                     const convertedBlob = await heic2any({
                         blob: file,
                         toType: 'image/jpeg',
                         quality: 0.7
                     });
                     fileToProcess = Array.isArray(convertedBlob) ? convertedBlob[0] : convertedBlob;
-                    console.log('Conversão heic2any concluída');
+                    addLog('✅', `T2 heic2any OK em ${((Date.now() - t0) / 1000).toFixed(1)}s | Blob: ${(fileToProcess.size / 1024).toFixed(0)}KB`);
                 } catch (heicError) {
-                    console.error('heic2any também falhou:', heicError);
+                    addLog('❌', `T2 heic2any FALHOU: ${heicError.message || heicError}`);
                     cleanup();
                     alert('Erro ao processar imagem HEIC. Por favor, tire uma nova foto diretamente pela câmera ou use uma imagem JPG/PNG.');
                     return;
                 }
             }
 
-            // TENTATIVA 3: Processar o arquivo (já convertido se era HEIC) com múltiplos fallbacks
+            // TENTATIVA 3: Processar o arquivo convertido com múltiplos fallbacks
             const processImage = async (imageFile) => {
-                console.log('processImage para:', imageFile.name || 'blob', 'tipo:', imageFile.type, 'tamanho:', imageFile.size);
+                addLog('⚙️', `processImage: tipo=${imageFile.type}, tamanho=${(imageFile.size / 1024).toFixed(0)}KB`);
 
-                // 3a: createImageBitmap (no blob já convertido)
+                // 3a: createImageBitmap
                 try {
-                    console.log('Tentando createImageBitmap no blob convertido...');
+                    addLog('🔧', 'T3a: createImageBitmap no blob convertido...');
                     const bitmap = await createImageBitmap(imageFile);
-                    console.log('createImageBitmap sucesso:', bitmap.width, 'x', bitmap.height);
+                    addLog('✅', `T3a SUCESSO: ${bitmap.width}x${bitmap.height}`);
                     const result = applyWatermarkAndConvert(bitmap, bitmap.width, bitmap.height);
                     bitmap.close();
                     return result;
-                } catch (bitmapError) {
-                    console.warn('createImageBitmap falhou:', bitmapError.message);
+                } catch (err) {
+                    addLog('❌', `T3a FALHOU: ${err.message}`);
                 }
 
                 // 3b: createObjectURL + Image
                 try {
-                    console.log('Tentando createObjectURL...');
+                    addLog('🔧', 'T3b: createObjectURL + Image...');
                     const objectUrl = URL.createObjectURL(imageFile);
                     const img = await new Promise((resolve, reject) => {
                         const image = new window.Image();
@@ -147,17 +152,17 @@ const CameraCapture = ({ onCapture, label, plate }) => {
                         image.onerror = () => reject(new Error('Image load failed'));
                         image.src = objectUrl;
                     });
-                    console.log('createObjectURL sucesso:', img.width, 'x', img.height);
+                    addLog('✅', `T3b SUCESSO: ${img.width}x${img.height}`);
                     const result = applyWatermarkAndConvert(img, img.width, img.height);
                     URL.revokeObjectURL(objectUrl);
                     return result;
-                } catch (urlError) {
-                    console.warn('createObjectURL falhou:', urlError.message);
+                } catch (err) {
+                    addLog('❌', `T3b FALHOU: ${err.message}`);
                 }
 
-                // 3c: FileReader + Image (fallback final)
+                // 3c: FileReader + Image
                 try {
-                    console.log('Tentando FileReader...');
+                    addLog('🔧', 'T3c: FileReader + Image...');
                     const dataUrl = await new Promise((resolve, reject) => {
                         const reader = new FileReader();
                         reader.onload = (e) => resolve(e.target.result);
@@ -170,18 +175,17 @@ const CameraCapture = ({ onCapture, label, plate }) => {
                         image.onerror = () => reject(new Error('Image load from DataURL failed'));
                         image.src = dataUrl;
                     });
-                    console.log('FileReader sucesso:', img.width, 'x', img.height);
+                    addLog('✅', `T3c SUCESSO: ${img.width}x${img.height}`);
                     return applyWatermarkAndConvert(img, img.width, img.height);
-                } catch (readerError) {
-                    console.error('Todos os métodos falharam. FileReader erro:', readerError.message);
+                } catch (err) {
+                    addLog('❌', `T3c FALHOU: ${err.message}`);
                 }
 
                 throw new Error('Não foi possível processar esta imagem. Por favor, tente tirar uma foto diretamente pela câmera.');
             };
 
-            console.log('Iniciando processamento do canvas...');
             const base64 = await processImage(fileToProcess);
-            console.log('Imagem processada com sucesso');
+            addLog('🎉', 'Imagem processada com sucesso!');
 
             clearTimeout(timeoutId);
             setPreview(base64);
@@ -189,7 +193,7 @@ const CameraCapture = ({ onCapture, label, plate }) => {
             setProcessing(false);
 
         } catch (error) {
-            console.error('Erro ao processar imagem:', error);
+            addLog('💥', `ERRO FATAL: ${error.message}`);
             cleanup();
             alert(error.message || 'Erro ao processar imagem. Tente novamente.');
         }
@@ -271,6 +275,14 @@ const CameraCapture = ({ onCapture, label, plate }) => {
                             </>
                         )}
                     </button>
+                </div>
+            )}
+            {/* Mini-console de debug (temporário) */}
+            {debugLogs.length > 0 && (
+                <div className="mt-2 bg-slate-900 text-green-400 rounded-lg p-3 text-[10px] font-mono max-h-40 overflow-y-auto">
+                    {debugLogs.map((log, i) => (
+                        <div key={i} className="leading-relaxed">{log}</div>
+                    ))}
                 </div>
             )}
         </div>
