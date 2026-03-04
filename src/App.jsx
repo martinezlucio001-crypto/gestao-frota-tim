@@ -59,7 +59,8 @@ import {
   onSnapshot,
   query,
   deleteDoc,
-  getDocs
+  getDocs,
+  where
 } from 'firebase/firestore';
 import { auth, db, appId, storage } from './lib/firebase'; // Usando configuração centralizada
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
