@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Fuel, Camera, Check, Loader2, LogOut, History, AlertCircle, Eye, EyeOff, Plus, RefreshCw, ChevronLeft, User, Truck, Calendar, CheckCircle2, Wrench, AlertTriangle, Image } from 'lucide-react';
 import { collection, query, where, getDocs, addDoc, doc, getDoc } from 'firebase/firestore';
 import { signInWithEmailAndPassword, signOut as firebaseSignOut } from 'firebase/auth';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { ref, uploadString, getDownloadURL } from 'firebase/storage';
 import { auth, db, storage, appId } from './lib/firebase';
 import heic2any from 'heic2any';
 import InstallAppButton from './components/InstallAppButton';
@@ -612,23 +612,13 @@ const DriverPortal = () => {
         confirmSave();
     };
 
-    // Upload base64 para Firebase Storage
+    // Upload base64 para Firebase Storage (Método leve - Nativo do Firebase)
     const uploadBase64ToStorage = async (base64String, path) => {
         if (!base64String) return null;
         try {
-            // Converter base64 para Blob manualmente para evitar falhas de fetch() em navegadores mobile
-            const arr = base64String.split(',');
-            const mime = arr[0].match(/:(.*?);/)[1];
-            const bstr = atob(arr[1]);
-            let n = bstr.length;
-            const u8arr = new Uint8Array(n);
-            while (n--) {
-                u8arr[n] = bstr.charCodeAt(n);
-            }
-            const blob = new Blob([u8arr], { type: mime });
-
             const storageRef = ref(storage, path);
-            await uploadBytes(storageRef, blob, { contentType: mime });
+            // Usar uploadString nativo economiza RAM (evita duplicar o Base64 num Uint8Array)
+            await uploadString(storageRef, base64String, 'data_url');
             return await getDownloadURL(storageRef);
         } catch (error) {
             console.error('Erro no upload:', error);
