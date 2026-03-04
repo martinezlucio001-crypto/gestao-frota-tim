@@ -28,12 +28,12 @@ const CameraCapture = ({ onCapture, label, plate }) => {
         console.log('Iniciando processamento de imagem:', file.name, file.type, file.size);
         setProcessing(true);
 
-        // Timeout de segurança - 120 segundos máximo para HEIC pesado
+        // Timeout de segurança - 60 segundos máximo
         const timeoutId = setTimeout(() => {
             console.error('Timeout ao processar imagem');
             setProcessing(false);
-            alert('Aviso: O processamento demorou muito e foi cancelado (120s). Fotos pesadas de Samsung (HEIC) ou iPhone demoram para ser convertidas no navegador. Se o erro persistir, desative o formato HEIF nas configurações da câmera ou tire a foto com menos resolução.');
-        }, 120000);
+            alert('Aviso: O processamento demorou mais de 1 minuto e foi cancelado. Se o erro persistir no seu Samsung/iPhone, por favor vá nas configurações da câmera do celular e desative o formato "Alta Eficiência (HEIF/HEIC)" ou tire a foto com menos resolução.');
+        }, 60000);
 
         const cleanup = () => {
             clearTimeout(timeoutId);
@@ -186,7 +186,7 @@ const CameraCapture = ({ onCapture, label, plate }) => {
             <input
                 ref={inputRef}
                 type="file"
-                accept="image/*"
+                accept="image/jpeg, image/png, image/webp, image/jpg"
                 capture="environment"
                 onChange={handleCapture}
                 className="hidden"
@@ -195,7 +195,7 @@ const CameraCapture = ({ onCapture, label, plate }) => {
             <input
                 ref={galleryInputRef}
                 type="file"
-                accept="image/*"
+                accept="image/jpeg, image/png, image/webp, image/jpg"
                 onChange={handleCapture}
                 className="hidden"
             />
