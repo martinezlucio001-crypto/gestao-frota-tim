@@ -28,12 +28,12 @@ const CameraCapture = ({ onCapture, label, plate }) => {
         console.log('Iniciando processamento de imagem:', file.name, file.type, file.size);
         setProcessing(true);
 
-        // Timeout de segurança - 30 segundos máximo
+        // Timeout de segurança - 120 segundos máximo para HEIC pesado
         const timeoutId = setTimeout(() => {
             console.error('Timeout ao processar imagem');
             setProcessing(false);
-            alert('Tempo esgotado ao processar imagem. Tente novamente.');
-        }, 30000);
+            alert('Aviso: O processamento demorou muito e foi cancelado (120s). Fotos pesadas de Samsung (HEIC) ou iPhone demoram para ser convertidas no navegador. Se o erro persistir, desative o formato HEIF nas configurações da câmera ou tire a foto com menos resolução.');
+        }, 120000);
 
         const cleanup = () => {
             clearTimeout(timeoutId);
@@ -224,11 +224,14 @@ const CameraCapture = ({ onCapture, label, plate }) => {
                         className="flex-1 h-32 border-2 border-dashed border-indigo-300 rounded-xl flex flex-col items-center justify-center gap-2 text-indigo-600 bg-indigo-50/50 hover:bg-indigo-100 transition-colors"
                     >
                         {processing ? (
-                            <Loader2 size={28} className="animate-spin" />
+                            <div className="flex flex-col items-center gap-2">
+                                <Loader2 size={28} className="animate-spin" />
+                                <span className="text-[10px] text-center px-1">Tirando Foto...<br />Aguarde</span>
+                            </div>
                         ) : (
                             <>
                                 <Camera size={28} />
-                                <span className="text-xs font-medium">Câmera</span>
+                                <span className="text-xs font-medium text-center px-1">Câmera</span>
                             </>
                         )}
                     </button>
@@ -240,11 +243,14 @@ const CameraCapture = ({ onCapture, label, plate }) => {
                         className="flex-1 h-32 border-2 border-dashed border-purple-300 rounded-xl flex flex-col items-center justify-center gap-2 text-purple-600 bg-purple-50/50 hover:bg-purple-100 transition-colors"
                     >
                         {processing ? (
-                            <Loader2 size={28} className="animate-spin" />
+                            <div className="flex flex-col items-center gap-2">
+                                <Loader2 size={28} className="animate-spin" />
+                                <span className="text-[10px] text-center px-2">Convertendo...<br />pode levar 1 min</span>
+                            </div>
                         ) : (
                             <>
                                 <Image size={28} />
-                                <span className="text-xs font-medium">Galeria</span>
+                                <span className="text-xs font-medium text-center px-1">Galeria</span>
                             </>
                         )}
                     </button>
