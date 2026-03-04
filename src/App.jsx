@@ -2370,6 +2370,18 @@ export default function FleetManager({ embedded = false, externalView, onNavigat
     if (!confirm('Tem certeza que deseja excluir este registro de manutenção?')) return;
     try {
       await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'maintenanceRecords', id));
+
+      // GATILHO: Excluir a transação associada no Livro-Razão (Extrato)
+      try {
+        const q = query(collection(db, 'artifacts', appId, 'public', 'data', 'transacoes'), where('origemRef', '==', id));
+        const snapshot = await getDocs(q);
+        snapshot.forEach(async (docSnap) => {
+          await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'transacoes', docSnap.id));
+        });
+      } catch (syncError) {
+        console.error('Erro ao excluir transação associada:', syncError);
+      }
+
     } catch (err) {
       console.error('Erro ao excluir registro:', err);
       alert("Erro ao excluir registro.");
@@ -2541,6 +2553,23 @@ export default function FleetManager({ embedded = false, externalView, onNavigat
         }
 
         await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'entries', d.id), editPayload);
+
+        // GATILHO: Sincronizar edição com o Livro-Razão (Extrato)
+        try {
+          const q = query(collection(db, 'artifacts', appId, 'public', 'data', 'transacoes'), where('origemRef', '==', d.id));
+          const snapshot = await getDocs(q);
+          if (!snapshot.empty) {
+            const transacaoDoc = snapshot.docs[0];
+            const plateStr = trucks.find(t => t.id === d.truckId)?.plate || 'Frota';
+            await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'transacoes', transacaoDoc.id), {
+              data: d.date,
+              valor: Number(d.totalCost),
+              descricao: `Abastecimento - ${plateStr}`
+            });
+          }
+        } catch (syncError) {
+          console.error('Erro ao sincronizar edição com extrato:', syncError);
+        }
       } else {
         // --- NOVO REGISTRO: Cria primeiro o doc para obter o ID, então atualiza com as URLs ---
         const { id: _id2, ...dataForNew } = d;
@@ -2636,6 +2665,17 @@ export default function FleetManager({ embedded = false, externalView, onNavigat
     try {
       await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'entries', id));
       sendToGoogleSheets({ type: 'entry_delete', id });
+
+      // GATILHO: Excluir a transação associada no Livro-Razão (Extrato)
+      try {
+        const q = query(collection(db, 'artifacts', appId, 'public', 'data', 'transacoes'), where('origemRef', '==', id));
+        const snapshot = await getDocs(q);
+        snapshot.forEach(async (docSnap) => {
+          await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'transacoes', docSnap.id));
+        });
+      } catch (syncError) {
+        console.error('Erro ao excluir transação associada:', syncError);
+      }
 
       // 2. Atualizar parâmetros do Caminhão com base no que restou
       const truckId = entries.find(e => e.id === id)?.truckId;
