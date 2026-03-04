@@ -20,19 +20,13 @@ const CameraCapture = ({ onCapture, label, plate }) => {
     const galleryInputRef = useRef(null);
     const [preview, setPreview] = useState(null);
     const [processing, setProcessing] = useState(false);
-    const [debugLogs, setDebugLogs] = useState([]);
-
-    // Função para adicionar log visual na tela
     const addLog = (emoji, msg) => {
-        console.log(msg);
-        setDebugLogs(prev => [...prev, `${emoji} ${new Date().toLocaleTimeString('pt-BR').slice(0, 8)} ${msg}`]);
+        console.log(`${emoji} ${msg}`);
     };
 
     const handleCapture = async (e) => {
         const file = e.target.files[0];
         if (!file) return;
-
-        setDebugLogs([]); // Limpar logs anteriores
         addLog('📂', `Arquivo: ${file.name} | Tipo: ${file.type || 'desconhecido'} | Tamanho: ${(file.size / 1024 / 1024).toFixed(2)}MB`);
         setProcessing(true);
 
@@ -291,14 +285,6 @@ const CameraCapture = ({ onCapture, label, plate }) => {
                             </>
                         )}
                     </button>
-                </div>
-            )}
-            {/* Mini-console de debug (temporário) */}
-            {debugLogs.length > 0 && (
-                <div className="mt-2 bg-slate-900 text-green-400 rounded-lg p-3 text-[10px] font-mono max-h-40 overflow-y-auto">
-                    {debugLogs.map((log, i) => (
-                        <div key={i} className="leading-relaxed">{log}</div>
-                    ))}
                 </div>
             )}
         </div>
