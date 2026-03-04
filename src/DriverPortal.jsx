@@ -186,7 +186,7 @@ const CameraCapture = ({ onCapture, label, plate }) => {
             <input
                 ref={inputRef}
                 type="file"
-                accept="image/jpeg, image/png, image/webp, image/jpg"
+                accept="image/*"
                 capture="environment"
                 onChange={handleCapture}
                 className="hidden"
@@ -195,7 +195,7 @@ const CameraCapture = ({ onCapture, label, plate }) => {
             <input
                 ref={galleryInputRef}
                 type="file"
-                accept="image/jpeg, image/png, image/webp, image/jpg"
+                accept="image/*"
                 onChange={handleCapture}
                 className="hidden"
             />
