@@ -28,12 +28,12 @@ const CameraCapture = ({ onCapture, label, plate }) => {
         console.log('Iniciando processamento de imagem:', file.name, file.type, file.size);
         setProcessing(true);
 
-        // Timeout de segurança - 60 segundos máximo
+        // Timeout de segurança - 5 minutos. Deixa o celular pensar o quanto precisar para converter HEIC pesado.
         const timeoutId = setTimeout(() => {
             console.error('Timeout ao processar imagem');
             setProcessing(false);
-            alert('Aviso: O processamento demorou mais de 1 minuto e foi cancelado. Se o erro persistir no seu Samsung/iPhone, por favor vá nas configurações da câmera do celular e desative o formato "Alta Eficiência (HEIF/HEIC)" ou tire a foto com menos resolução.');
-        }, 60000);
+            alert('Aviso: O processamento demorou mais de 5 minutos e foi cancelado. Se o erro persistir no seu Samsung/iPhone, por favor vá nas configurações da câmera do celular e desative o formato "Alta Eficiência (HEIF/HEIC)" ou tire a foto com menos resolução.');
+        }, 300000);
 
         const cleanup = () => {
             clearTimeout(timeoutId);
@@ -55,7 +55,7 @@ const CameraCapture = ({ onCapture, label, plate }) => {
                     const convertedBlob = await heic2any({
                         blob: file,
                         toType: 'image/jpeg',
-                        quality: 0.8
+                        quality: 0.4 // Qualidade mais baixa = menos uso de RAM/CPU na conversão pelo dispositivo
                     });
                     fileToProcess = Array.isArray(convertedBlob) ? convertedBlob[0] : convertedBlob;
                     console.log('Conversão HEIC concluída');
