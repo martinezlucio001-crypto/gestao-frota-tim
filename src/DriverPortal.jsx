@@ -111,17 +111,33 @@ const CameraCapture = ({ onCapture, label, plate }) => {
                 addLog('🐢', 'T2: heic2any convertendo HEIC→JPEG...');
                 try {
                     const t0 = Date.now();
-                    const convertedBlob = await heic2any({
+
+                    // ESCUDO ANTI-BUG DO ANDROID (Media Picker)
+                    // Se o Android passar um arquivo "fantasma" da aba Recentes, o heic2any trava infinitamente.
+                    // Nós usamos um timeout de 15s para detectar o travamento e abortar com uma mensagem instrutiva.
+                    const conversionPromise = heic2any({
                         blob: file,
                         toType: 'image/jpeg',
                         quality: 0.7
                     });
+
+                    const timeoutPromise = new Promise((_, reject) => {
+                        setTimeout(() => reject(new Error('ANDROID_MEDIA_PICKER_BUG')), 15000); // 15s timeout
+                    });
+
+                    const convertedBlob = await Promise.race([conversionPromise, timeoutPromise]);
+
                     fileToProcess = Array.isArray(convertedBlob) ? convertedBlob[0] : convertedBlob;
                     addLog('✅', `T2 heic2any OK em ${((Date.now() - t0) / 1000).toFixed(1)}s | Blob: ${(fileToProcess.size / 1024).toFixed(0)}KB`);
                 } catch (heicError) {
-                    addLog('❌', `T2 heic2any FALHOU: ${heicError.message || heicError}`);
                     cleanup();
-                    alert('Erro ao processar imagem HEIC. Por favor, tire uma nova foto diretamente pela câmera ou use uma imagem JPG/PNG.');
+                    addLog('❌', `T2 FALHOU: ${heicError.message}`);
+
+                    if (heicError.message === 'ANDROID_MEDIA_PICKER_BUG' || heicError.message.includes('The source image could not be decoded')) {
+                        alert('Falha no envio (Restrição do seu Celular).\n\nTente a seguinte solução para enviar esta foto:\n1. Clique em "Galeria"\n2. Toque nos três pontinhos (⋮) no canto da tela\n3. Selecione "Procurar..."\n4. Toque nas Três Linhas (☰) no canto superior\n5. Vá em "Imagens" > "Câmera"\n\nOu tire a foto na hora usando a opção "Câmera".');
+                    } else {
+                        alert('Erro ao processar imagem HEIC. Por favor, tire uma nova foto diretamente pela câmera ou use uma imagem JPG/PNG.');
+                    }
                     return;
                 }
             }
