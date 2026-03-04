@@ -1,0 +1,17 @@
+[
+  {
+    "id": "SbxGUWzgfU6NoUf9d8Bp",
+    "receiptUrl": "https://firebasestorage.googleapis.com/v0/b/gestao-frota-tim.firebasestorage.app/o/entries%2Fdriver-1772496163028%2Freceipt?alt=media&token=b638b9a2-c992-428b-bd81-49c2a62547e9",
+    "odometerUrl": "https://firebasestorage.googleapis.com/v0/b/gestao-frota-tim.firebasestorage.app/o/entries%2Fdriver-1772496163028%2FodometerBefore?alt=media&token=a0ded086-c128-4f83-872c-6478902da2b9"
+  },
+  {
+    "id": "qxyQ9yweIUMHmmrSnzu9",
+    "receiptUrl": null,
+    "odometerUrl": null
+  },
+  {
+    "id": "4mjWz0QqnLbycyo3Ryx0",
+    "receiptUrl": null,
+    "odometerUrl": null
+  }
+]

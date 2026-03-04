@@ -173,34 +173,6 @@ const DespachoModal = ({ isOpen, onClose, editingDespacho, servidores = [], init
                 updated.servidorNome = servidor?.nome || '';
                 updated.unidadePrecificacao = '';
                 updated.valorUnitario = '';
-
-                // Preencher rota automaticamente com a primeira do servidor
-                if (servidor?.rotas?.[0]) {
-                    let rotaOrigem = servidor.rotas[0].origem;
-                    let rotaDestino = servidor.rotas[0].destino;
-
-                    // Ajuste inteligente: Inverter rota se o tipo de carga exigir direção específica
-
-                    // Caso 1: Carga Densa exige que o Destino seja Santarém
-                    // Se a rota padrão do servidor sai de Santarém, invertemos para chegar em Santarém
-                    if (updated.tipoCarga === 'Densa' && rotaOrigem.includes('SANTAREM')) {
-                        rotaOrigem = servidor.rotas[0].destino;
-                        rotaDestino = 'CDD SANTAREM';
-                    }
-
-                    // Caso 2: FNDE exige que a Origem seja Santarém
-                    // Se a rota padrão do servidor chega em Santarém, invertemos para sair de Santarém
-                    else if (updated.tipoCarga === 'FNDE (Livros)' && rotaDestino.includes('SANTAREM')) {
-                        rotaDestino = servidor.rotas[0].origem;
-                        rotaOrigem = 'CDD SANTAREM';
-                    }
-
-                    // Somente preencher se os campos estiverem vazios (para não sobrescrever dados da nota)
-                    if (!updated.origem && !updated.destino) {
-                        updated.origem = rotaOrigem;
-                        updated.destino = rotaDestino;
-                    }
-                }
             }
             if (field === 'unidadePrecificacao') {
                 const unit = availableUnits.find(u => u.value === value);
@@ -209,18 +181,6 @@ const DespachoModal = ({ isOpen, onClose, editingDespacho, servidores = [], init
             if (field === 'tipoCarga') {
                 updated.unidadePrecificacao = '';
                 updated.valorUnitario = '';
-                // Sugestão automática para FNDE
-                if (value === 'FNDE (Livros)') {
-                    updated.origem = 'CDD SANTAREM';
-                }
-                // Sugestão automática para Carga Densa
-                if (value === 'Densa') {
-                    updated.destino = 'CDD SANTAREM';
-                    // Se a origem for Santarém, limpamos pois não faz sentido origem=destino
-                    if (updated.origem && updated.origem.includes('SANTAREM')) {
-                        updated.origem = '';
-                    }
-                }
             }
 
             return updated;

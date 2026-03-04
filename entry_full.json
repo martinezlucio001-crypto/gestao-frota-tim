@@ -1,0 +1,17 @@
+{
+  "newMileage": 12323123,
+  "liters": 123123,
+  "receiptPhoto": "https://firebasestorage.googleapis.com/v0/b/gestao-frota-tim.firebasestorage.app/o/entries%2Fdriver-1772496163028%2Freceipt?alt=media&token=b638b9a2-c992-428b-bd81-49c2a62547e9",
+  "hasReceipt": true,
+  "hasOdometer": true,
+  "date": "2026-03-03",
+  "truckId": "Ieis3LivuKvvfnhUPmQI",
+  "time": "21:02",
+  "odometerBeforePhoto": "https://firebasestorage.googleapis.com/v0/b/gestao-frota-tim.firebasestorage.app/o/entries%2Fdriver-1772496163028%2FodometerBefore?alt=media&token=a0ded086-c128-4f83-872c-6478902da2b9",
+  "odometerAfterPhoto": "https://firebasestorage.googleapis.com/v0/b/gestao-frota-tim.firebasestorage.app/o/entries%2Fdriver-1772496163028%2FodometerAfter?alt=media&token=a3ddc8bc-9f3e-4fdf-9a0a-f55335990380",
+  "odometerUrl": "https://firebasestorage.googleapis.com/v0/b/gestao-frota-tim.firebasestorage.app/o/entries%2Fdriver-1772496163028%2FodometerBefore?alt=media&token=a0ded086-c128-4f83-872c-6478902da2b9",
+  "registeredBy": "driver",
+  "createdAt": "2026-03-03T00:02:43.028Z",
+  "receiptUrl": "https://firebasestorage.googleapis.com/v0/b/gestao-frota-tim.firebasestorage.app/o/entries%2Fdriver-1772496163028%2Freceipt?alt=media&token=b638b9a2-c992-428b-bd81-49c2a62547e9",
+  "totalCost": 12321
+}

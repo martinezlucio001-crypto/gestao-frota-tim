@@ -1,0 +1,18 @@
+{
+  "newMileage": 100,
+  "liters": 20,
+  "receiptPhoto": "https://firebasestorage.googleapis.com/v0/b/gestao-frota-tim.firebasestorage.app/o/entries%2Fdriver-1772589061061%2Freceipt?alt=media&token=54d88ea7-8eb2-4b76-8b1f-c58fba4ca7ee",
+  "hasReceipt": true,
+  "distanceTraveled": 2223,
+  "hasOdometer": false,
+  "date": "2026-03-04",
+  "truckId": "Ieis3LivuKvvfnhUPmQI",
+  "time": "22:51",
+  "odometerBeforePhoto": null,
+  "odometerAfterPhoto": null,
+  "odometerUrl": null,
+  "registeredBy": "driver",
+  "createdAt": "2026-03-04T01:51:01.061Z",
+  "receiptUrl": "https://firebasestorage.googleapis.com/v0/b/gestao-frota-tim.firebasestorage.app/o/entries%2Fdriver-1772589061061%2Freceipt?alt=media&token=54d88ea7-8eb2-4b76-8b1f-c58fba4ca7ee",
+  "totalCost": 400
+}

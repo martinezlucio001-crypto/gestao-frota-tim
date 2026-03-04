@@ -428,7 +428,7 @@ const DriverPortal = () => {
                 ? maintenanceFormData.customServiceName
                 : maintenanceServices.find(s => s.id === maintenanceFormData.serviceId)?.name || '';
 
-            await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'maintenanceRecords'), {
+            const maintDocRef = await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'maintenanceRecords'), {
                 truckId: truck.id,
                 date: maintenanceFormData.date,
                 serviceId: maintenanceFormData.serviceId === 'outro' ? null : maintenanceFormData.serviceId,
@@ -439,6 +439,22 @@ const DriverPortal = () => {
                 addedBy: 'driver',
                 driverName: truck.driver
             });
+
+            // GATILHO: Salvar no Extrato se houver custo (opcional, mas garante fidelidade)
+            if (Number(maintenanceFormData.cost) > 0) {
+                await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'transacoes'), {
+                    data: maintenanceFormData.date,
+                    tipo: 'saida',
+                    valor: Number(maintenanceFormData.cost),
+                    categoria: 'Manutenção',
+                    descricao: `Manutenção (${serviceName}) - ${truck.plate}`,
+                    centroCusto: truck.plate,
+                    origem: 'DriverPortal - Manutenção',
+                    origemRef: maintDocRef.id,
+                    createdAt: new Date().toISOString(),
+                    responsavel: truck.driver
+                });
+            }
 
             setMaintenanceFormData({
                 date: '',
@@ -619,7 +635,27 @@ const DriverPortal = () => {
                 createdAt: now.toISOString()
             };
 
-            await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'entries'), entry);
+            // Referência do Abastecimento recém-criado
+            const entryDocRef = await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'entries'), entry);
+
+            console.log("DRIVER PORTAL: Salvo na collection entries. Entry ID: ", entryDocRef.id);
+
+            // GATILHO: Salvar cópia no Livro-Razão (Extrato)
+            // GATILHO: Salvar cópia no Livro-Razão (Extrato)
+            console.log("DRIVER PORTAL: Tentando salvar na collection transacoes...");
+            await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'transacoes'), {
+                data: now.toISOString().split('T')[0],
+                tipo: 'saida',
+                valor: Number(formData.totalCost),
+                categoria: 'Combustível',
+                descricao: `Abastecimento - ${truck.plate}`,
+                centroCusto: truck.plate, // Placa do caminhão atua como Centro de Custo inicial
+                origem: 'DriverPortal - Abastecimento',
+                origemRef: entryDocRef.id,
+                createdAt: now.toISOString(),
+                responsavel: truck.driver
+            });
+            console.log("DRIVER PORTAL: Salvo na collection transacoes COM SUCESSO!");
 
             setFormData({ liters: '', totalCost: '', newMileage: '' });
             setOdometerBeforePhoto(null);

@@ -15,12 +15,14 @@ import { collection, onSnapshot, query, orderBy, deleteDoc, updateDoc, doc, serv
 import { db, appId } from '../../lib/firebase';
 import { Button, Card, Input } from '../../components/ui';
 import NotaModal from './modals/NotaModal';
+import LinhaReceitaModal from './modals/LinhaReceitaModal';
 
 const NotasPage = () => {
     const [notas, setNotas] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
     const [isModalOpen, setIsModalOpen] = useState(false);
+    const [isLinhaModalOpen, setIsLinhaModalOpen] = useState(false);
     const [editingNota, setEditingNota] = useState(null);
 
     // Carregar notas
@@ -102,7 +104,10 @@ const NotasPage = () => {
                     <h1 className="text-3xl font-bold text-slate-800">Notas Fiscais</h1>
                     <p className="text-slate-500">Gerencie as notas emitidas e pagamentos dos Correios</p>
                 </div>
-                <div className="flex gap-3">
+                <div className="flex flex-wrap gap-3">
+                    <Button variant="secondary" onClick={() => setIsLinhaModalOpen(true)} className="bg-slate-100 text-slate-700 hover:bg-slate-200">
+                        Linhas de Receita
+                    </Button>
                     <Button variant="secondary" onClick={handleImport}>
                         <Upload size={18} /> Importar Extratos
                     </Button>
@@ -205,6 +210,11 @@ const NotasPage = () => {
                 isOpen={isModalOpen}
                 onClose={() => setIsModalOpen(false)}
                 editingNota={editingNota}
+            />
+
+            <LinhaReceitaModal
+                isOpen={isLinhaModalOpen}
+                onClose={() => setIsLinhaModalOpen(false)}
             />
         </div>
     );

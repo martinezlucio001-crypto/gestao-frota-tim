@@ -2340,7 +2340,24 @@ export default function FleetManager({ embedded = false, externalView, onNavigat
   const handleSaveMaintenanceRecord = async (data) => {
     if (!user) return;
     try {
-      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'maintenanceRecords'), data);
+      const maintDocRef = await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'maintenanceRecords'), data);
+
+      if (Number(data.cost) > 0) {
+        const plateStr = trucks.find(t => t.id === data.truckId)?.plate || 'Frota';
+        await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'transacoes'), {
+          data: data.date,
+          tipo: 'saida',
+          valor: Number(data.cost),
+          categoria: 'Manutenção',
+          descricao: `Manutenção (${data.serviceName || 'Geral'}) - ${plateStr}`,
+          centroCusto: plateStr,
+          origem: 'Admin - Manutenção',
+          origemRef: maintDocRef.id,
+          createdAt: new Date().toISOString(),
+          responsavel: user?.email || 'Admin'
+        });
+      }
+
     } catch (err) {
       console.error('Erro ao salvar registro de manutenção:', err);
       alert("Erro ao salvar registro de manutenção. Tente novamente.");
@@ -2540,6 +2557,21 @@ export default function FleetManager({ embedded = false, externalView, onNavigat
         };
         const docRef = await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'entries'), newPayload);
         entryId = docRef.id;
+
+        // GATILHO: Salvar cópia no Livro-Razão (Extrato)
+        const plateStr = trucks.find(t => t.id === d.truckId)?.plate || 'Frota';
+        await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'transacoes'), {
+          data: d.date,
+          tipo: 'saida',
+          valor: Number(d.totalCost),
+          categoria: 'Combustível',
+          descricao: `Abastecimento - ${plateStr}`,
+          centroCusto: plateStr,
+          origem: 'Admin - Abastecimento',
+          origemRef: docRef.id,
+          createdAt: new Date().toISOString(),
+          responsavel: user?.email || 'Admin'
+        });
       }
 
       // 2. Atualizar parâmetros do Caminhão

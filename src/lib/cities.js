@@ -4,6 +4,7 @@ export const CITIES = [
     "AC AVEIRO",
     "AC BELTERRA",
     "AC CASTELO DOS SONHOS",
+    "AC CURUA",
     "AC FARO",
     "AC ITAITUBA",
     "AC JACAREACANGA",

@@ -21,9 +21,10 @@ import AuditoriaPage from './modules/despacho/AuditoriaPage';
 import ImportExportPage from './modules/despacho/ImportExportPage';
 import ServidorModal from './modules/despacho/modals/ServidorModal';
 
-import ContratosPage from './modules/receita/ContratosPage';
 import NotasPage from './modules/receita/NotasPage';
 import ReceitaDashboard from './modules/receita/ReceitaDashboard';
+import DespesasPage from './modules/financeiro/DespesasPage';
+import ExtratoPage from './modules/financeiro/ExtratoPage';
 
 import UsuariosPage from './modules/sistema/UsuariosPage';
 
@@ -254,14 +255,6 @@ const GestaoTIM = () => {
             case 'despacho-auditoria': return <AuditoriaPage />;
             case 'despacho-importar': return <ImportExportPage />;
 
-            // Módulo Receita
-            case 'receita-painel':
-                return <ReceitaDashboard />;
-            case 'receita-notas':
-                return <NotasPage />;
-            case 'receita-contratos':
-                return <ContratosPage />;
-
             // Configurações
             case 'settings':
                 return (
@@ -276,6 +269,14 @@ const GestaoTIM = () => {
 
             // Módulo Financeiro
             case 'financeiro-painel':
+                return <ReceitaDashboard />;
+            case 'financeiro-notas':
+                return <NotasPage />;
+            case 'financeiro-despesas':
+                return <DespesasPage />;
+            case 'financeiro-extrato':
+                return <ExtratoPage />;
+            case 'financeiro-receitas':
                 return (
                     <div className="text-center py-20">
                         <p className="text-slate-500">Módulo Financeiro em desenvolvimento...</p>

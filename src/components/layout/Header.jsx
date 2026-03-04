@@ -12,6 +12,10 @@ const viewTitles = {
     'despacho-painel': { title: 'Painel de Despachos', subtitle: 'Todos os despachos registrados' },
     'despacho-servidores': { title: 'Servidores', subtitle: 'Prestadores de serviço cadastrados' },
     'despacho-pagamentos': { title: 'Gestão de Pagamentos', subtitle: 'Controle financeiro' },
+    'financeiro-painel': { title: 'Painel Financeiro', subtitle: 'Visão geral financeira' },
+    'financeiro-receitas': { title: 'Receitas', subtitle: 'Gestão de receitas' },
+    'financeiro-despesas': { title: 'Despesas', subtitle: 'Gestão de despesas' },
+    'financeiro-notas': { title: 'Registro de Nota', subtitle: 'Lançamento de notas' },
     'settings': { title: 'Configurações', subtitle: 'Preferências do sistema' },
     'sistema-usuarios': { title: 'Usuários', subtitle: 'Gerenciar acesso aos portais' },
 };

@@ -13,23 +13,35 @@ const NotaModal = ({ isOpen, onClose, editingNota = null }) => {
         valor: '',
         dataEmissao: '',
         contratoId: '',
+        linhaReceitaId: '',
+        arquivoPlanilha: null,
         status: 'pendente', // pendente, parcial, recebido
         recebidoEm: '',
         valorRecebido: ''
     });
 
-    // Load available contracts
+    const [linhasReceita, setLinhasReceita] = useState([]);
+
+    // Load available contracts and linhas de receita
     useEffect(() => {
         if (isOpen) {
             const fetchContratos = async () => {
                 const querySnapshot = await getDocs(collection(db, `artifacts/${appId}/contratos`));
                 const data = querySnapshot.docs.map(doc => ({
                     id: doc.id,
-                    label: doc.data().nomeContrato || doc.data().contratante
+                    label: doc.data().nomeContrato || doc.data().contratante,
+                    data: doc.data()
                 }));
                 setContratos(data);
             };
+            const fetchLinhas = async () => {
+                const querySnapshot = await getDocs(collection(db, `artifacts/${appId}/linhasReceita`));
+                const data = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                setLinhasReceita(data);
+            };
+
             fetchContratos();
+            fetchLinhas();
         }
     }, [isOpen]);
 
@@ -42,6 +54,8 @@ const NotaModal = ({ isOpen, onClose, editingNota = null }) => {
                     valor: editingNota.valor || '',
                     dataEmissao: editingNota.dataEmissao || '',
                     contratoId: editingNota.contratoId || '',
+                    linhaReceitaId: editingNota.linhaReceitaId || '',
+                    arquivoPlanilha: null,
                     status: editingNota.status || 'pendente',
                     recebidoEm: editingNota.recebidoEm || '',
                     valorRecebido: editingNota.valorRecebido || ''
@@ -52,6 +66,8 @@ const NotaModal = ({ isOpen, onClose, editingNota = null }) => {
                     valor: '',
                     dataEmissao: new Date().toISOString().split('T')[0],
                     contratoId: '',
+                    linhaReceitaId: '',
+                    arquivoPlanilha: null,
                     status: 'pendente',
                     recebidoEm: '',
                     valorRecebido: ''
@@ -67,11 +83,14 @@ const NotaModal = ({ isOpen, onClose, editingNota = null }) => {
         try {
             const selectedContrato = contratos.find(c => c.id === formData.contratoId);
 
+            // Payload properties
+            const { arquivoPlanilha, ...restFormData } = formData;
             const payload = {
-                ...formData,
+                ...restFormData,
                 valor: Number(formData.valor),
                 valorRecebido: formData.valorRecebido ? Number(formData.valorRecebido) : 0,
                 contratoNome: selectedContrato?.label || 'Sem contrato', // Denormalization for easy display
+                planilhaAnexada: !!arquivoPlanilha, // Only flag that it has one for now.
                 updatedAt: serverTimestamp()
             };
 
@@ -106,81 +125,150 @@ const NotaModal = ({ isOpen, onClose, editingNota = null }) => {
 
                 <form onSubmit={handleSubmit} className="p-8 space-y-5">
 
-                    <div className="space-y-2">
-                        <label className="block text-sm font-bold text-slate-700">Contrato Vinculado</label>
-                        <select
-                            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/20"
-                            value={formData.contratoId}
-                            onChange={e => setFormData({ ...formData, contratoId: e.target.value })}
-                            required
-                        >
-                            <option value="">Selecione um contrato...</option>
-                            {contratos.map(c => (
-                                <option key={c.id} value={c.id}>{c.label}</option>
-                            ))}
-                        </select>
-                    </div>
+                    {(() => {
+                        const selectedC = contratos.find(c => c.id === formData.contratoId);
+                        const isSantarem = selectedC?.label?.toLowerCase().includes('santarém') || selectedC?.label?.toLowerCase().includes('santarem');
 
-                    <div className="grid grid-cols-2 gap-4">
-                        <Input
-                            label="Número da Nota"
-                            placeholder="Ex: 12345"
-                            required
-                            value={formData.numero}
-                            onChange={e => setFormData({ ...formData, numero: e.target.value })}
-                        />
-                        <Input
-                            label="Data de Emissão"
-                            type="date"
-                            required
-                            value={formData.dataEmissao}
-                            onChange={e => setFormData({ ...formData, dataEmissao: e.target.value })}
-                        />
-                    </div>
+                        return (
+                            <>
+                                <div className="space-y-2">
+                                    <label className="block text-sm font-bold text-slate-700">Contrato Vinculado</label>
+                                    <select
+                                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/20"
+                                        value={formData.contratoId}
+                                        onChange={e => setFormData({ ...formData, contratoId: e.target.value })}
+                                        required
+                                    >
+                                        <option value="">Selecione um contrato...</option>
+                                        {contratos.map(c => (
+                                            <option key={c.id} value={c.id}>{c.label}</option>
+                                        ))}
+                                    </select>
+                                </div>
 
-                    <Input
-                        label="Valor Total (R$)"
-                        type="number"
-                        step="0.01"
-                        required
-                        value={formData.valor}
-                        onChange={e => setFormData({ ...formData, valor: e.target.value })}
-                    />
+                                <div className="grid grid-cols-2 gap-4">
+                                    <Input
+                                        label="Número da Nota"
+                                        placeholder="Ex: 12345"
+                                        required
+                                        value={formData.numero}
+                                        onChange={e => setFormData({ ...formData, numero: e.target.value })}
+                                    />
+                                    <Input
+                                        label="Data de Emissão"
+                                        type="date"
+                                        required
+                                        value={formData.dataEmissao}
+                                        onChange={e => setFormData({ ...formData, dataEmissao: e.target.value })}
+                                    />
+                                </div>
 
-                    {/* Seção de Recebimento (apenas edição ou se desejado) */}
-                    <div className="pt-4 border-t border-slate-100">
-                        <p className="text-xs font-bold text-slate-400 uppercase mb-3">Status de Recebimento</p>
-                        <div className="grid grid-cols-2 gap-4">
-                            <div>
-                                <label className="block text-sm font-semibold text-slate-700 mb-2">Status</label>
-                                <select
-                                    className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-lg text-sm outline-none"
-                                    value={formData.status}
-                                    onChange={e => setFormData({ ...formData, status: e.target.value })}
-                                >
-                                    <option value="pendente">Pendente</option>
-                                    <option value="parcial">Recebido Parcialmente</option>
-                                    <option value="recebido">Recebido Totalmente</option>
-                                </select>
-                            </div>
-                            {(formData.status === 'recebido' || formData.status === 'parcial') && (
                                 <Input
-                                    label="Valor Recebido (R$)"
+                                    label="Valor Total (R$)"
                                     type="number"
                                     step="0.01"
-                                    value={formData.valorRecebido}
-                                    onChange={e => setFormData({ ...formData, valorRecebido: e.target.value })}
+                                    required
+                                    value={formData.valor}
+                                    onChange={e => setFormData({ ...formData, valor: e.target.value })}
                                 />
-                            )}
-                        </div>
-                    </div>
 
-                    <div className="flex gap-3 pt-4">
-                        <Button type="button" variant="ghost" className="flex-1" onClick={onClose}>Cancelar</Button>
-                        <Button type="submit" className="flex-1" disabled={isLoading}>
-                            {isLoading ? 'Salvando...' : 'Salvar Nota'}
-                        </Button>
-                    </div>
+                                {isSantarem && (
+                                    <div className="space-y-4 p-4 bg-indigo-50/50 border border-indigo-100 rounded-xl relative">
+                                        <h3 className="text-sm font-bold text-indigo-800 uppercase tracking-wide">Detalhes do Contrato Santarém</h3>
+
+                                        <div className="space-y-2">
+                                            <label className="block text-sm font-bold text-slate-700">Linha de Receita</label>
+                                            <select
+                                                className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/20"
+                                                value={formData.linhaReceitaId}
+                                                onChange={e => setFormData({ ...formData, linhaReceitaId: e.target.value })}
+                                                required={isSantarem}
+                                            >
+                                                <option value="">Selecione a linha (ex: LTU, Santarém X Alenquer)...</option>
+                                                {linhasReceita.filter(l => l.contratoId === formData.contratoId).map(l => (
+                                                    <option key={l.id} value={l.id}>{l.nome}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+
+                                        <div className="space-y-2">
+                                            <label className="block text-sm font-bold text-slate-700">Importação de Planilha Corréios (.csv ou .xlsx)</label>
+                                            <div className="border border-slate-300 border-dashed rounded-xl p-4 bg-white hover:bg-slate-50 transition-colors flex flex-col items-center justify-center cursor-pointer relative overflow-hidden">
+                                                <input
+                                                    type="file"
+                                                    accept=".csv, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel"
+                                                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                                                    onChange={(e) => setFormData({ ...formData, arquivoPlanilha: e.target.files[0] })}
+                                                />
+                                                {formData.arquivoPlanilha ? (
+                                                    <div className="text-center">
+                                                        <p className="font-bold text-indigo-700 text-sm">{formData.arquivoPlanilha.name}</p>
+                                                        <p className="text-xs text-slate-500 mt-1">{(formData.arquivoPlanilha.size / 1024).toFixed(1)} KB</p>
+                                                    </div>
+                                                ) : (
+                                                    <div className="text-center pointer-events-none">
+                                                        <p className="font-bold text-slate-700 text-sm">Clique ou arraste a planilha aqui</p>
+                                                        <p className="text-xs text-slate-500 mt-1">Nesta versão os dados ainda não serão extraídos. Apenas guardaremos o arquivo.</p>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {!isSantarem && formData.contratoId && (
+                                    <div className="space-y-2">
+                                        <label className="block text-sm font-bold text-slate-700">Linha de Receita</label>
+                                        <select
+                                            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/20"
+                                            value={formData.linhaReceitaId}
+                                            onChange={e => setFormData({ ...formData, linhaReceitaId: e.target.value })}
+                                        >
+                                            <option value="">Nenhuma (Opcional)</option>
+                                            {linhasReceita.filter(l => l.contratoId === formData.contratoId).map(l => (
+                                                <option key={l.id} value={l.id}>{l.nome}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                )}
+
+                                {/* Seção de Recebimento (apenas edição ou se desejado) */}
+                                <div className="pt-4 border-t border-slate-100">
+                                    <p className="text-xs font-bold text-slate-400 uppercase mb-3">Status de Recebimento</p>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="block text-sm font-semibold text-slate-700 mb-2">Status</label>
+                                            <select
+                                                className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-lg text-sm outline-none"
+                                                value={formData.status}
+                                                onChange={e => setFormData({ ...formData, status: e.target.value })}
+                                            >
+                                                <option value="pendente">Pendente</option>
+                                                <option value="parcial">Recebido Parcialmente</option>
+                                                <option value="recebido">Recebido Totalmente</option>
+                                            </select>
+                                        </div>
+                                        {(formData.status === 'recebido' || formData.status === 'parcial') && (
+                                            <Input
+                                                label="Valor Recebido (R$)"
+                                                type="number"
+                                                step="0.01"
+                                                value={formData.valorRecebido}
+                                                onChange={e => setFormData({ ...formData, valorRecebido: e.target.value })}
+                                            />
+                                        )}
+                                    </div>
+                                </div>
+
+                                <div className="flex gap-3 pt-4">
+                                    <Button type="button" variant="ghost" className="flex-1" onClick={onClose}>Cancelar</Button>
+                                    <Button type="submit" className="flex-1" disabled={isLoading}>
+                                        {isLoading ? 'Salvando...' : 'Salvar Nota'}
+                                    </Button>
+                                </div>
+                            </>
+                        );
+                    })()}
                 </form>
             </div>
         </div>

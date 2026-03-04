@@ -33,20 +33,14 @@ export const defaultMenuItems = [
         icon: DollarSign,
         module: 'financeiro',
         submenu: [
-            { id: 'financeiro-painel', label: 'Visão Geral', view: 'financeiro-painel' },
+            { id: 'financeiro-painel', label: 'Painel Financeiro', view: 'financeiro-painel' },
+            { id: 'financeiro-receitas', label: 'Receitas', view: 'financeiro-receitas' },
+            { id: 'financeiro-despesas', label: 'Despesas', view: 'financeiro-despesas' },
+            { id: 'financeiro-extrato', label: 'Extrato', view: 'financeiro-extrato' },
+            { id: 'financeiro-notas', label: 'Registro de Nota', view: 'financeiro-notas' },
         ]
     },
-    {
-        id: 'receita',
-        label: 'Receita',
-        icon: CreditCard,
-        module: 'receita',
-        submenu: [
-            { id: 'receita-painel', label: 'Painel de Receita', view: 'receita-painel' },
-            { id: 'receita-notas', label: 'Notas', view: 'receita-notas' },
-            { id: 'receita-contratos', label: 'Contratos', view: 'receita-contratos' },
-        ]
-    },
+
     {
         id: 'despacho',
         label: 'Despachos',
