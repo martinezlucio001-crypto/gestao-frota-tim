@@ -33,7 +33,7 @@ const CameraCapture = ({ onCapture, label, plate }) => {
             console.error('Timeout ao processar imagem');
             setProcessing(false);
             alert('Tempo esgotado ao processar imagem. Tente novamente.');
-        }, 30000);
+        }, 60000);
 
         const cleanup = () => {
             clearTimeout(timeoutId);
