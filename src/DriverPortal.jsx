@@ -28,12 +28,12 @@ const CameraCapture = ({ onCapture, label, plate }) => {
         console.log('Iniciando processamento de imagem:', file.name, file.type, file.size);
         setProcessing(true);
 
-        // Timeout de segurança - 5 minutos. Deixa o celular pensar o quanto precisar para converter HEIC pesado.
+        // Timeout de segurança - 30 segundos máximo
         const timeoutId = setTimeout(() => {
             console.error('Timeout ao processar imagem');
             setProcessing(false);
-            alert('Aviso: O processamento demorou mais de 5 minutos e foi cancelado. Se o erro persistir no seu Samsung/iPhone, por favor vá nas configurações da câmera do celular e desative o formato "Alta Eficiência (HEIF/HEIC)" ou tire a foto com menos resolução.');
-        }, 300000);
+            alert('Tempo esgotado ao processar imagem. Tente novamente.');
+        }, 30000);
 
         const cleanup = () => {
             clearTimeout(timeoutId);
@@ -55,7 +55,7 @@ const CameraCapture = ({ onCapture, label, plate }) => {
                     const convertedBlob = await heic2any({
                         blob: file,
                         toType: 'image/jpeg',
-                        quality: 0.4 // Qualidade mais baixa = menos uso de RAM/CPU na conversão pelo dispositivo
+                        quality: 0.8
                     });
                     fileToProcess = Array.isArray(convertedBlob) ? convertedBlob[0] : convertedBlob;
                     console.log('Conversão HEIC concluída');
@@ -224,14 +224,11 @@ const CameraCapture = ({ onCapture, label, plate }) => {
                         className="flex-1 h-32 border-2 border-dashed border-indigo-300 rounded-xl flex flex-col items-center justify-center gap-2 text-indigo-600 bg-indigo-50/50 hover:bg-indigo-100 transition-colors"
                     >
                         {processing ? (
-                            <div className="flex flex-col items-center gap-2">
-                                <Loader2 size={28} className="animate-spin" />
-                                <span className="text-[10px] text-center px-1">Tirando Foto...<br />Aguarde</span>
-                            </div>
+                            <Loader2 size={28} className="animate-spin" />
                         ) : (
                             <>
                                 <Camera size={28} />
-                                <span className="text-xs font-medium text-center px-1">Câmera</span>
+                                <span className="text-xs font-medium">Câmera</span>
                             </>
                         )}
                     </button>
@@ -243,14 +240,11 @@ const CameraCapture = ({ onCapture, label, plate }) => {
                         className="flex-1 h-32 border-2 border-dashed border-purple-300 rounded-xl flex flex-col items-center justify-center gap-2 text-purple-600 bg-purple-50/50 hover:bg-purple-100 transition-colors"
                     >
                         {processing ? (
-                            <div className="flex flex-col items-center gap-2">
-                                <Loader2 size={28} className="animate-spin" />
-                                <span className="text-[10px] text-center px-2">Convertendo...<br />pode levar 1 min</span>
-                            </div>
+                            <Loader2 size={28} className="animate-spin" />
                         ) : (
                             <>
                                 <Image size={28} />
-                                <span className="text-xs font-medium text-center px-1">Galeria</span>
+                                <span className="text-xs font-medium">Galeria</span>
                             </>
                         )}
                     </button>
@@ -434,7 +428,7 @@ const DriverPortal = () => {
                 ? maintenanceFormData.customServiceName
                 : maintenanceServices.find(s => s.id === maintenanceFormData.serviceId)?.name || '';
 
-            const maintDocRef = await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'maintenanceRecords'), {
+            await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'maintenanceRecords'), {
                 truckId: truck.id,
                 date: maintenanceFormData.date,
                 serviceId: maintenanceFormData.serviceId === 'outro' ? null : maintenanceFormData.serviceId,
@@ -445,22 +439,6 @@ const DriverPortal = () => {
                 addedBy: 'driver',
                 driverName: truck.driver
             });
-
-            // GATILHO: Salvar no Extrato se houver custo (opcional, mas garante fidelidade)
-            if (Number(maintenanceFormData.cost) > 0) {
-                await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'transacoes'), {
-                    data: maintenanceFormData.date,
-                    tipo: 'saida',
-                    valor: Number(maintenanceFormData.cost),
-                    categoria: 'Manutenção',
-                    descricao: `Manutenção (${serviceName}) - ${truck.plate}`,
-                    centroCusto: truck.plate,
-                    origem: 'DriverPortal - Manutenção',
-                    origemRef: maintDocRef.id,
-                    createdAt: new Date().toISOString(),
-                    responsavel: truck.driver
-                });
-            }
 
             setMaintenanceFormData({
                 date: '',
@@ -641,27 +619,7 @@ const DriverPortal = () => {
                 createdAt: now.toISOString()
             };
 
-            // Referência do Abastecimento recém-criado
-            const entryDocRef = await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'entries'), entry);
-
-            console.log("DRIVER PORTAL: Salvo na collection entries. Entry ID: ", entryDocRef.id);
-
-            // GATILHO: Salvar cópia no Livro-Razão (Extrato)
-            // GATILHO: Salvar cópia no Livro-Razão (Extrato)
-            console.log("DRIVER PORTAL: Tentando salvar na collection transacoes...");
-            await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'transacoes'), {
-                data: now.toISOString().split('T')[0],
-                tipo: 'saida',
-                valor: Number(formData.totalCost),
-                categoria: 'Combustível',
-                descricao: `Abastecimento - ${truck.plate}`,
-                centroCusto: truck.plate, // Placa do caminhão atua como Centro de Custo inicial
-                origem: 'DriverPortal - Abastecimento',
-                origemRef: entryDocRef.id,
-                createdAt: now.toISOString(),
-                responsavel: truck.driver
-            });
-            console.log("DRIVER PORTAL: Salvo na collection transacoes COM SUCESSO!");
+            await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'entries'), entry);
 
             setFormData({ liters: '', totalCost: '', newMileage: '' });
             setOdometerBeforePhoto(null);
